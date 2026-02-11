@@ -4,6 +4,12 @@ virtwork is a CLI tool that creates virtual machines on OpenShift clusters with 
 
 virtwork is a **one-shot deployment tool** — it creates resources and exits. Workload lifecycle management is handled by systemd inside each VM.
 
+## Motivation
+
+The virtwork project was born from a practical necessity; the need to rapidly deploy and manage synthetic test workloads within OpenShift Virtualization environments. As organizations increasingly migrate virtualized infrastructure into OpenShift, the need for a standardized, repeatable way to stress-test these environments becomes critical. virtwork bridges this gap by providing a streamlined framework to validate how your cluster handles real-world pressure.
+
+Whether you are fine-tuning high-speed network throughput, conducting rigorous CPU, memory and disk benchmarking, or verifying the accuracy of your monitoring and observability stack, virtwork automates the heavy lifting. By spinning up diverse, customizable workloads, it ensures that your OpenShift clusters are not just functional, but optimized for peak performance and production-ready reliability.
+
 ## Prerequisites
 
 - Go 1.25+

@@ -29,6 +29,7 @@ htpasswd
 claude-logs/
 
 # Binaries
+bin/
 /virtwork
 /virtctl
 *.exe
