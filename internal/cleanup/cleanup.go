@@ -13,6 +13,7 @@ import (
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/opdev/virtwork/internal/config"
 	"github.com/opdev/virtwork/internal/constants"
 )
 
@@ -30,7 +31,7 @@ type CleanupResult struct {
 // If runID is non-empty, only resources with that specific virtwork/run-id label are deleted.
 // Individual deletion failures are recorded but do not abort the operation.
 // If deleteNamespace is true, the namespace itself is deleted as the final step.
-func CleanupAll(ctx context.Context, c client.Client, namespace string, deleteNamespace bool, runID string) (*CleanupResult, error) {
+func CleanupAll(ctx context.Context, c client.Client, cfg *config.Config, deleteNamespace bool, runID string) (*CleanupResult, error) {
 	result := &CleanupResult{}
 	managedLabels := map[string]string{
 		constants.LabelManagedBy: constants.ManagedByValue,
@@ -41,18 +42,25 @@ func CleanupAll(ctx context.Context, c client.Client, namespace string, deleteNa
 
 	runIDSet := make(map[string]struct{})
 
+	// Setup delete options
+	opts := []client.DeleteOption{}
+	if cfg.DryRun {
+		opts = append(opts, client.DryRunAll)
+	}
+
 	// Delete VMs by label
 	vmList := &kubevirtv1.VirtualMachineList{}
 	listOpts := []client.ListOption{
-		client.InNamespace(namespace),
+		client.InNamespace(cfg.Namespace),
 		client.MatchingLabels(managedLabels),
 	}
 	if err := c.List(ctx, vmList, listOpts...); err != nil {
-		return result, fmt.Errorf("listing VMs in %s: %w", namespace, err)
+		return result, fmt.Errorf("listing VMs in %s: %w", cfg.Namespace, err)
 	}
+
 	for i := range vmList.Items {
 		collectRunID(vmList.Items[i].Labels, runIDSet)
-		if err := c.Delete(ctx, &vmList.Items[i]); err != nil {
+		if err := c.Delete(ctx, &vmList.Items[i], opts...); err != nil {
 			if !apierrors.IsNotFound(err) {
 				result.Errors = append(result.Errors, fmt.Errorf("deleting VM %s: %w", vmList.Items[i].Name, err))
 			}
@@ -64,11 +72,11 @@ func CleanupAll(ctx context.Context, c client.Client, namespace string, deleteNa
 	// Delete services by label
 	svcList := &corev1.ServiceList{}
 	if err := c.List(ctx, svcList, listOpts...); err != nil {
-		return result, fmt.Errorf("listing services in %s: %w", namespace, err)
+		return result, fmt.Errorf("listing services in %s: %w", cfg.Namespace, err)
 	}
 	for i := range svcList.Items {
 		collectRunID(svcList.Items[i].Labels, runIDSet)
-		if err := c.Delete(ctx, &svcList.Items[i]); err != nil {
+		if err := c.Delete(ctx, &svcList.Items[i], opts...); err != nil {
 			if !apierrors.IsNotFound(err) {
 				result.Errors = append(result.Errors, fmt.Errorf("deleting service %s: %w", svcList.Items[i].Name, err))
 			}
@@ -80,11 +88,11 @@ func CleanupAll(ctx context.Context, c client.Client, namespace string, deleteNa
 	// Delete secrets by label
 	secretList := &corev1.SecretList{}
 	if err := c.List(ctx, secretList, listOpts...); err != nil {
-		return result, fmt.Errorf("listing secrets in %s: %w", namespace, err)
+		return result, fmt.Errorf("listing secrets in %s: %w", cfg.Namespace, err)
 	}
 	for i := range secretList.Items {
 		collectRunID(secretList.Items[i].Labels, runIDSet)
-		if err := c.Delete(ctx, &secretList.Items[i]); err != nil {
+		if err := c.Delete(ctx, &secretList.Items[i], opts...); err != nil {
 			if !apierrors.IsNotFound(err) {
 				result.Errors = append(result.Errors, fmt.Errorf("deleting secret %s: %w", secretList.Items[i].Name, err))
 			}
@@ -102,12 +110,12 @@ func CleanupAll(ctx context.Context, c client.Client, namespace string, deleteNa
 	if deleteNamespace {
 		ns := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: namespace,
+				Name: cfg.Namespace,
 			},
 		}
 		if err := c.Delete(ctx, ns); err != nil {
 			if !apierrors.IsNotFound(err) {
-				result.Errors = append(result.Errors, fmt.Errorf("deleting namespace %s: %w", namespace, err))
+				result.Errors = append(result.Errors, fmt.Errorf("deleting namespace %s: %w", cfg.Namespace, err))
 			}
 		} else {
 			result.NamespaceDeleted = true
