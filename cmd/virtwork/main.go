@@ -92,6 +92,7 @@ func newCleanupCmd() *cobra.Command {
 
 	cmd.Flags().Bool("delete-namespace", false, "Also delete the namespace")
 	cmd.Flags().String("run-id", "", "Only delete resources from this specific run (UUID)")
+	cmd.Flags().Bool("dry-run", false, "Print intent without destroying resources")
 	return cmd
 }
 
@@ -490,7 +491,12 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	// Start audit execution
-	execID, _, err := auditor.StartExecution(ctx, "cleanup", cfg)
+	cmdName := "cleanup"
+	if cfg.DryRun {
+		cmdName = "cleanup --dry-run"
+	}
+
+	execID, _, err := auditor.StartExecution(ctx, cmdName, cfg)
 	if err != nil {
 		return fmt.Errorf("starting audit execution: %w", err)
 	}
@@ -505,7 +511,7 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 
 	_ = auditor.RecordEvent(ctx, execID, audit.EventRecord{
 		EventType: "cleanup_started",
-		Message:   fmt.Sprintf("Cleanup started (namespace: %s, run-id filter: %q)", cfg.Namespace, targetRunID),
+		Message:   fmt.Sprintf("Started %s: (namespace: %s, run-id filter: %q)", cmdName, cfg.Namespace, targetRunID),
 	})
 
 	c, err := cluster.Connect(cfg.KubeconfigPath)
@@ -513,7 +519,7 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("connecting to cluster: %w", err)
 	}
 
-	result, err := cleanup.CleanupAll(ctx, c, cfg.Namespace, deleteNS, targetRunID)
+	result, err := cleanup.CleanupAll(ctx, c, cfg, deleteNS, targetRunID)
 	if err != nil {
 		return fmt.Errorf("cleanup failed: %w", err)
 	}

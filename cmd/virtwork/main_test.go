@@ -526,7 +526,7 @@ var _ = Describe("Cleanup command", func() {
 			Build()
 		ctx := context.Background()
 
-		result, err := cleanup.CleanupAll(ctx, c, constants.DefaultNamespace, false, "")
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: constants.DefaultNamespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.VMsDeleted).To(Equal(1))
 		Expect(result.NamespaceDeleted).To(BeFalse())
@@ -677,7 +677,7 @@ var _ = Describe("CLI end-to-end scenarios", func() {
 				Build()
 			ctx := context.Background()
 
-			result, err := cleanup.CleanupAll(ctx, c, constants.DefaultNamespace, false, "")
+			result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: constants.DefaultNamespace}, false, "")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.VMsDeleted).To(Equal(2))
 		})

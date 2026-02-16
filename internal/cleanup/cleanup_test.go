@@ -19,6 +19,7 @@ import (
 
 	"github.com/opdev/virtwork/internal/cleanup"
 	"github.com/opdev/virtwork/internal/cluster"
+	"github.com/opdev/virtwork/internal/config"
 	"github.com/opdev/virtwork/internal/constants"
 	"github.com/opdev/virtwork/internal/vm"
 )
@@ -82,7 +83,7 @@ var _ = Describe("CleanupAll", func() {
 		vm2 := newManagedVM("vm-2")
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(vm1, vm2).Build()
 
-		result, err := cleanup.CleanupAll(ctx, c, namespace, false, "")
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.VMsDeleted).To(Equal(2))
 		Expect(result.Errors).To(BeEmpty())
@@ -113,7 +114,7 @@ var _ = Describe("CleanupAll", func() {
 			}).
 			Build()
 
-		result, err := cleanup.CleanupAll(ctx, c, namespace, false, "")
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.VMsDeleted).To(Equal(1))
 		Expect(result.Errors).To(HaveLen(1))
@@ -124,7 +125,7 @@ var _ = Describe("CleanupAll", func() {
 		svc2 := newManagedService("svc-2")
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc1, svc2).Build()
 
-		result, err := cleanup.CleanupAll(ctx, c, namespace, false, "")
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.ServicesDeleted).To(Equal(2))
 		Expect(result.Errors).To(BeEmpty())
@@ -155,7 +156,7 @@ var _ = Describe("CleanupAll", func() {
 			}).
 			Build()
 
-		result, err := cleanup.CleanupAll(ctx, c, namespace, false, "")
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.ServicesDeleted).To(Equal(1))
 		Expect(result.Errors).To(HaveLen(1))
@@ -166,7 +167,7 @@ var _ = Describe("CleanupAll", func() {
 		sec2 := newManagedSecret("sec-2")
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(sec1, sec2).Build()
 
-		result, err := cleanup.CleanupAll(ctx, c, namespace, false, "")
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.SecretsDeleted).To(Equal(2))
 		Expect(result.Errors).To(BeEmpty())
@@ -196,7 +197,7 @@ var _ = Describe("CleanupAll", func() {
 			}).
 			Build()
 
-		result, err := cleanup.CleanupAll(ctx, c, namespace, false, "")
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.SecretsDeleted).To(Equal(1))
 		Expect(result.Errors).To(HaveLen(1))
@@ -211,7 +212,7 @@ var _ = Describe("CleanupAll", func() {
 		}
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(ns).Build()
 
-		result, err := cleanup.CleanupAll(ctx, c, namespace, false, "")
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.NamespaceDeleted).To(BeFalse())
 
@@ -229,7 +230,7 @@ var _ = Describe("CleanupAll", func() {
 		}
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(ns).Build()
 
-		result, err := cleanup.CleanupAll(ctx, c, namespace, true, "")
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, true, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.NamespaceDeleted).To(BeTrue())
 	})
@@ -247,7 +248,7 @@ var _ = Describe("CleanupAll", func() {
 			}).
 			Build()
 
-		result, err := cleanup.CleanupAll(ctx, c, namespace, true, "")
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, true, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.NamespaceDeleted).To(BeFalse())
 		Expect(result.Errors).To(HaveLen(1))
@@ -261,7 +262,7 @@ var _ = Describe("CleanupAll", func() {
 		sec1 := newManagedSecret("sec-1")
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(vm1, vm2, vm3, svc1, sec1).Build()
 
-		result, err := cleanup.CleanupAll(ctx, c, namespace, false, "")
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.VMsDeleted).To(Equal(3))
 		Expect(result.ServicesDeleted).To(Equal(1))
@@ -273,7 +274,7 @@ var _ = Describe("CleanupAll", func() {
 	It("should handle empty namespace gracefully", func() {
 		c := fake.NewClientBuilder().WithScheme(scheme).Build()
 
-		result, err := cleanup.CleanupAll(ctx, c, namespace, false, "")
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.VMsDeleted).To(Equal(0))
 		Expect(result.ServicesDeleted).To(Equal(0))
@@ -317,7 +318,7 @@ var _ = Describe("CleanupAll", func() {
 			WithObjects(managedVM, unmanagedVM, managedSvc, unmanagedSvc).
 			Build()
 
-		result, err := cleanup.CleanupAll(ctx, c, namespace, false, "")
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.VMsDeleted).To(Equal(1))
 		Expect(result.ServicesDeleted).To(Equal(1))
