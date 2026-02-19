@@ -10,6 +10,9 @@ The virtwork project was born from a practical necessity; the need to rapidly de
 
 Whether you are fine-tuning high-speed network throughput, conducting rigorous CPU, memory and disk benchmarking, or verifying the accuracy of your monitoring and observability stack, virtwork automates the heavy lifting. By spinning up diverse, customizable workloads, it ensures that your OpenShift clusters are not just functional, but optimized for peak performance and production-ready reliability.
 
+## virtwork vs kube-burner
+virtwork and kube-burner solve adjacent but non-overlapping problems. kube-burner measures how the platform handles VMs — boot latency, clone throughput, migration speed. virtwork generates what happens inside them — real I/O, real traffic, real database load — as persistent systemd services for partner products to observe and validate. See the [full comparison](docs/virtwork-vs-kube-burner.md) for more details..
+
 ## Prerequisites
 
 - Go 1.25+
