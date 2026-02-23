@@ -491,9 +491,13 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	// Start audit execution
+	var dryRunBanner string = ""
 	cmdName := "cleanup"
 	if cfg.DryRun {
+		// Log the command being executed
 		cmdName = "cleanup --dry-run"
+		// Add banner if '--dry-run' option is passed
+		dryRunBanner = "--- Dry Run ---\n"
 	}
 
 	execID, _, err := auditor.StartExecution(ctx, cmdName, cfg)
@@ -543,8 +547,8 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 	_ = auditor.CompleteExecution(ctx, execID, "success", "")
 	err = nil // clear for defer
 
-	fmt.Fprintf(cmd.OutOrStdout(), "Cleanup complete: %d VMs deleted, %d services deleted, %d secrets deleted",
-		result.VMsDeleted, result.ServicesDeleted, result.SecretsDeleted)
+	fmt.Fprintf(cmd.OutOrStdout(), "%sCleanup complete: %d VMs deleted, %d services deleted, %d secrets deleted",
+		dryRunBanner, result.VMsDeleted, result.ServicesDeleted, result.SecretsDeleted)
 	if result.NamespaceDeleted {
 		fmt.Fprintf(cmd.OutOrStdout(), ", namespace deleted")
 	}
