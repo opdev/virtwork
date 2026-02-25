@@ -1,0 +1,47 @@
+version: "2"
+
+linters:
+  enable:
+    - govet
+    - gosec
+    - revive
+    - unused
+    - nilnil
+    - modernize
+    - asciicheck
+    - errcheck
+    - ineffassign
+    - staticcheck
+    - wastedassign
+    - misspell
+    - contextcheck
+    - dupl
+    - err113
+    - errname
+    - errorlint
+    - exptostd
+
+  settings:
+    revive:
+      rules:
+        - name: package-comments
+          disabled: true
+
+
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - golines
+    - goimports
+
+  settings:
+
+    goimports:
+      local-prefixes:
+        - github.com/opdev/virtwork
+
+    golines:
+      # Default: 100
+      max-len: 120
