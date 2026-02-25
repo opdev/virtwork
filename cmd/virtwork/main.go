@@ -391,8 +391,8 @@ func runE(cmd *cobra.Command, args []string) error {
 
 	// Create VMs concurrently via errgroup
 	g, gctx := errgroup.WithContext(ctx)
-	for _, p := range plans {
-		p := p // capture loop variable
+	for _, plan := range plans {
+		p := plan // capture loop variable
 		g.Go(func() error {
 			vmObj := vm.BuildVMSpec(*p.vmSpec)
 			if err := vm.CreateVM(gctx, c, vmObj); err != nil {
