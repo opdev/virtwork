@@ -361,7 +361,7 @@ var _ = Describe("SQLiteAuditor", func() {
 
 			var wg sync.WaitGroup
 			errs := make([]error, 20)
-			for i := 0; i < 20; i++ {
+			for i := range 20 {
 				wg.Add(1)
 				go func(idx int) {
 					defer wg.Done()
