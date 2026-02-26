@@ -94,6 +94,7 @@ var _ = Describe("CleanupAll", func() {
 		Expect(vmList.Items).To(BeEmpty())
 	})
 
+	// nolint:dupl
 	It("should tolerate individual VM deletion errors", func() {
 		vm1 := newManagedVM("vm-1")
 		vm2 := newManagedVM("vm-2")
@@ -136,6 +137,7 @@ var _ = Describe("CleanupAll", func() {
 		Expect(svcList.Items).To(BeEmpty())
 	})
 
+	// nolint:dupl
 	It("should tolerate individual service deletion errors", func() {
 		svc1 := newManagedService("svc-1")
 		svc2 := newManagedService("svc-2")
@@ -177,6 +179,7 @@ var _ = Describe("CleanupAll", func() {
 		Expect(secretList.Items).To(BeEmpty())
 	})
 
+	// nolint:dupl
 	It("should tolerate individual secret deletion errors", func() {
 		sec1 := newManagedSecret("sec-1")
 		sec2 := newManagedSecret("sec-2")

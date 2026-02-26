@@ -250,6 +250,7 @@ var _ = Describe("CreateCloudInitSecret", func() {
 	})
 })
 
+// nolint:dupl
 var _ = Describe("DeleteManagedSecrets", func() {
 	var (
 		ctx    context.Context
@@ -328,6 +329,7 @@ var _ = Describe("DeleteManagedSecrets", func() {
 	})
 })
 
+// nolint:dupl
 var _ = Describe("DeleteManagedServices", func() {
 	var (
 		ctx    context.Context
