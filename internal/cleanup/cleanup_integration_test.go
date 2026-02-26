@@ -71,7 +71,16 @@ var _ = Describe("CleanupAll [integration]", func() {
 	})
 
 	It("should delete secrets by managed-by label", func() {
-		Expect(resources.CreateCloudInitSecret(ctx, c, "cleanup-secret", namespace, "#cloud-config\n", testutil.ManagedLabels())).To(Succeed())
+		Expect(
+			resources.CreateCloudInitSecret(
+				ctx,
+				c,
+				"cleanup-secret",
+				namespace,
+				"#cloud-config\n",
+				testutil.ManagedLabels(),
+			),
+		).To(Succeed())
 
 		result, err := cleanup.CleanupAll(ctx, c, namespace, false, "")
 		Expect(err).NotTo(HaveOccurred())
@@ -134,7 +143,16 @@ var _ = Describe("CleanupAll [integration]", func() {
 		}
 		Expect(resources.CreateService(ctx, c, svc)).To(Succeed())
 
-		Expect(resources.CreateCloudInitSecret(ctx, c, "cleanup-mix-secret", namespace, "#cloud-config\n", testutil.ManagedLabels())).To(Succeed())
+		Expect(
+			resources.CreateCloudInitSecret(
+				ctx,
+				c,
+				"cleanup-mix-secret",
+				namespace,
+				"#cloud-config\n",
+				testutil.ManagedLabels(),
+			),
+		).To(Succeed())
 
 		result, err := cleanup.CleanupAll(ctx, c, namespace, false, "")
 		Expect(err).NotTo(HaveOccurred())

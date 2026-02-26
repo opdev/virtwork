@@ -29,7 +29,7 @@ func newTestCommand() *cobra.Command {
 
 func writeConfigFile(dir, content string) string {
 	path := filepath.Join(dir, "config.yaml")
-	err := os.WriteFile(path, []byte(content), 0644)
+	err := os.WriteFile(path, []byte(content), 0o644)
 	Expect(err).NotTo(HaveOccurred())
 	return path
 }

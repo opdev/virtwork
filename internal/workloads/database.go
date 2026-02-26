@@ -78,7 +78,11 @@ type DatabaseWorkload struct {
 
 // NewDatabaseWorkload creates a DatabaseWorkload with the given configuration,
 // disk size, and SSH credentials.
-func NewDatabaseWorkload(cfg config.WorkloadConfig, dataDiskSize, sshUser, sshPassword string, sshKeys []string) *DatabaseWorkload {
+func NewDatabaseWorkload(
+	cfg config.WorkloadConfig,
+	dataDiskSize, sshUser, sshPassword string,
+	sshKeys []string,
+) *DatabaseWorkload {
 	return &DatabaseWorkload{
 		BaseWorkload: BaseWorkload{
 			Config:            cfg,

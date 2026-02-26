@@ -10,7 +10,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -186,7 +185,14 @@ var _ = Describe("WaitForAllVMsReady", func() {
 		}
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(vmi1, vmi2).Build()
 
-		results := wait.WaitForAllVMsReady(ctx, c, []string{"vm-1", "vm-2"}, "default", 5*time.Second, 10*time.Millisecond)
+		results := wait.WaitForAllVMsReady(
+			ctx,
+			c,
+			[]string{"vm-1", "vm-2"},
+			"default",
+			5*time.Second,
+			10*time.Millisecond,
+		)
 		Expect(results).To(HaveLen(2))
 		Expect(results["vm-1"]).NotTo(HaveOccurred())
 		Expect(results["vm-2"]).NotTo(HaveOccurred())
@@ -205,7 +211,14 @@ var _ = Describe("WaitForAllVMsReady", func() {
 		// bad-vm does not exist, so it will fail
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(vmi1).Build()
 
-		results := wait.WaitForAllVMsReady(ctx, c, []string{"good-vm", "bad-vm"}, "default", 50*time.Millisecond, 10*time.Millisecond)
+		results := wait.WaitForAllVMsReady(
+			ctx,
+			c,
+			[]string{"good-vm", "bad-vm"},
+			"default",
+			50*time.Millisecond,
+			10*time.Millisecond,
+		)
 		Expect(results).To(HaveLen(2))
 		Expect(results["good-vm"]).NotTo(HaveOccurred())
 		Expect(results["bad-vm"]).To(HaveOccurred())

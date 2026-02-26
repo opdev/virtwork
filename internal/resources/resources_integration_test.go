@@ -147,7 +147,14 @@ var _ = Describe("CreateCloudInitSecret [integration]", func() {
 	})
 
 	It("should create a secret with userdata field", func() {
-		err := resources.CreateCloudInitSecret(ctx, c, "test-cloudinit", namespace, "#cloud-config\n", testutil.ManagedLabels())
+		err := resources.CreateCloudInitSecret(
+			ctx,
+			c,
+			"test-cloudinit",
+			namespace,
+			"#cloud-config\n",
+			testutil.ManagedLabels(),
+		)
 		Expect(err).NotTo(HaveOccurred())
 
 		secret := &corev1.Secret{}
@@ -157,12 +164,39 @@ var _ = Describe("CreateCloudInitSecret [integration]", func() {
 	})
 
 	It("should be idempotent", func() {
-		Expect(resources.CreateCloudInitSecret(ctx, c, "test-idem", namespace, "#cloud-config\n", testutil.ManagedLabels())).To(Succeed())
-		Expect(resources.CreateCloudInitSecret(ctx, c, "test-idem", namespace, "#cloud-config\n", testutil.ManagedLabels())).To(Succeed())
+		Expect(
+			resources.CreateCloudInitSecret(
+				ctx,
+				c,
+				"test-idem",
+				namespace,
+				"#cloud-config\n",
+				testutil.ManagedLabels(),
+			),
+		).To(Succeed())
+		Expect(
+			resources.CreateCloudInitSecret(
+				ctx,
+				c,
+				"test-idem",
+				namespace,
+				"#cloud-config\n",
+				testutil.ManagedLabels(),
+			),
+		).To(Succeed())
 	})
 
 	It("should apply managed-by labels", func() {
-		Expect(resources.CreateCloudInitSecret(ctx, c, "test-labels", namespace, "#cloud-config\n", testutil.ManagedLabels())).To(Succeed())
+		Expect(
+			resources.CreateCloudInitSecret(
+				ctx,
+				c,
+				"test-labels",
+				namespace,
+				"#cloud-config\n",
+				testutil.ManagedLabels(),
+			),
+		).To(Succeed())
 
 		secret := &corev1.Secret{}
 		Expect(c.Get(ctx, client.ObjectKey{Name: "test-labels", Namespace: namespace}, secret)).To(Succeed())
@@ -190,7 +224,16 @@ var _ = Describe("DeleteManagedSecrets [integration]", func() {
 
 	It("should delete only labeled secrets", func() {
 		// Create a managed secret
-		Expect(resources.CreateCloudInitSecret(ctx, c, "managed-secret", namespace, "#cloud-config\n", testutil.ManagedLabels())).To(Succeed())
+		Expect(
+			resources.CreateCloudInitSecret(
+				ctx,
+				c,
+				"managed-secret",
+				namespace,
+				"#cloud-config\n",
+				testutil.ManagedLabels(),
+			),
+		).To(Succeed())
 
 		// Create an unmanaged secret
 		unmanaged := &corev1.Secret{
