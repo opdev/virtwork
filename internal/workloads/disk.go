@@ -64,7 +64,11 @@ type DiskWorkload struct {
 
 // NewDiskWorkload creates a DiskWorkload with the given configuration, disk size,
 // and SSH credentials.
-func NewDiskWorkload(cfg config.WorkloadConfig, dataDiskSize, sshUser, sshPassword string, sshKeys []string) *DiskWorkload {
+func NewDiskWorkload(
+	cfg config.WorkloadConfig,
+	dataDiskSize, sshUser, sshPassword string,
+	sshKeys []string,
+) *DiskWorkload {
 	return &DiskWorkload{
 		BaseWorkload: BaseWorkload{
 			Config:            cfg,

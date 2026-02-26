@@ -68,9 +68,7 @@ var _ = Describe("SQLiteAuditor", func() {
 	})
 
 	Describe("execution lifecycle", func() {
-		var (
-			cfg *config.Config
-		)
+		var cfg *config.Config
 
 		BeforeEach(func() {
 			cfg = &config.Config{
@@ -306,7 +304,8 @@ var _ = Describe("SQLiteAuditor", func() {
 			db := auditor.DB()
 			var status string
 			var deletedAt sql.NullString
-			err = db.QueryRow(`SELECT status, deleted_at FROM resource_details WHERE id = ?`, resID).Scan(&status, &deletedAt)
+			err = db.QueryRow(`SELECT status, deleted_at FROM resource_details WHERE id = ?`, resID).
+				Scan(&status, &deletedAt)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(status).To(Equal("deleted"))
 			Expect(deletedAt.Valid).To(BeTrue())

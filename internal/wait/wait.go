@@ -17,7 +17,12 @@ import (
 // WaitForVMReady polls the VMI phase until it reaches Running or the timeout
 // expires. It uses time.Sleep for polling intervals and respects context
 // cancellation.
-func WaitForVMReady(ctx context.Context, c client.Client, name, namespace string, timeout, interval time.Duration) error {
+func WaitForVMReady(
+	ctx context.Context,
+	c client.Client,
+	name, namespace string,
+	timeout, interval time.Duration,
+) error {
 	deadline := time.Now().Add(timeout)
 
 	for {
@@ -59,7 +64,13 @@ func WaitForVMReady(ctx context.Context, c client.Client, name, namespace string
 // WaitForAllVMsReady polls all named VMs concurrently using goroutines.
 // Returns a map of VM name to error (nil if ready). Each VM is polled
 // independently — a failure for one does not cancel others.
-func WaitForAllVMsReady(ctx context.Context, c client.Client, names []string, namespace string, timeout, interval time.Duration) map[string]error {
+func WaitForAllVMsReady(
+	ctx context.Context,
+	c client.Client,
+	names []string,
+	namespace string,
+	timeout, interval time.Duration,
+) map[string]error {
 	results := make(map[string]error, len(names))
 	var mu sync.Mutex
 	var wg sync.WaitGroup

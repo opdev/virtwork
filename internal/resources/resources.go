@@ -42,7 +42,12 @@ func CreateService(ctx context.Context, c client.Client, svc *corev1.Service) er
 // CreateCloudInitSecret creates a Secret holding cloud-init userdata.
 // The secret is labeled for cleanup. AlreadyExists errors are treated as
 // success (idempotent).
-func CreateCloudInitSecret(ctx context.Context, c client.Client, name, namespace, userdata string, labels map[string]string) error {
+func CreateCloudInitSecret(
+	ctx context.Context,
+	c client.Client,
+	name, namespace, userdata string,
+	labels map[string]string,
+) error {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -62,7 +67,12 @@ func CreateCloudInitSecret(ctx context.Context, c client.Client, name, namespace
 
 // DeleteManagedSecrets lists and deletes secrets matching the given labels in
 // the namespace. Returns the count of successfully deleted secrets.
-func DeleteManagedSecrets(ctx context.Context, c client.Client, namespace string, labels map[string]string) (int, error) {
+func DeleteManagedSecrets(
+	ctx context.Context,
+	c client.Client,
+	namespace string,
+	labels map[string]string,
+) (int, error) {
 	secretList := &corev1.SecretList{}
 	opts := []client.ListOption{
 		client.InNamespace(namespace),
@@ -87,7 +97,12 @@ func DeleteManagedSecrets(ctx context.Context, c client.Client, namespace string
 
 // DeleteManagedServices lists and deletes services matching the given labels in
 // the namespace. Returns the count of successfully deleted services.
-func DeleteManagedServices(ctx context.Context, c client.Client, namespace string, labels map[string]string) (int, error) {
+func DeleteManagedServices(
+	ctx context.Context,
+	c client.Client,
+	namespace string,
+	labels map[string]string,
+) (int, error) {
 	svcList := &corev1.ServiceList{}
 	opts := []client.ListOption{
 		client.InNamespace(namespace),

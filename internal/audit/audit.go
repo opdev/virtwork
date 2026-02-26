@@ -28,7 +28,12 @@ type Auditor interface {
 	// LinkCleanupToRuns sets linked_run_ids on a cleanup audit_log row.
 	LinkCleanupToRuns(ctx context.Context, cleanupID int64, runIDs []string) error
 	// RecordCleanupCounts updates cleanup-specific counters on the audit_log row.
-	RecordCleanupCounts(ctx context.Context, id int64, vmsDeleted, servicesDeleted, secretsDeleted int, namespaceDeleted bool) error
+	RecordCleanupCounts(
+		ctx context.Context,
+		id int64,
+		vmsDeleted, servicesDeleted, secretsDeleted int,
+		namespaceDeleted bool,
+	) error
 
 	// RecordWorkload inserts a workload_details row.
 	RecordWorkload(ctx context.Context, executionID int64, w WorkloadRecord) (workloadID int64, err error)
@@ -146,10 +151,21 @@ func (a *SQLiteAuditor) LinkCleanupToRuns(ctx context.Context, cleanupID int64, 
 	return err
 }
 
-func (a *SQLiteAuditor) RecordCleanupCounts(ctx context.Context, id int64, vmsDeleted, servicesDeleted, secretsDeleted int, namespaceDeleted bool) error {
-	_, err := a.db.ExecContext(ctx,
+func (a *SQLiteAuditor) RecordCleanupCounts(
+	ctx context.Context,
+	id int64,
+	vmsDeleted, servicesDeleted, secretsDeleted int,
+	namespaceDeleted bool,
+) error {
+	_, err := a.db.ExecContext(
+		ctx,
 		`UPDATE audit_log SET vms_deleted = ?, services_deleted = ?, secrets_deleted = ?, namespace_deleted = ? WHERE id = ?`,
-		vmsDeleted, servicesDeleted, secretsDeleted, boolToInt(namespaceDeleted), id)
+		vmsDeleted,
+		servicesDeleted,
+		secretsDeleted,
+		boolToInt(namespaceDeleted),
+		id,
+	)
 	return err
 }
 
@@ -256,11 +272,16 @@ type NoOpAuditor struct{}
 func (NoOpAuditor) StartExecution(_ context.Context, _ string, _ *config.Config) (int64, string, error) {
 	return 0, "", nil
 }
-func (NoOpAuditor) CompleteExecution(_ context.Context, _ int64, _ string, _ string) error { return nil }
-func (NoOpAuditor) LinkCleanupToRuns(_ context.Context, _ int64, _ []string) error         { return nil }
+
+func (NoOpAuditor) CompleteExecution(_ context.Context, _ int64, _ string, _ string) error {
+	return nil
+}
+
+func (NoOpAuditor) LinkCleanupToRuns(_ context.Context, _ int64, _ []string) error { return nil }
 func (NoOpAuditor) RecordCleanupCounts(_ context.Context, _ int64, _, _, _ int, _ bool) error {
 	return nil
 }
+
 func (NoOpAuditor) RecordWorkload(_ context.Context, _ int64, _ WorkloadRecord) (int64, error) {
 	return 0, nil
 }
@@ -269,7 +290,7 @@ func (NoOpAuditor) RecordVM(_ context.Context, _ int64, _ int64, _ VMRecord) (in
 	return 0, nil
 }
 func (NoOpAuditor) UpdateVMStatus(_ context.Context, _ int64, _ string, _ string) error { return nil }
-func (NoOpAuditor) RecordVMDeletion(_ context.Context, _ int64) error                    { return nil }
+func (NoOpAuditor) RecordVMDeletion(_ context.Context, _ int64) error                   { return nil }
 func (NoOpAuditor) RecordResource(_ context.Context, _ int64, _ ResourceRecord) (int64, error) {
 	return 0, nil
 }

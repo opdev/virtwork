@@ -76,7 +76,8 @@ var _ = Describe("Full deployment cycle", Label("slow"), func() {
 
 		svc := &corev1.Service{}
 		err = c.Get(ctx, client.ObjectKey{
-			Name: "virtwork-iperf3-server", Namespace: namespace}, svc)
+			Name: "virtwork-iperf3-server", Namespace: namespace,
+		}, svc)
 		Expect(err).NotTo(HaveOccurred())
 
 		// Verify 2 VMs exist (server + client)

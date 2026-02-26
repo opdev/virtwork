@@ -38,7 +38,11 @@ type NetworkWorkload struct {
 
 // NewNetworkWorkload creates a NetworkWorkload with the given configuration,
 // namespace, and SSH credentials.
-func NewNetworkWorkload(cfg config.WorkloadConfig, namespace, sshUser, sshPassword string, sshKeys []string) *NetworkWorkload {
+func NewNetworkWorkload(
+	cfg config.WorkloadConfig,
+	namespace, sshUser, sshPassword string,
+	sshKeys []string,
+) *NetworkWorkload {
 	return &NetworkWorkload{
 		BaseWorkload: BaseWorkload{
 			Config:            cfg,

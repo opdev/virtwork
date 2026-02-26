@@ -5,13 +5,13 @@ package audit
 
 // WorkloadRecord holds data for inserting a workload_details row.
 type WorkloadRecord struct {
-	WorkloadType   string
-	Enabled        bool
-	VMCount        int
-	CPUCores       int
-	Memory         string
-	HasDataDisk    bool
-	DataDiskSize   string
+	WorkloadType    string
+	Enabled         bool
+	VMCount         int
+	CPUCores        int
+	Memory          string
+	HasDataDisk     bool
+	DataDiskSize    string
 	RequiresService bool
 }
 

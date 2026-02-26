@@ -31,7 +31,13 @@ type CleanupResult struct {
 // If runID is non-empty, only resources with that specific virtwork/run-id label are deleted.
 // Individual deletion failures are recorded but do not abort the operation.
 // If deleteNamespace is true, the namespace itself is deleted as the final step.
-func CleanupAll(ctx context.Context, c client.Client, cfg *config.Config, deleteNamespace bool, runID string) (*CleanupResult, error) {
+func CleanupAll(
+	ctx context.Context,
+	c client.Client,
+	cfg *config.Config,
+	deleteNamespace bool,
+	runID string,
+) (*CleanupResult, error) {
 	result := &CleanupResult{}
 	managedLabels := map[string]string{
 		constants.LabelManagedBy: constants.ManagedByValue,
@@ -94,7 +100,10 @@ func CleanupAll(ctx context.Context, c client.Client, cfg *config.Config, delete
 		collectRunID(secretList.Items[i].Labels, runIDSet)
 		if err := c.Delete(ctx, &secretList.Items[i], opts...); err != nil {
 			if !apierrors.IsNotFound(err) {
-				result.Errors = append(result.Errors, fmt.Errorf("deleting secret %s: %w", secretList.Items[i].Name, err))
+				result.Errors = append(
+					result.Errors,
+					fmt.Errorf("deleting secret %s: %w", secretList.Items[i].Name, err),
+				)
 			}
 			continue
 		}

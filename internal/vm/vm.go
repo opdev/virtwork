@@ -205,7 +205,12 @@ func DeleteVM(ctx context.Context, c client.Client, name, namespace string) erro
 }
 
 // ListVMs returns VirtualMachines matching the given labels in the namespace.
-func ListVMs(ctx context.Context, c client.Client, namespace string, labels map[string]string) ([]kubevirtv1.VirtualMachine, error) {
+func ListVMs(
+	ctx context.Context,
+	c client.Client,
+	namespace string,
+	labels map[string]string,
+) ([]kubevirtv1.VirtualMachine, error) {
 	vmList := &kubevirtv1.VirtualMachineList{}
 	opts := []client.ListOption{
 		client.InNamespace(namespace),
@@ -218,7 +223,11 @@ func ListVMs(ctx context.Context, c client.Client, namespace string, labels map[
 }
 
 // GetVMIPhase returns the current phase of a VirtualMachineInstance.
-func GetVMIPhase(ctx context.Context, c client.Client, name, namespace string) (kubevirtv1.VirtualMachineInstancePhase, error) {
+func GetVMIPhase(
+	ctx context.Context,
+	c client.Client,
+	name, namespace string,
+) (kubevirtv1.VirtualMachineInstancePhase, error) {
 	vmi := &kubevirtv1.VirtualMachineInstance{}
 	key := client.ObjectKey{Name: name, Namespace: namespace}
 	if err := c.Get(ctx, key, vmi); err != nil {

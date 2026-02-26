@@ -249,7 +249,11 @@ func runE(cmd *cobra.Command, args []string) error {
 			// Multi-VM workload — use UserdataForRole
 			multiVM, ok := w.(workloads.MultiVMWorkload)
 			if !ok {
-				return fmt.Errorf("workload %q reports VMCount=%d but does not implement MultiVMWorkload", name, vmCount)
+				return fmt.Errorf(
+					"workload %q reports VMCount=%d but does not implement MultiVMWorkload",
+					name,
+					vmCount,
+				)
 			}
 
 			roles := []string{"server", "client"}
