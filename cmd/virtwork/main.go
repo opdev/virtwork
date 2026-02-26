@@ -219,7 +219,7 @@ func runE(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("generating cloud-init for %q: %w", name, err)
 			}
 
-			for i := 0; i < vmCount; i++ {
+			for i := range vmCount {
 				vmName := fmt.Sprintf("virtwork-%s-%d", name, i)
 				plans = append(plans, vmPlan{
 					workload:  w,
@@ -260,7 +260,7 @@ func runE(cmd *cobra.Command, args []string) error {
 					return fmt.Errorf("generating cloud-init for %q role %q: %w", name, role, err)
 				}
 
-				for i := 0; i < perRole; i++ {
+				for i := range perRole {
 					vmName := fmt.Sprintf("virtwork-%s-%s-%d", name, role, i)
 					labels := map[string]string{
 						constants.LabelAppName:   fmt.Sprintf("virtwork-%s", name),
