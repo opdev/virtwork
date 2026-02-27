@@ -4,6 +4,7 @@
 package workloads
 
 import (
+	"errors"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -26,6 +27,8 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 `
+
+var ErrUnknownNetworkRole = errors.New("unexpected network workload role (expected 'server' or 'client')")
 
 // NetworkWorkload generates cloud-init userdata for an iperf3 network benchmark.
 // It creates two VMs: a server running iperf3 in listen mode, and a client that
@@ -63,9 +66,7 @@ func (w *NetworkWorkload) Name() string {
 // configured vm-count.
 func (w *NetworkWorkload) VMCount() int {
 	count := w.Config.VMCount
-	if count < 1 {
-		count = 1
-	}
+	count = max(1, count)
 	return count * 2
 }
 
@@ -119,7 +120,7 @@ func (w *NetworkWorkload) UserdataForRole(role string, namespace string) (string
 	case "client":
 		return w.buildClientUserdata(namespace)
 	default:
-		return "", fmt.Errorf("unknown network workload role: %q (expected \"server\" or \"client\")", role)
+		return "", fmt.Errorf("unknown network workload role: %q; %w", role, ErrUnknownNetworkRole)
 	}
 }
 

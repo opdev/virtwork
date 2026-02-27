@@ -140,7 +140,9 @@ func runE(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("initializing auditor: %w", err)
 	}
-	defer auditor.Close()
+	defer func() {
+		_ = auditor.Close()
+	}()
 
 	ctx := context.Background()
 
@@ -333,7 +335,7 @@ func runE(cmd *cobra.Command, args []string) error {
 	}); err != nil {
 		return fmt.Errorf("ensuring namespace %q: %w", cfg.Namespace, err)
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Namespace %s ensured\n", cfg.Namespace)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Namespace %s ensured\n", cfg.Namespace)
 
 	// Create services before VMs (DNS must resolve for client VMs)
 	servicesCreated := 0
@@ -362,7 +364,7 @@ func runE(cmd *cobra.Command, args []string) error {
 					return fmt.Errorf("creating service for %q: %w", name, err)
 				}
 				servicesCreated++
-				fmt.Fprintf(cmd.OutOrStdout(), "Service %s created\n", svc.Name)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Service %s created\n", svc.Name)
 
 				_, _ = auditor.RecordResource(ctx, execID, audit.ResourceRecord{
 					ResourceType: "Service",
@@ -393,7 +395,7 @@ func runE(cmd *cobra.Command, args []string) error {
 		}
 		plans[i].vmSpec.CloudInitSecretName = secretName
 		secretsCreated++
-		fmt.Fprintf(cmd.OutOrStdout(), "Secret %s created\n", secretName)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Secret %s created\n", secretName)
 
 		_, _ = auditor.RecordResource(ctx, execID, audit.ResourceRecord{
 			ResourceType: "Secret",
@@ -416,7 +418,7 @@ func runE(cmd *cobra.Command, args []string) error {
 				})
 				return fmt.Errorf("creating VM %q: %w", p.vmName, err)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "VM %s created\n", p.vmName)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "VM %s created\n", p.vmName)
 
 			wlID := auditWorkloadIDs[p.component]
 			_, _ = auditor.RecordVM(ctx, execID, wlID, audit.VMRecord{
@@ -444,7 +446,7 @@ func runE(cmd *cobra.Command, args []string) error {
 	// Wait for readiness
 	if cfg.WaitForReady {
 		timeout := time.Duration(cfg.ReadyTimeoutSeconds) * time.Second
-		fmt.Fprintf(cmd.OutOrStdout(), "Waiting for %d VMs to become ready (timeout: %s)...\n",
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Waiting for %d VMs to become ready (timeout: %s)...\n",
 			len(vmNames), timeout)
 		results := wait.WaitForAllVMsReady(ctx, c, vmNames, cfg.Namespace,
 			timeout, constants.DefaultPollInterval)
@@ -452,7 +454,7 @@ func runE(cmd *cobra.Command, args []string) error {
 		failures := 0
 		for name, err := range results {
 			if err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "VM %s: %v\n", name, err)
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "VM %s: %v\n", name, err)
 				failures++
 				_ = auditor.RecordEvent(ctx, execID, audit.EventRecord{
 					EventType:   "vm_timeout",
@@ -469,7 +471,7 @@ func runE(cmd *cobra.Command, args []string) error {
 		if failures > 0 {
 			return fmt.Errorf("%d of %d VMs failed; %w", failures, len(vmNames), ErrReadinessCheck)
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "All %d VMs ready\n", len(vmNames))
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "All %d VMs ready\n", len(vmNames))
 	}
 
 	// Mark all workloads as created
@@ -498,7 +500,9 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("initializing auditor: %w", err)
 	}
-	defer auditor.Close()
+	defer func() {
+		_ = auditor.Close()
+	}()
 
 	ctx := context.Background()
 
@@ -559,17 +563,17 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 	_ = auditor.CompleteExecution(ctx, execID, "success", "")
 	err = nil // clear for defer
 
-	fmt.Fprintf(cmd.OutOrStdout(), "%sCleanup complete: %d VMs deleted, %d services deleted, %d secrets deleted",
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%sCleanup complete: %d VMs deleted, %d services deleted, %d secrets deleted",
 		dryRunBanner, result.VMsDeleted, result.ServicesDeleted, result.SecretsDeleted)
 	if result.NamespaceDeleted {
-		fmt.Fprintf(cmd.OutOrStdout(), ", namespace deleted")
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), ", namespace deleted")
 	}
-	fmt.Fprintln(cmd.OutOrStdout())
+	_, _ = fmt.Fprintln(cmd.OutOrStdout())
 
 	if len(result.Errors) > 0 {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Warnings (%d):\n", len(result.Errors))
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warnings (%d):\n", len(result.Errors))
 		for _, e := range result.Errors {
-			fmt.Fprintf(cmd.ErrOrStderr(), "  - %v\n", e)
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "  - %v\n", e)
 		}
 	}
 
@@ -578,7 +582,7 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 
 // printDryRun outputs VM specs in YAML without connecting to a cluster.
 func printDryRun(plans []vmPlan) error {
-	fmt.Printf("--- Dry Run ---\nTotal VMs to create: %d\n\n", len(plans))
+	_, _ = fmt.Printf("--- Dry Run ---\nTotal VMs to create: %d\n\n", len(plans))
 
 	for _, p := range plans {
 		vmObj := vm.BuildVMSpec(*p.vmSpec)
@@ -586,7 +590,7 @@ func printDryRun(plans []vmPlan) error {
 		if err != nil {
 			return fmt.Errorf("marshaling VM spec for %q: %w", p.vmName, err)
 		}
-		fmt.Printf("# VM: %s (workload: %s)\n%s\n%s\n", p.vmName, p.component, string(data), "---")
+		_, _ = fmt.Printf("# VM: %s (workload: %s)\n%s\n%s\n", p.vmName, p.component, string(data), "---")
 	}
 	return nil
 }
@@ -603,7 +607,7 @@ Services:     %d
 Secrets:      %d
 Image:        %s
 %s`
-	fmt.Fprintf(
+	_, _ = fmt.Fprintf(
 		cmd.OutOrStdout(),
 		summaryTemplate,
 		strings.Repeat("=", 50),
