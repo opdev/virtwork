@@ -9,7 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
-.claude
+# Claude Code
+.claude/*
+!.claude/skills/
 claude-logs
 docs/engineering-journals
 
