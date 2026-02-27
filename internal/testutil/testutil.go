@@ -24,6 +24,7 @@ import (
 	"github.com/opdev/virtwork/internal/config"
 	"github.com/opdev/virtwork/internal/constants"
 	"github.com/opdev/virtwork/internal/vm"
+	"github.com/opdev/virtwork/internal/wait"
 )
 
 // UniqueNamespace returns a namespace name like "virtwork-test-<prefix>-<random>"
@@ -115,7 +116,7 @@ func WaitForVMRunning(ctx context.Context, c client.Client, name, namespace stri
 			if err != nil {
 				return fmt.Errorf("timeout waiting for VM %s to be running: %w", name, err)
 			}
-			return fmt.Errorf("timeout waiting for VM %s to be running (phase: %s)", name, phase)
+			return fmt.Errorf("waiting for VM %s to be running (phase: %s); %w", name, phase, wait.ErrVMTimeout)
 		}
 		time.Sleep(interval)
 	}

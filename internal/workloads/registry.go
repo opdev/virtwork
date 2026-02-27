@@ -4,6 +4,7 @@
 package workloads
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -11,6 +12,8 @@ import (
 	"github.com/opdev/virtwork/internal/config"
 	"github.com/opdev/virtwork/internal/constants"
 )
+
+var ErrWorkloadUnknown = errors.New("workload not found")
 
 // RegistryOpts holds optional parameters for workload construction.
 // Fields are populated via functional Option values.
@@ -79,7 +82,12 @@ func DefaultRegistry() Registry {
 func (r Registry) Get(name string, cfg config.WorkloadConfig, opts ...Option) (Workload, error) {
 	factory, ok := r[name]
 	if !ok {
-		return nil, fmt.Errorf("unknown workload %q; available: %s", name, strings.Join(r.List(), ", "))
+		return nil, fmt.Errorf(
+			"workload %q not found; available: %s; %w",
+			name,
+			strings.Join(r.List(), ", "),
+			ErrWorkloadUnknown,
+		)
 	}
 
 	resolved := &RegistryOpts{
