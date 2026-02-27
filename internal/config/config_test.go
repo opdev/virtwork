@@ -6,6 +6,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -39,15 +40,9 @@ var _ = Describe("Config", func() {
 	BeforeEach(func() {
 		// Clear all VIRTWORK_ env vars before each test
 		for _, env := range os.Environ() {
-			if len(env) > 9 && env[:9] == "VIRTWORK_" {
-				key := env[:len(env)-len(env[len(env)-len(env):])]
-				for i := 0; i < len(env); i++ {
-					if env[i] == '=' {
-						key = env[:i]
-						break
-					}
-				}
-				os.Unsetenv(key)
+			if strings.HasPrefix(env, "VIRTWORK_") {
+				virtworkEnv := strings.Split(env, "=")[0]
+				_ = os.Unsetenv(virtworkEnv)
 			}
 		}
 		cmd = newTestCommand()
