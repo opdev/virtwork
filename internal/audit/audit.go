@@ -69,7 +69,7 @@ type SQLiteAuditor struct {
 func NewSQLiteAuditor(dbPath string) (*SQLiteAuditor, error) {
 	dir := filepath.Dir(dbPath)
 	if dir != "." && dir != "" {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
 			return nil, fmt.Errorf("creating audit db directory: %w", err)
 		}
 	}
@@ -84,7 +84,7 @@ func NewSQLiteAuditor(dbPath string) (*SQLiteAuditor, error) {
 	}
 
 	if _, err := db.Exec(schemaSQL); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("applying audit schema: %w", err)
 	}
 

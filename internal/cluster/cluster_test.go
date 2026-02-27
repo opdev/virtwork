@@ -49,10 +49,10 @@ var _ = Describe("Connect", func() {
 	It("should return error when both in-cluster and kubeconfig fail", func() {
 		// Ensure we're not running in-cluster by unsetting the env var
 		origHost := os.Getenv("KUBERNETES_SERVICE_HOST")
-		os.Unsetenv("KUBERNETES_SERVICE_HOST")
+		_ = os.Unsetenv("KUBERNETES_SERVICE_HOST")
 		defer func() {
 			if origHost != "" {
-				os.Setenv("KUBERNETES_SERVICE_HOST", origHost)
+				_ = os.Setenv("KUBERNETES_SERVICE_HOST", origHost)
 			}
 		}()
 
@@ -65,7 +65,9 @@ var _ = Describe("Connect", func() {
 		// Create a minimal but invalid kubeconfig to confirm the path is used
 		tmpFile, err := os.CreateTemp("", "kubeconfig-*.yaml")
 		Expect(err).NotTo(HaveOccurred())
-		defer os.Remove(tmpFile.Name())
+		defer func() {
+			_ = os.Remove(tmpFile.Name())
+		}()
 
 		_, err = tmpFile.WriteString(`apiVersion: v1
 kind: Config
@@ -85,14 +87,14 @@ users:
     token: fake-token
 `)
 		Expect(err).NotTo(HaveOccurred())
-		tmpFile.Close()
+		_ = tmpFile.Close()
 
 		// Ensure we're not running in-cluster
 		origHost := os.Getenv("KUBERNETES_SERVICE_HOST")
-		os.Unsetenv("KUBERNETES_SERVICE_HOST")
+		_ = os.Unsetenv("KUBERNETES_SERVICE_HOST")
 		defer func() {
 			if origHost != "" {
-				os.Setenv("KUBERNETES_SERVICE_HOST", origHost)
+				_ = os.Setenv("KUBERNETES_SERVICE_HOST", origHost)
 			}
 		}()
 

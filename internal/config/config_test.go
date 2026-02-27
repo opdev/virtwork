@@ -4,6 +4,7 @@
 package config_test
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -30,7 +31,7 @@ func newTestCommand() *cobra.Command {
 
 func writeConfigFile(dir, content string) string {
 	path := filepath.Join(dir, "config.yaml")
-	err := os.WriteFile(path, []byte(content), 0o644)
+	err := os.WriteFile(path, []byte(content), 0o600)
 	Expect(err).NotTo(HaveOccurred())
 	return path
 }
@@ -120,7 +121,8 @@ var _ = Describe("Config", func() {
 
 		It("should load namespace from file", func() {
 			path := writeConfigFile(tmpDir, `namespace: custom-ns`)
-			cmd.Flags().Set("config", path)
+			err1 := cmd.Flags().Set("config", path)
+			Expect(err1).NotTo(HaveOccurred())
 
 			cfg, err := config.LoadConfig(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -134,7 +136,8 @@ cpu-cores: 4
 memory: 4Gi
 container-disk-image: quay.io/test/image:latest
 `)
-			cmd.Flags().Set("config", path)
+			err1 := cmd.Flags().Set("config", path)
+			Expect(err1).NotTo(HaveOccurred())
 
 			cfg, err := config.LoadConfig(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -145,7 +148,8 @@ container-disk-image: quay.io/test/image:latest
 		})
 
 		It("should return error for missing file", func() {
-			cmd.Flags().Set("config", "/nonexistent/path/config.yaml")
+			err1 := cmd.Flags().Set("config", "/nonexistent/path/config.yaml")
+			Expect(err1).To(HaveOccurred())
 
 			_, err := config.LoadConfig(cmd)
 			Expect(err).To(HaveOccurred())
@@ -154,8 +158,10 @@ container-disk-image: quay.io/test/image:latest
 
 	Context("with environment variables", func() {
 		It("should override defaults with VIRTWORK_ env vars", func() {
-			os.Setenv("VIRTWORK_NAMESPACE", "env-ns")
-			defer os.Unsetenv("VIRTWORK_NAMESPACE")
+			_ = os.Setenv("VIRTWORK_NAMESPACE", "env-ns")
+			defer func() {
+				_ = os.Unsetenv("VIRTWORK_NAMESPACE")
+			}()
 
 			cfg, err := config.LoadConfig(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -163,8 +169,10 @@ container-disk-image: quay.io/test/image:latest
 		})
 
 		It("should override CPU cores from env", func() {
-			os.Setenv("VIRTWORK_CPU_CORES", "8")
-			defer os.Unsetenv("VIRTWORK_CPU_CORES")
+			_ = os.Setenv("VIRTWORK_CPU_CORES", "8")
+			defer func() {
+				_ = os.Unsetenv("VIRTWORK_CPU_CORES")
+			}()
 
 			cfg, err := config.LoadConfig(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -172,8 +180,10 @@ container-disk-image: quay.io/test/image:latest
 		})
 
 		It("should override memory from env", func() {
-			os.Setenv("VIRTWORK_MEMORY", "8Gi")
-			defer os.Unsetenv("VIRTWORK_MEMORY")
+			_ = os.Setenv("VIRTWORK_MEMORY", "8Gi")
+			defer func() {
+				_ = os.Unsetenv("VIRTWORK_MEMORY")
+			}()
 
 			cfg, err := config.LoadConfig(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -191,14 +201,19 @@ container-disk-image: quay.io/test/image:latest
 		})
 
 		AfterEach(func() {
-			os.RemoveAll(tmpDir)
+			if err := os.RemoveAll(tmpDir); err != nil {
+				fmt.Printf("failed deleting %s", tmpDir)
+			}
 		})
 
 		It("should prefer flags over env vars", func() {
-			os.Setenv("VIRTWORK_NAMESPACE", "env-ns")
-			defer os.Unsetenv("VIRTWORK_NAMESPACE")
+			_ = os.Setenv("VIRTWORK_NAMESPACE", "env-ns")
+			defer func() {
+				_ = os.Unsetenv("VIRTWORK_NAMESPACE")
+			}()
 
-			cmd.Flags().Set("namespace", "flag-ns")
+			err1 := cmd.Flags().Set("namespace", "flag-ns")
+			Expect(err1).NotTo(HaveOccurred())
 
 			cfg, err := config.LoadConfig(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -207,10 +222,13 @@ container-disk-image: quay.io/test/image:latest
 
 		It("should prefer env vars over config file", func() {
 			path := writeConfigFile(tmpDir, `namespace: file-ns`)
-			cmd.Flags().Set("config", path)
+			err1 := cmd.Flags().Set("config", path)
+			Expect(err1).NotTo(HaveOccurred())
 
-			os.Setenv("VIRTWORK_NAMESPACE", "env-ns")
-			defer os.Unsetenv("VIRTWORK_NAMESPACE")
+			_ = os.Setenv("VIRTWORK_NAMESPACE", "env-ns")
+			defer func() {
+				_ = os.Unsetenv("VIRTWORK_NAMESPACE")
+			}()
 
 			cfg, err := config.LoadConfig(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -219,7 +237,8 @@ container-disk-image: quay.io/test/image:latest
 
 		It("should prefer config file over defaults", func() {
 			path := writeConfigFile(tmpDir, `namespace: file-ns`)
-			cmd.Flags().Set("config", path)
+			err1 := cmd.Flags().Set("config", path)
+			Expect(err1).NotTo(HaveOccurred())
 
 			cfg, err := config.LoadConfig(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -247,7 +266,8 @@ container-disk-image: quay.io/test/image:latest
 		})
 
 		It("should accept ssh-user flag", func() {
-			cmd.Flags().Set("ssh-user", "testuser")
+			err1 := cmd.Flags().Set("ssh-user", "testuser")
+			Expect(err1).NotTo(HaveOccurred())
 
 			cfg, err := config.LoadConfig(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -255,7 +275,8 @@ container-disk-image: quay.io/test/image:latest
 		})
 
 		It("should accept ssh-password flag", func() {
-			cmd.Flags().Set("ssh-password", "secret123")
+			err1 := cmd.Flags().Set("ssh-password", "secret123")
+			Expect(err1).NotTo(HaveOccurred())
 
 			cfg, err := config.LoadConfig(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -263,7 +284,8 @@ container-disk-image: quay.io/test/image:latest
 		})
 
 		It("should accept ssh-key flag", func() {
-			cmd.Flags().Set("ssh-key", "ssh-rsa AAAA...")
+			err1 := cmd.Flags().Set("ssh-key", "ssh-rsa AAAA...")
+			Expect(err1).NotTo(HaveOccurred())
 
 			cfg, err := config.LoadConfig(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -271,8 +293,10 @@ container-disk-image: quay.io/test/image:latest
 		})
 
 		It("should split comma-separated VIRTWORK_SSH_AUTHORIZED_KEYS", func() {
-			os.Setenv("VIRTWORK_SSH_AUTHORIZED_KEYS", "ssh-rsa KEY1,ssh-ed25519 KEY2")
-			defer os.Unsetenv("VIRTWORK_SSH_AUTHORIZED_KEYS")
+			_ = os.Setenv("VIRTWORK_SSH_AUTHORIZED_KEYS", "ssh-rsa KEY1,ssh-ed25519 KEY2")
+			defer func() {
+				_ = os.Unsetenv("VIRTWORK_NAMESPACE")
+			}()
 
 			cfg, err := config.LoadConfig(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -285,9 +309,7 @@ container-disk-image: quay.io/test/image:latest
 			tmpDir, err := os.MkdirTemp("", "virtwork-config-test-*")
 			Expect(err).NotTo(HaveOccurred())
 			defer func() {
-				if err := os.RemoveAll(tmpDir); err != nil {
-					log.Println("cleaning temporary directory failed")
-				}
+				_ = os.RemoveAll(tmpDir)
 			}()
 
 			path := writeConfigFile(tmpDir, `
@@ -296,7 +318,8 @@ ssh-authorized-keys:
   - ssh-rsa YAMLKEY1
   - ssh-ed25519 YAMLKEY2
 `)
-			cmd.Flags().Set("config", path)
+			err1 := cmd.Flags().Set("config", path)
+			Expect(err1).NotTo(HaveOccurred())
 
 			cfg, err := config.LoadConfig(cmd)
 			Expect(err).NotTo(HaveOccurred())
@@ -327,7 +350,8 @@ workloads:
   disk:
     enabled: false
 `)
-			cmd.Flags().Set("config", path)
+			err1 := cmd.Flags().Set("config", path)
+			Expect(err1).NotTo(HaveOccurred())
 
 			cfg, err := config.LoadConfig(cmd)
 			Expect(err).NotTo(HaveOccurred())
