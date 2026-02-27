@@ -578,8 +578,7 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 
 // printDryRun outputs VM specs in YAML without connecting to a cluster.
 func printDryRun(plans []vmPlan) error {
-	fmt.Println("--- Dry Run ---")
-	fmt.Printf("Total VMs to create: %d\n\n", len(plans))
+	fmt.Printf("--- Dry Run ---\nTotal VMs to create: %d\n\n", len(plans))
 
 	for _, p := range plans {
 		vmObj := vm.BuildVMSpec(*p.vmSpec)
@@ -587,24 +586,34 @@ func printDryRun(plans []vmPlan) error {
 		if err != nil {
 			return fmt.Errorf("marshaling VM spec for %q: %w", p.vmName, err)
 		}
-		fmt.Printf("# VM: %s (workload: %s)\n", p.vmName, p.component)
-		fmt.Println(string(data))
-		fmt.Println("---")
+		fmt.Printf("# VM: %s (workload: %s)\n%s\n%s\n", p.vmName, p.component, string(data), "---")
 	}
 	return nil
 }
 
 // printSummary outputs a deployment summary table.
 func printSummary(cmd *cobra.Command, vmCount, svcCount, secCount int, cfg *config.Config, runID string) {
-	out := cmd.OutOrStdout()
-	fmt.Fprintln(out, strings.Repeat("=", 50))
-	fmt.Fprintln(out, "Deployment Summary")
-	fmt.Fprintln(out, strings.Repeat("=", 50))
-	fmt.Fprintf(out, "Run ID:       %s\n", runID)
-	fmt.Fprintf(out, "Namespace:    %s\n", cfg.Namespace)
-	fmt.Fprintf(out, "VMs created:  %d\n", vmCount)
-	fmt.Fprintf(out, "Services:     %d\n", svcCount)
-	fmt.Fprintf(out, "Secrets:      %d\n", secCount)
-	fmt.Fprintf(out, "Image:        %s\n", cfg.ContainerDiskImage)
-	fmt.Fprintln(out, strings.Repeat("=", 50))
+	summaryTemplate := `%s
+Deployment Summary
+%s
+Run ID:       %s
+Namespace:    %s
+VMs created:  %d
+Services:     %d
+Secrets:      %d
+Image:        %s
+%s`
+	fmt.Fprintf(
+		cmd.OutOrStdout(),
+		summaryTemplate,
+		strings.Repeat("=", 50),
+		strings.Repeat("=", 50),
+		runID,
+		cfg.Namespace,
+		vmCount,
+		svcCount,
+		secCount,
+		cfg.ContainerDiskImage,
+		strings.Repeat("=", 50),
+	)
 }
