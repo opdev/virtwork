@@ -5,6 +5,7 @@ package wait
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -13,6 +14,8 @@ import (
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+var ErrVMTimeout = errors.New("timeout waiting for VM")
 
 // WaitForVMReady polls the VMI phase until it reaches Running or the timeout
 // expires. It uses time.Sleep for polling intervals and respects context
@@ -31,7 +34,7 @@ func WaitForVMReady(
 		}
 
 		if time.Now().After(deadline) {
-			return fmt.Errorf("timed out waiting for VM %s/%s to become ready", namespace, name)
+			return fmt.Errorf("waiting for VM %s/%s to become ready; %w", namespace, name, ErrVMTimeout)
 		}
 
 		vmi := &kubevirtv1.VirtualMachineInstance{}

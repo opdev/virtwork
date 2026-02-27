@@ -4,6 +4,7 @@
 package config_test
 
 import (
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -114,7 +115,7 @@ var _ = Describe("Config", func() {
 		})
 
 		AfterEach(func() {
-			os.RemoveAll(tmpDir)
+			_ = os.RemoveAll(tmpDir)
 		})
 
 		It("should load namespace from file", func() {
@@ -283,7 +284,11 @@ container-disk-image: quay.io/test/image:latest
 		It("should load ssh-authorized-keys from YAML as list", func() {
 			tmpDir, err := os.MkdirTemp("", "virtwork-config-test-*")
 			Expect(err).NotTo(HaveOccurred())
-			defer os.RemoveAll(tmpDir)
+			defer func() {
+				if err := os.RemoveAll(tmpDir); err != nil {
+					log.Println("cleaning temporary directory failed")
+				}
+			}()
 
 			path := writeConfigFile(tmpDir, `
 ssh-user: yamluser
@@ -306,7 +311,11 @@ ssh-authorized-keys:
 		It("should load workloads from YAML", func() {
 			tmpDir, err := os.MkdirTemp("", "virtwork-config-test-*")
 			Expect(err).NotTo(HaveOccurred())
-			defer os.RemoveAll(tmpDir)
+			defer func() {
+				if err := os.RemoveAll(tmpDir); err != nil {
+					log.Println("cleaning temporary directory failed")
+				}
+			}()
 
 			path := writeConfigFile(tmpDir, `
 workloads:

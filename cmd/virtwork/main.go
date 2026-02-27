@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -23,6 +24,13 @@ import (
 	"github.com/opdev/virtwork/internal/vm"
 	"github.com/opdev/virtwork/internal/wait"
 	"github.com/opdev/virtwork/internal/workloads"
+)
+
+var (
+	// ErrReadinessCheck: readiness check failed
+	ErrReadinessCheck = errors.New("readiness check failed")
+	// Err
+	ErrMultiVMWorkloadNotImplemented = errors.New("MultiVMWorkload not implemented")
 )
 
 func main() {
@@ -250,9 +258,10 @@ func runE(cmd *cobra.Command, args []string) error {
 			multiVM, ok := w.(workloads.MultiVMWorkload)
 			if !ok {
 				return fmt.Errorf(
-					"workload %q reports VMCount=%d but does not implement MultiVMWorkload",
+					"workload %q reports VMCount=%d; %w",
 					name,
 					vmCount,
+					ErrMultiVMWorkloadNotImplemented,
 				)
 			}
 
@@ -458,8 +467,7 @@ func runE(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if failures > 0 {
-			err = fmt.Errorf("%d of %d VMs failed readiness check", failures, len(vmNames))
-			return err
+			return fmt.Errorf("%d of %d VMs failed; %w", failures, len(vmNames), ErrReadinessCheck)
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "All %d VMs ready\n", len(vmNames))
 	}
@@ -495,7 +503,7 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	// Start audit execution
-	var dryRunBanner string = ""
+	dryRunBanner := ""
 	cmdName := "cleanup"
 	if cfg.DryRun {
 		// Log the command being executed

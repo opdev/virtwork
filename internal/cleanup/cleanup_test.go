@@ -5,6 +5,7 @@ package cleanup_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -22,6 +23,9 @@ import (
 	"github.com/opdev/virtwork/internal/constants"
 	"github.com/opdev/virtwork/internal/vm"
 )
+
+// ErrDeleteResource: error deleting resources
+var ErrDeleteResource = errors.New("resource deletion error")
 
 var _ = Describe("CleanupAll", func() {
 	var (
@@ -106,7 +110,7 @@ var _ = Describe("CleanupAll", func() {
 					if _, ok := obj.(*kubevirtv1.VirtualMachine); ok {
 						callCount++
 						if callCount == 1 {
-							return fmt.Errorf("simulated delete error")
+							return fmt.Errorf("VM deletion; %w", ErrDeleteResource)
 						}
 					}
 					return cl.Delete(ctx, obj, opts...)
@@ -149,7 +153,7 @@ var _ = Describe("CleanupAll", func() {
 					if _, ok := obj.(*corev1.Service); ok {
 						callCount++
 						if callCount == 1 {
-							return fmt.Errorf("simulated service delete error")
+							return fmt.Errorf("simulated service deletion; %w", ErrDeleteResource)
 						}
 					}
 					return cl.Delete(ctx, obj, opts...)
@@ -191,7 +195,7 @@ var _ = Describe("CleanupAll", func() {
 					if _, ok := obj.(*corev1.Secret); ok {
 						callCount++
 						if callCount == 1 {
-							return fmt.Errorf("simulated secret delete error")
+							return fmt.Errorf("simulated secret deletion; %w", ErrDeleteResource)
 						}
 					}
 					return cl.Delete(ctx, obj, opts...)
@@ -243,7 +247,7 @@ var _ = Describe("CleanupAll", func() {
 			WithInterceptorFuncs(interceptor.Funcs{
 				Delete: func(ctx context.Context, cl client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
 					if _, ok := obj.(*corev1.Namespace); ok {
-						return fmt.Errorf("simulated namespace delete error")
+						return fmt.Errorf("simulated namespace deletion; %w", ErrDeleteResource)
 					}
 					return cl.Delete(ctx, obj, opts...)
 				},
