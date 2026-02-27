@@ -16,7 +16,7 @@ import (
 var (
 	builtBinaryPath string
 	buildOnce       sync.Once
-	buildErr        error
+	errBuild        error
 )
 
 // BinaryPath returns the path to the virtwork binary. It checks the
@@ -27,9 +27,9 @@ func BinaryPath() (string, error) {
 		return p, nil
 	}
 	buildOnce.Do(func() {
-		builtBinaryPath, buildErr = buildBinary()
+		builtBinaryPath, errBuild = buildBinary()
 	})
-	return builtBinaryPath, buildErr
+	return builtBinaryPath, errBuild
 }
 
 // buildBinary compiles the virtwork binary into a temp directory and returns
