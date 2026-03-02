@@ -5,6 +5,7 @@ package testutil
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -84,7 +85,8 @@ func RunVirtwork(args ...string) (stdout string, stderr string, exitCode int, er
 	stderr = stderrBuf.String()
 
 	if runErr != nil {
-		if exitErr, ok := runErr.(*exec.ExitError); ok {
+		exitErr := &exec.ExitError{}
+		if errors.As(runErr, &exitErr) {
 			exitCode = exitErr.ExitCode()
 			return stdout, stderr, exitCode, nil
 		}
