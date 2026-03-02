@@ -22,6 +22,9 @@ linters:
     - exptostd
 
   settings:
+    modernize:
+      disable:
+        - any
     revive:
       rules:
         - name: package-comments
