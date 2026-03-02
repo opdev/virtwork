@@ -4,6 +4,8 @@
 package cloudinit
 
 import (
+	"maps"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -67,9 +69,7 @@ func BuildCloudConfig(opts CloudConfigOpts) (string, error) {
 	}
 
 	// Merge extra keys at top level
-	for k, v := range opts.Extra {
-		doc[k] = v
-	}
+	maps.Copy(doc, opts.Extra)
 
 	if len(doc) == 0 {
 		return "#cloud-config\n", nil
