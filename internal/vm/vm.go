@@ -117,6 +117,7 @@ func BuildVMSpec(opts VMSpecOpts) *kubevirtv1.VirtualMachine {
 				Spec: kubevirtv1.VirtualMachineInstanceSpec{
 					Domain: kubevirtv1.DomainSpec{
 						CPU: &kubevirtv1.CPU{
+							//nolint:gosec
 							Cores: uint32(opts.CPUCores),
 						},
 						Resources: kubevirtv1.ResourceRequirements{

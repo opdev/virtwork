@@ -51,6 +51,7 @@ func buildBinary() (string, error) {
 	_, thisFile, _, _ := runtime.Caller(0)
 	moduleRoot := filepath.Dir(filepath.Dir(filepath.Dir(thisFile)))
 
+	//nolint:gosec
 	cmd := exec.Command("go", "build", "-o", outputPath, "./cmd/virtwork")
 	cmd.Dir = moduleRoot
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
@@ -73,6 +74,7 @@ func RunVirtwork(args ...string) (stdout string, stderr string, exitCode int, er
 		return "", "", -1, fmt.Errorf("getting binary path: %w", err)
 	}
 
+	//nolint:gosec
 	cmd := exec.Command(binaryPath, args...)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
