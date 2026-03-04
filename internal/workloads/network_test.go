@@ -96,7 +96,7 @@ var _ = Describe("NetworkWorkload", func() {
 	It("should return error for unknown role", func() {
 		_, err := w.UserdataForRole("unknown", "virtwork")
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("unknown"))
+		Expect(err).To(MatchError(workloads.ErrUnknownNetworkRole))
 	})
 
 	It("should include iperf3 in packages for server", func() {
