@@ -97,7 +97,7 @@ var _ = Describe("WaitForVMReady", func() {
 
 		err := wait.WaitForVMReady(ctx, c, "stuck-vm", "default", 50*time.Millisecond, 10*time.Millisecond)
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("timed out"))
+		Expect(err).To(MatchError(wait.ErrVMTimeout))
 	})
 
 	It("should retry when VMI not found and eventually timeout", func() {
@@ -105,7 +105,7 @@ var _ = Describe("WaitForVMReady", func() {
 
 		err := wait.WaitForVMReady(ctx, c, "nonexistent", "default", 50*time.Millisecond, 10*time.Millisecond)
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("timed out"))
+		Expect(err).To(MatchError(wait.ErrVMTimeout))
 	})
 
 	It("should succeed when VMI appears after initial not-found", func() {
