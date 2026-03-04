@@ -149,7 +149,7 @@ container-disk-image: quay.io/test/image:latest
 
 		It("should return error for missing file", func() {
 			err1 := cmd.Flags().Set("config", "/nonexistent/path/config.yaml")
-			Expect(err1).To(HaveOccurred())
+			Expect(err1).To(BeNil())
 
 			_, err := config.LoadConfig(cmd)
 			Expect(err).To(HaveOccurred())

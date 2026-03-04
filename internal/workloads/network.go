@@ -28,7 +28,7 @@ RestartSec=10
 WantedBy=multi-user.target
 `
 
-var ErrUnknownNetworkRole = errors.New("unexpected network workload role (expected 'server' or 'client')")
+var ErrUnknownNetworkRole = errors.New("unexpected network role; expected 'server' or 'client'")
 
 // NetworkWorkload generates cloud-init userdata for an iperf3 network benchmark.
 // It creates two VMs: a server running iperf3 in listen mode, and a client that
