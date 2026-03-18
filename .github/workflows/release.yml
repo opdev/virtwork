@@ -32,7 +32,7 @@ jobs:
     - name: Run GoReleaser
       uses: goreleaser/goreleaser-action@v7
       with:
-        distribution: doreleaser
+        distribution: goreleaser
         version: '~> v2'
         args: release --clean
       env:
