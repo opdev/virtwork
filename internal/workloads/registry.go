@@ -54,7 +54,7 @@ type WorkloadFactory func(config.WorkloadConfig, *RegistryOpts) Workload
 type Registry map[string]WorkloadFactory
 
 // AllWorkloadNames is a sorted list of all built-in workload names.
-var AllWorkloadNames = []string{"cpu", "database", "disk", "memory", "network"}
+var AllWorkloadNames = []string{"cpu", "database", "disk", "memory", "network", "tps"}
 
 // DefaultRegistry returns a Registry pre-populated with all built-in workloads.
 func DefaultRegistry() Registry {
@@ -73,6 +73,9 @@ func DefaultRegistry() Registry {
 		},
 		"network": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
 			return NewNetworkWorkload(cfg, opts.Namespace, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+		},
+		"tps": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
+			return NewTPSWorkload(cfg, opts.Namespace, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
 		},
 	}
 }
