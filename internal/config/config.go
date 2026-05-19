@@ -19,7 +19,8 @@ type WorkloadConfig struct {
 	Enabled  bool   `mapstructure:"enabled"`
 	VMCount  int    `mapstructure:"vm-count"`
 	CPUCores int    `mapstructure:"cpu-cores"`
-	Memory   string `mapstructure:"memory"`
+	Memory   string            `mapstructure:"memory"`
+	Params   map[string]string `mapstructure:"params"`
 }
 
 // Config holds the complete application configuration.

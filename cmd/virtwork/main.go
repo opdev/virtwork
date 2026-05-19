@@ -200,6 +200,9 @@ func runE(cmd *cobra.Command, args []string) error {
 			if fileCfg.VMCount > 0 {
 				wlCfg.VMCount = fileCfg.VMCount
 			}
+			if len(fileCfg.Params) > 0 {
+				wlCfg.Params = fileCfg.Params
+			}
 		}
 
 		w, err := registry.Get(name, wlCfg, registryOpts...)
