@@ -362,5 +362,33 @@ workloads:
 			Expect(cfg.Workloads["cpu"].Memory).To(Equal("4Gi"))
 			Expect(cfg.Workloads["disk"].Enabled).To(BeFalse())
 		})
+
+		It("should load workload params from YAML", func() {
+			tmpDir, err := os.MkdirTemp("", "virtwork-config-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			defer func() {
+				if err := os.RemoveAll(tmpDir); err != nil {
+					log.Println("cleaning temporary directory failed")
+				}
+			}()
+
+			path := writeConfigFile(tmpDir, `
+workloads:
+  tps:
+    enabled: true
+    vm-count: 2
+    params:
+      file-size: 200M
+      mode: file-transfer
+`)
+			err1 := cmd.Flags().Set("config", path)
+			Expect(err1).NotTo(HaveOccurred())
+
+			cfg, err := config.LoadConfig(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.Workloads).To(HaveKey("tps"))
+			Expect(cfg.Workloads["tps"].Params).To(HaveKeyWithValue("file-size", "200M"))
+			Expect(cfg.Workloads["tps"].Params).To(HaveKeyWithValue("mode", "file-transfer"))
+		})
 	})
 })
