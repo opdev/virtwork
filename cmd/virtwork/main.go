@@ -319,7 +319,7 @@ func runE(cmd *cobra.Command, args []string) error {
 				)
 			}
 
-			roles := []string{"server", "client"}
+			roles := multiVM.Roles()
 			perRole := vmCount / len(roles)
 			for _, role := range roles {
 				userdata, err := multiVM.UserdataForRole(role, cfg.Namespace)
