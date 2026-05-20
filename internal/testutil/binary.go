@@ -20,9 +20,27 @@ var (
 	errBuild        error
 )
 
-// BinaryPath returns the path to the virtwork binary. It checks the
-// VIRTWORK_BINARY environment variable first, then falls back to building
-// the binary on first call. The build is performed only once per test run.
+// BinaryPath returns the path to the virtwork binary for E2E tests.
+// It is safe for concurrent use and performs at most one build per test run.
+//
+// Resolution order:
+//  1. VIRTWORK_BINARY environment variable (if set)
+//  2. Build from source (on first call, cached thereafter)
+//
+// The binary is built with CGO_ENABLED=0 for portability and placed in a
+// temporary directory. The build finds the module root automatically by
+// walking up from this file's location.
+//
+// Example:
+//
+//	BeforeSuite(func() {
+//	    // Trigger build early so first test doesn't pay the cost
+//	    _, err := testutil.BinaryPath()
+//	    Expect(err).NotTo(HaveOccurred())
+//	})
+//
+// Returns an error if the build fails. Subsequent calls return the cached
+// error, so build failures are deterministic across test runs.
 func BinaryPath() (string, error) {
 	if p := os.Getenv("VIRTWORK_BINARY"); p != "" {
 		return p, nil
@@ -66,8 +84,26 @@ func buildBinary() (string, error) {
 }
 
 // RunVirtwork executes the virtwork binary with the given arguments and
-// returns stdout, stderr, and the exit code. The binary is built on first
-// call if not provided via VIRTWORK_BINARY.
+// returns stdout, stderr, exit code, and any execution error. This is the
+// primary function for E2E tests that exercise the CLI as a black box.
+//
+// The binary is obtained via BinaryPath(), which builds from source on first
+// call if VIRTWORK_BINARY is not set. Build errors are returned as err.
+//
+// Exit code handling:
+//   - exitCode is 0 and err is nil on successful execution
+//   - exitCode is non-zero and err is nil on command failure (expected failures)
+//   - exitCode is -1 and err is non-nil if the command could not be executed
+//
+// Example:
+//
+//	stdout, stderr, exitCode, err := testutil.RunVirtwork("run", "--dry-run")
+//	Expect(err).NotTo(HaveOccurred())
+//	Expect(exitCode).To(Equal(0))
+//	Expect(stdout).To(ContainSubstring("VirtualMachine"))
+//
+// Both stdout and stderr are captured and returned even when the command fails,
+// enabling assertion on error messages in tests.
 func RunVirtwork(args ...string) (stdout string, stderr string, exitCode int, err error) {
 	binaryPath, err := BinaryPath()
 	if err != nil {
