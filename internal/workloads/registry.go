@@ -65,6 +65,9 @@ func DefaultRegistry() Registry {
 		"chaos-process": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
 			return NewChaosProcessWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
 		},
+		"chaos-network": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
+			return NewChaosNetworkWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+		},
 		"cpu": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
 			return NewCPUWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
 		},
