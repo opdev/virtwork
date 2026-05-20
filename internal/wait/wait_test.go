@@ -57,7 +57,7 @@ var _ = Describe("WaitForVMReady", func() {
 			},
 		}
 
-		var callCount int32
+		var callCount atomic.Int32
 		c := fake.NewClientBuilder().
 			WithScheme(scheme).
 			WithObjects(vmi).
@@ -67,7 +67,7 @@ var _ = Describe("WaitForVMReady", func() {
 					if err != nil {
 						return err
 					}
-					count := atomic.AddInt32(&callCount, 1)
+					count := callCount.Add(1)
 					if vmiObj, ok := obj.(*kubevirtv1.VirtualMachineInstance); ok {
 						if count >= 3 {
 							vmiObj.Status.Phase = kubevirtv1.Running
@@ -80,7 +80,7 @@ var _ = Describe("WaitForVMReady", func() {
 
 		err := wait.WaitForVMReady(ctx, c, "eventual-vm", "default", 5*time.Second, 10*time.Millisecond)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(atomic.LoadInt32(&callCount)).To(BeNumerically(">=", int32(3)))
+		Expect(callCount.Load()).To(BeNumerically(">=", int32(3)))
 	})
 
 	It("should return error on timeout", func() {
@@ -109,12 +109,12 @@ var _ = Describe("WaitForVMReady", func() {
 	})
 
 	It("should succeed when VMI appears after initial not-found", func() {
-		var callCount int32
+		var callCount atomic.Int32
 		c := fake.NewClientBuilder().
 			WithScheme(scheme).
 			WithInterceptorFuncs(interceptor.Funcs{
 				Get: func(ctx context.Context, cl client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
-					count := atomic.AddInt32(&callCount, 1)
+					count := callCount.Add(1)
 					if count <= 2 {
 						return cl.Get(ctx, key, obj, opts...) // not found from empty store
 					}
@@ -131,7 +131,7 @@ var _ = Describe("WaitForVMReady", func() {
 
 		err := wait.WaitForVMReady(ctx, c, "delayed-vm", "default", 5*time.Second, 10*time.Millisecond)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(atomic.LoadInt32(&callCount)).To(BeNumerically(">=", int32(3)))
+		Expect(callCount.Load()).To(BeNumerically(">=", int32(3)))
 	})
 
 	It("should respect context cancellation", func() {
