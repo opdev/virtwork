@@ -199,7 +199,7 @@ When no SSH flags are provided, no user account is configured in the VMs.
 
 ## OpenShift Deployment
 
-virtwork can run as a pod on the cluster using the provided Kustomize manifests in `deploy/`. The container image is available at `quay.io/opdev/virtwork:latest`.
+virtwork can run as a pod on the cluster using the provided Kustomize manifests in `deploy/`. The deployment manifest uses a semantic version tag (e.g., `v0.0.1`) to pin the image for reproducible deployments. Update the version tag in `deploy/deployment.yaml` when upgrading. For development or testing, you can use `quay.io/opdev/virtwork:latest`.
 
 ### Deploy with Kustomize
 
