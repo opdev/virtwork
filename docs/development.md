@@ -319,6 +319,99 @@ VIRTWORK_BINARY=./virtwork go test -tags e2e ./tests/e2e/...
 go test -tags "integration e2e" ./...
 ```
 
+## Makefile Targets
+
+A `Makefile` provides convenient shortcuts for common development tasks:
+
+```bash
+# Show all available targets
+make help
+
+# Run unit tests (excludes integration/e2e)
+make test
+
+# Run integration tests (requires cluster)
+make test-integration
+
+# Run e2e tests (requires cluster)
+make test-e2e
+
+# Run all tests (unit + integration + e2e)
+make test-all
+
+# Run go vet
+make vet
+
+# Run golangci-lint
+make lint
+
+# Format code
+make fmt
+
+# Build the binary
+make build
+
+# Run full CI validation locally (vet + test + build)
+make ci
+
+# Run all verification checks (fmt + vet + lint + test)
+make verify
+
+# Clean build artifacts
+make clean
+
+# Install development tools (golangci-lint)
+make install-tools
+
+# Build container image locally (uses podman by default)
+make container-build
+
+# Build with docker instead of podman
+CONTAINER_RUNTIME=docker make container-build
+```
+
+## CI/CD Pipeline
+
+The project uses GitHub Actions for automated validation on push and pull requests:
+
+### Workflows
+
+- **Build & Test** (`.github/workflows/build.yml`) — Runs on every push/PR to main
+  - Go vet checks
+  - Unit tests with race detector
+  - Binary build verification
+  - Only runs unit tests (integration/e2e require live cluster)
+
+- **Linting** (`.github/workflows/lint.yml`) — Runs golangci-lint on every push/PR
+  - Code quality checks
+  - Static analysis
+  - Best practices enforcement
+
+- **Container Image** (`.github/workflows/image.yml`) — Builds and pushes container images
+  - Triggered on main branch pushes and tags
+
+- **Release** (`.github/workflows/release.yml`) — Automated releases via GoReleaser
+  - Triggered on version tags (e.g., `v1.0.0`)
+  - Builds multi-platform binaries
+  - Generates release notes
+
+### Running CI Checks Locally
+
+Before pushing code, run the same checks that CI will execute:
+
+```bash
+# Quick validation (vet + test + build)
+make ci
+
+# Full verification (includes fmt and lint)
+make verify
+
+# Or run individual checks
+make vet
+make test
+make lint
+```
+
 ## Project Layout
 
 ```
