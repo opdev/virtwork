@@ -75,12 +75,12 @@ ginkgo -r --focus "BuildVMSpec"
 
 ### Test Organization
 
-| Location | Build Tag | Cluster Required | Description |
-|----------|-----------|------------------|-------------|
-| `internal/*/_test.go` | (none) | No | Unit tests alongside source, all K8s calls use fake client |
-| `internal/*/_integration_test.go` | `integration` | Yes | Integration tests alongside source, real cluster interactions |
-| `tests/e2e/` | `e2e` | Yes | E2E/acceptance tests, black-box CLI binary testing |
-| `internal/testutil/` | (none) | — | Shared test helpers (no test files, pure library) |
+| Location | Build Tag | Cluster Required | Coverage | Description |
+|----------|-----------|------------------|----------|-------------|
+| `internal/*/_test.go` | (none) | No | ~60-80% | Unit tests alongside source, all K8s calls use fake client |
+| `internal/*/_integration_test.go` | `integration` | Yes | ~40-60% | Integration tests alongside source, real cluster interactions |
+| `tests/e2e/` | `e2e` | Yes | Black-box | E2E/acceptance tests, CLI binary testing against real cluster |
+| `internal/testutil/` | mixed | Conditional | 58.2% | Shared test helpers: unit tests (no cluster) + integration tests (requires cluster) |
 
 Unit tests use controller-runtime's fake client:
 
@@ -105,6 +105,171 @@ E2E tests invoke the built binary:
 stdout, stderr, exitCode, err := testutil.RunVirtwork("run", "--dry-run", "--workloads", "cpu")
 Expect(exitCode).To(Equal(0))
 ```
+
+#### testutil Package
+
+The `internal/testutil/` package provides shared test helpers used by integration and E2E tests. As of the test coverage improvements, it now has comprehensive unit and integration test coverage.
+
+**Core Functions:**
+
+- `MustConnect(kubeconfigPath string) client.Client` - Connects to cluster, panics on failure (suitable for BeforeEach setup)
+- `UniqueNamespace(prefix string) string` - Generates collision-proof names like `virtwork-test-<prefix>-<random>`
+- `EnsureTestNamespace(ctx, c, namespace) error` - Creates namespace with managed-by labels
+- `CleanupNamespace(ctx, c, namespace)` - Deletes all managed resources + namespace (error-tolerant for AfterEach)
+- `ManagedLabels() map[string]string` - Returns standard virtwork labels for resource tracking
+- `DefaultVMOpts(name, namespace) VMSpecOpts` - Returns minimal VM spec (1 CPU, 512Mi, Fedora disk, basic cloud-init)
+- `WaitForVMRunning(ctx, c, name, namespace, timeout) error` - Polls until VMI phase is Running
+- `BinaryPath() (string, error)` - Returns path to built virtwork binary (checks `VIRTWORK_BINARY` env var, builds on first call)
+- `RunVirtwork(args...) (stdout, stderr string, exitCode int, err error)` - Executes virtwork binary for E2E tests
+
+**Example Usage Pattern:**
+
+```go
+var _ = Describe("MyFeature", func() {
+    var ctx context.Context
+    var c client.Client
+    var namespace string
+
+    BeforeEach(func() {
+        ctx = context.Background()
+        c = testutil.MustConnect("")
+        namespace = testutil.UniqueNamespace("my-feature")
+        Expect(testutil.EnsureTestNamespace(ctx, c, namespace)).To(Succeed())
+    })
+
+    AfterEach(func() {
+        testutil.CleanupNamespace(ctx, c, namespace)
+    })
+
+    It("should deploy a VM", func() {
+        opts := testutil.DefaultVMOpts("test-vm", namespace)
+        vmObj := vm.BuildVMSpec(opts)
+        Expect(vm.CreateVM(ctx, c, vmObj)).To(Succeed())
+        
+        // Wait for VM to boot
+        Expect(testutil.WaitForVMRunning(ctx, c, "test-vm", namespace, 5*time.Minute)).To(Succeed())
+    })
+})
+```
+
+**Testing the testutil package:**
+
+```bash
+# Unit tests (no cluster required)
+go test ./internal/testutil -v
+
+# Integration tests (cluster required)
+go test -tags integration ./internal/testutil -v
+
+# Coverage report
+go test ./internal/testutil -coverprofile=coverage.out
+go tool cover -html=coverage.out
+```
+
+### Cluster Prerequisites for Integration and E2E Tests
+
+Integration and E2E tests require a live OpenShift cluster with specific operators and configurations.
+
+#### Minimum Requirements
+
+- **OpenShift**: 4.12+ (tested on 4.14, 4.15, 4.16)
+- **OpenShift Virtualization (CNV)**: 4.12+ 
+  - KubeVirt API compatibility: v1.7.0+
+  - CDI (Containerized Data Importer) API: v1.64.0+
+- **Storage**: Default StorageClass with ReadWriteOnce support
+- **Networking**: Pod network with masquerade networking support
+- **Permissions**: Cluster admin or namespace admin with permissions to:
+  - Create/delete namespaces
+  - Create/delete VirtualMachines, VirtualMachineInstances
+  - Create/delete Services, Secrets, DataVolumes
+  - List namespaces cluster-wide (for cleanup tests)
+
+#### Kubeconfig Setup
+
+Tests use the following kubeconfig resolution order:
+
+1. `KUBECONFIG` environment variable (recommended for CI)
+2. `~/.kube/config` (default for local development)
+3. In-cluster config (when running inside a pod)
+
+```bash
+# Set kubeconfig for tests
+export KUBECONFIG=/path/to/your/kubeconfig
+
+# Verify cluster access
+oc whoami
+oc get nodes
+```
+
+#### Verifying Cluster Readiness
+
+Before running integration or E2E tests, verify operators are installed:
+
+```bash
+# Check KubeVirt/CNV operator
+oc get csv -n openshift-cnv | grep kubevirt
+
+# Check CDI operator
+oc get csv -n openshift-cnv | grep containerized-data-importer
+
+# Verify default StorageClass exists
+oc get sc | grep default
+
+# Test namespace creation permission
+oc create namespace virtwork-test-check
+oc delete namespace virtwork-test-check
+```
+
+#### Resource Consumption and Runtime Estimates
+
+| Test Type | Namespace Count | VM Count | Disk Usage | Runtime | Cluster Load |
+|-----------|----------------|----------|------------|---------|--------------|
+| Unit tests | 0 | 0 | ~50MB (built binaries) | ~5-10s | None (fake client) |
+| Integration tests | ~15-20 | 0-5 | ~100MB | ~2-5min | Low (namespace/resource CRUD) |
+| E2E tests | ~5-10 | 2-10 | ~500MB-2GB (containerDisks) | ~10-30min | Medium (VM boots, workload execution) |
+| Full suite | ~25-30 | 10-15 | ~2-3GB | ~15-40min | Medium |
+
+**Notes:**
+- Integration tests create namespaces and minimal resources but rarely boot VMs
+- E2E tests deploy full workloads with VM boot (slower, higher resource usage)
+- Tests use unique namespace names (`virtwork-test-*-<random>`) to avoid collisions
+- Cleanup is automatic via `DeferCleanup()` but KubeVirt finalizers may delay namespace deletion
+
+#### Common Test Failures and Solutions
+
+**"connection refused" errors:**
+```bash
+# Check kubeconfig is set and cluster is accessible
+echo $KUBECONFIG
+oc cluster-info
+
+# Verify API server connectivity
+oc get nodes
+```
+
+**"no matches for kind VirtualMachine":**
+```bash
+# KubeVirt CRDs not installed
+oc get crd | grep kubevirt
+
+# Install OpenShift Virtualization operator via OperatorHub
+oc get csv -n openshift-cnv
+```
+
+**"timeout waiting for VM to be running":**
+- Check cluster has sufficient resources (CPU, memory, storage)
+- Verify default StorageClass is available and bound
+- Check VM events: `oc get events -n <namespace> --sort-by='.lastTimestamp'`
+- Increase timeout in test if cluster is resource-constrained
+
+**"namespace stuck in Terminating":**
+- KubeVirt finalizers are cleaning up VM resources
+- Wait up to 60 seconds for automatic cleanup
+- Force delete if stuck: `oc delete namespace <name> --grace-period=0 --force`
+
+**Tests fail with "AlreadyExists" errors:**
+- Previous test run cleanup incomplete
+- Clean up manually: `virtwork cleanup` or `oc delete namespace virtwork-test-<prefix>-*`
 
 ### Running Integration Tests
 

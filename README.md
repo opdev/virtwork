@@ -15,9 +15,21 @@ virtwork and kube-burner solve adjacent but non-overlapping problems. kube-burne
 
 ## Prerequisites
 
-- Go 1.25+
-- An OpenShift cluster with OpenShift Virtualization (KubeVirt/CNV) installed
-- `kubeconfig` access to the cluster (or running in-cluster)
+- **Go**: 1.25+ (for building from source)
+- **OpenShift**: 4.12+ with OpenShift Virtualization (CNV) installed
+  - KubeVirt API v1.7.0+ compatible
+  - CDI (Containerized Data Importer) v1.64.0+ compatible
+- **Cluster access**: `kubeconfig` with permissions to create/delete:
+  - Namespaces
+  - VirtualMachines, VirtualMachineInstances, DataVolumes
+  - Services, Secrets
+- **Storage**: Default StorageClass for persistent volumes
+
+**For testing only:**
+- Integration tests: Cluster with above requirements + namespace admin permissions
+- E2E tests: All integration requirements + ability to build Go binaries
+
+See [Development Guide](docs/development.md#cluster-prerequisites-for-integration-and-e2e-tests) for detailed cluster setup.
 
 ## Installation
 
