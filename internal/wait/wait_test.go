@@ -4,7 +4,9 @@
 package wait_test
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"sync/atomic"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	"github.com/opdev/virtwork/internal/cluster"
+	"github.com/opdev/virtwork/internal/logging"
 	"github.com/opdev/virtwork/internal/wait"
 )
 
@@ -24,10 +27,13 @@ var _ = Describe("WaitForVMReady", func() {
 	var (
 		ctx    context.Context
 		scheme = cluster.NewScheme()
+		logger *slog.Logger
 	)
 
 	BeforeEach(func() {
 		ctx = context.Background()
+		buf := &bytes.Buffer{}
+		logger = logging.NewLogger(buf, true)
 	})
 
 	It("should return nil when immediately ready", func() {
@@ -42,7 +48,7 @@ var _ = Describe("WaitForVMReady", func() {
 		}
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(vmi).Build()
 
-		err := wait.WaitForVMReady(ctx, c, "ready-vm", "default", 5*time.Second, 10*time.Millisecond)
+		err := wait.WaitForVMReady(ctx, c, logger, "ready-vm", "default", 5*time.Second, 10*time.Millisecond)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -78,7 +84,7 @@ var _ = Describe("WaitForVMReady", func() {
 			}).
 			Build()
 
-		err := wait.WaitForVMReady(ctx, c, "eventual-vm", "default", 5*time.Second, 10*time.Millisecond)
+		err := wait.WaitForVMReady(ctx, c, logger, "eventual-vm", "default", 5*time.Second, 10*time.Millisecond)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(callCount.Load()).To(BeNumerically(">=", int32(3)))
 	})
@@ -95,7 +101,7 @@ var _ = Describe("WaitForVMReady", func() {
 		}
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(vmi).Build()
 
-		err := wait.WaitForVMReady(ctx, c, "stuck-vm", "default", 50*time.Millisecond, 10*time.Millisecond)
+		err := wait.WaitForVMReady(ctx, c, logger, "stuck-vm", "default", 50*time.Millisecond, 10*time.Millisecond)
 		Expect(err).To(HaveOccurred())
 		Expect(err).To(MatchError(wait.ErrVMTimeout))
 	})
@@ -103,7 +109,7 @@ var _ = Describe("WaitForVMReady", func() {
 	It("should retry when VMI not found and eventually timeout", func() {
 		c := fake.NewClientBuilder().WithScheme(scheme).Build()
 
-		err := wait.WaitForVMReady(ctx, c, "nonexistent", "default", 50*time.Millisecond, 10*time.Millisecond)
+		err := wait.WaitForVMReady(ctx, c, logger, "nonexistent", "default", 50*time.Millisecond, 10*time.Millisecond)
 		Expect(err).To(HaveOccurred())
 		Expect(err).To(MatchError(wait.ErrVMTimeout))
 	})
@@ -129,7 +135,7 @@ var _ = Describe("WaitForVMReady", func() {
 			}).
 			Build()
 
-		err := wait.WaitForVMReady(ctx, c, "delayed-vm", "default", 5*time.Second, 10*time.Millisecond)
+		err := wait.WaitForVMReady(ctx, c, logger, "delayed-vm", "default", 5*time.Second, 10*time.Millisecond)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(callCount.Load()).To(BeNumerically(">=", int32(3)))
 	})
@@ -149,7 +155,7 @@ var _ = Describe("WaitForVMReady", func() {
 		cancelCtx, cancel := context.WithCancel(ctx)
 		cancel() // Cancel immediately
 
-		err := wait.WaitForVMReady(cancelCtx, c, "cancel-vm", "default", 5*time.Second, 10*time.Millisecond)
+		err := wait.WaitForVMReady(cancelCtx, c, logger, "cancel-vm", "default", 5*time.Second, 10*time.Millisecond)
 		Expect(err).To(HaveOccurred())
 	})
 })
@@ -158,10 +164,13 @@ var _ = Describe("WaitForAllVMsReady", func() {
 	var (
 		ctx    context.Context
 		scheme = cluster.NewScheme()
+		logger *slog.Logger
 	)
 
 	BeforeEach(func() {
 		ctx = context.Background()
+		buf := &bytes.Buffer{}
+		logger = logging.NewLogger(buf, true)
 	})
 
 	It("should poll all VMs concurrently", func() {
@@ -188,6 +197,7 @@ var _ = Describe("WaitForAllVMsReady", func() {
 		results := wait.WaitForAllVMsReady(
 			ctx,
 			c,
+			logger,
 			[]string{"vm-1", "vm-2"},
 			"default",
 			5*time.Second,
@@ -214,6 +224,7 @@ var _ = Describe("WaitForAllVMsReady", func() {
 		results := wait.WaitForAllVMsReady(
 			ctx,
 			c,
+			logger,
 			[]string{"good-vm", "bad-vm"},
 			"default",
 			50*time.Millisecond,
@@ -227,7 +238,7 @@ var _ = Describe("WaitForAllVMsReady", func() {
 	It("should handle empty names list", func() {
 		c := fake.NewClientBuilder().WithScheme(scheme).Build()
 
-		results := wait.WaitForAllVMsReady(ctx, c, []string{}, "default", 5*time.Second, 10*time.Millisecond)
+		results := wait.WaitForAllVMsReady(ctx, c, logger, []string{}, "default", 5*time.Second, 10*time.Millisecond)
 		Expect(results).To(BeEmpty())
 	})
 })

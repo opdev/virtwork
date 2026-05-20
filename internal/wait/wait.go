@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -23,6 +24,7 @@ var ErrVMTimeout = errors.New("timeout waiting for VM")
 func WaitForVMReady(
 	ctx context.Context,
 	c client.Client,
+	logger *slog.Logger,
 	name, namespace string,
 	timeout, interval time.Duration,
 ) error {
@@ -43,7 +45,9 @@ func WaitForVMReady(
 			if !apierrors.IsNotFound(err) {
 				return fmt.Errorf("getting VMI %s/%s: %w", namespace, name, err)
 			}
-			fmt.Printf("VM %s: VMI not yet created, retrying...\n", name)
+			logger.Debug("VMI not yet created, retrying",
+				slog.String("vm_name", name),
+				slog.String("namespace", namespace))
 			select {
 			case <-ctx.Done():
 				return fmt.Errorf("context cancelled waiting for VM %s/%s: %w", namespace, name, ctx.Err())
@@ -70,6 +74,7 @@ func WaitForVMReady(
 func WaitForAllVMsReady(
 	ctx context.Context,
 	c client.Client,
+	logger *slog.Logger,
 	names []string,
 	namespace string,
 	timeout, interval time.Duration,
@@ -82,7 +87,7 @@ func WaitForAllVMsReady(
 		wg.Add(1)
 		go func(vmName string) {
 			defer wg.Done()
-			err := WaitForVMReady(ctx, c, vmName, namespace, timeout, interval)
+			err := WaitForVMReady(ctx, c, logger, vmName, namespace, timeout, interval)
 			mu.Lock()
 			results[vmName] = err
 			mu.Unlock()
