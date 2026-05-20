@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/opdev/virtwork/internal/cleanup"
+	"github.com/opdev/virtwork/internal/config"
 	"github.com/opdev/virtwork/internal/resources"
 	"github.com/opdev/virtwork/internal/testutil"
 	"github.com/opdev/virtwork/internal/vm"
@@ -44,7 +45,7 @@ var _ = Describe("CleanupAll [integration]", func() {
 		opts := testutil.DefaultVMOpts("cleanup-vm-0", namespace)
 		Expect(vm.CreateVM(ctx, c, vm.BuildVMSpec(opts))).To(Succeed())
 
-		result, err := cleanup.CleanupAll(ctx, c, namespace, false, "")
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.VMsDeleted).To(Equal(1))
 	})
@@ -65,7 +66,7 @@ var _ = Describe("CleanupAll [integration]", func() {
 		}
 		Expect(resources.CreateService(ctx, c, svc)).To(Succeed())
 
-		result, err := cleanup.CleanupAll(ctx, c, namespace, false, "")
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.ServicesDeleted).To(Equal(1))
 	})
@@ -82,7 +83,7 @@ var _ = Describe("CleanupAll [integration]", func() {
 			),
 		).To(Succeed())
 
-		result, err := cleanup.CleanupAll(ctx, c, namespace, false, "")
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.SecretsDeleted).To(Equal(1))
 	})
@@ -98,7 +99,7 @@ var _ = Describe("CleanupAll [integration]", func() {
 		}
 		Expect(c.Create(ctx, unmanaged)).To(Succeed())
 
-		result, err := cleanup.CleanupAll(ctx, c, namespace, false, "")
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.SecretsDeleted).To(Equal(0))
 
@@ -108,13 +109,13 @@ var _ = Describe("CleanupAll [integration]", func() {
 	})
 
 	It("should delete the namespace when flagged", func() {
-		result, err := cleanup.CleanupAll(ctx, c, namespace, true, "")
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, true, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.NamespaceDeleted).To(BeTrue())
 	})
 
 	It("should not delete the namespace when not flagged", func() {
-		result, err := cleanup.CleanupAll(ctx, c, namespace, false, "")
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.NamespaceDeleted).To(BeFalse())
 
@@ -154,7 +155,7 @@ var _ = Describe("CleanupAll [integration]", func() {
 			),
 		).To(Succeed())
 
-		result, err := cleanup.CleanupAll(ctx, c, namespace, false, "")
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.VMsDeleted).To(Equal(1))
 		Expect(result.ServicesDeleted).To(Equal(1))
@@ -163,7 +164,7 @@ var _ = Describe("CleanupAll [integration]", func() {
 	})
 
 	It("should handle empty namespace gracefully", func() {
-		result, err := cleanup.CleanupAll(ctx, c, namespace, false, "")
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.VMsDeleted).To(Equal(0))
 		Expect(result.ServicesDeleted).To(Equal(0))
@@ -175,7 +176,7 @@ var _ = Describe("CleanupAll [integration]", func() {
 		opts := testutil.DefaultVMOpts("cleanup-idem-vm", namespace)
 		Expect(vm.CreateVM(ctx, c, vm.BuildVMSpec(opts))).To(Succeed())
 
-		result1, err := cleanup.CleanupAll(ctx, c, namespace, false, "")
+		result1, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result1.VMsDeleted).To(Equal(1))
 
@@ -186,7 +187,7 @@ var _ = Describe("CleanupAll [integration]", func() {
 			return len(vms)
 		}, 60*time.Second, 2*time.Second).Should(Equal(0))
 
-		result2, err := cleanup.CleanupAll(ctx, c, namespace, false, "")
+		result2, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result2.VMsDeleted).To(Equal(0))
 	})
