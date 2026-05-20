@@ -56,6 +56,7 @@ type Workload interface {
 // interface to call UserdataForRole() for each VM role.
 type MultiVMWorkload interface {
 	Workload
+	Roles() []string
 	UserdataForRole(role string, namespace string) (string, error)
 }
 

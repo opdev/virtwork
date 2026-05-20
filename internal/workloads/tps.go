@@ -86,6 +86,11 @@ func (w *TPSWorkload) VMCount() int {
 	return count * 2
 }
 
+// Roles returns the supported VM roles for this multi-VM workload.
+func (w *TPSWorkload) Roles() []string {
+	return []string{"server", "client"}
+}
+
 // RequiresService returns true — the client needs a ClusterIP Service to reach
 // the server by DNS.
 func (w *TPSWorkload) RequiresService() bool {

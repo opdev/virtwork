@@ -70,6 +70,11 @@ func (w *NetworkWorkload) VMCount() int {
 	return count * 2
 }
 
+// Roles returns the supported VM roles for this multi-VM workload.
+func (w *NetworkWorkload) Roles() []string {
+	return []string{"server", "client"}
+}
+
 // RequiresService returns true — the client needs a ClusterIP Service to reach
 // the server by DNS.
 func (w *NetworkWorkload) RequiresService() bool {

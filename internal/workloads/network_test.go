@@ -35,6 +35,11 @@ var _ = Describe("NetworkWorkload", func() {
 		Expect(w.RequiresService()).To(BeTrue())
 	})
 
+	It("should return server and client roles", func() {
+		roles := w.Roles()
+		Expect(roles).To(Equal([]string{"server", "client"}))
+	})
+
 	It("should produce server userdata with iperf3 -s", func() {
 		result, err := w.UserdataForRole("server", "virtwork")
 		Expect(err).NotTo(HaveOccurred())
