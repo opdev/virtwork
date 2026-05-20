@@ -43,6 +43,39 @@ Or run directly:
 go run ./cmd/virtwork --help
 ```
 
+## Golden Container Disk Image (Optional)
+
+For faster VM boot times, virtwork provides a golden container disk image with all workload tools pre-installed:
+
+- **stress-ng** (CPU/memory workloads)
+- **fio** (disk I/O workloads)
+- **iperf3** (network workloads)
+- **postgresql-server** (database workloads)
+- **tc, iptables** (chaos engineering tools)
+
+Using this image reduces VM boot time by 2-5 minutes by eliminating package installation.
+
+### Using the Golden Image
+
+```bash
+# Use via CLI flag
+virtwork run --container-disk-image quay.io/opdev/virtwork-disk:latest
+
+# Or via environment variable
+export VIRTWORK_CONTAINER_DISK_IMAGE=quay.io/opdev/virtwork-disk:latest
+virtwork run
+
+# Or via config file
+echo "container_disk_image: quay.io/opdev/virtwork-disk:latest" > config.yaml
+virtwork run --config config.yaml
+```
+
+### Building the Golden Image
+
+See [build/golden-image/README.md](build/golden-image/README.md) for build instructions.
+
+**Note**: The golden image is optional. If you use the default Fedora image, packages will be installed at VM boot time via cloud-init as usual.
+
 ## Quick Start
 
 ```bash
