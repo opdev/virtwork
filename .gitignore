@@ -34,6 +34,10 @@ bin/
 /virtctl
 *.exe
 
+# Test coverage
+coverage.out
+*.coverprofile
+
 # Audit database
 virtwork.db
 
