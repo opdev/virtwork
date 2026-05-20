@@ -200,7 +200,7 @@ This creates 3 VMs, 3 cloud-init secrets, and 0 services:
 virtwork run
 ```
 
-With no `--workloads` flag, all five workload types deploy. This creates **6 VMs** total — the network workload creates a server/client pair:
+With no `--workloads` flag, all workload types deploy. This creates **8 VMs** total — the network and tps workloads each create server/client pairs:
 
 | VM Name | Workload | Role |
 |---------|----------|------|
@@ -210,8 +210,10 @@ With no `--workloads` flag, all five workload types deploy. This creates **6 VMs
 | `virtwork-memory-0` | Memory | — |
 | `virtwork-network-server-0` | Network | server |
 | `virtwork-network-client-0` | Network | client |
+| `virtwork-tps-server-0` | TPS | server |
+| `virtwork-tps-client-0` | TPS | client |
 
-The network workload also creates a `virtwork-iperf3-server` ClusterIP Service on port 5201.
+The network workload creates a `virtwork-iperf3-server` ClusterIP Service on port 5201. The tps workload creates a `virtwork-tps-server` ClusterIP Service on ports 12865 (netperf control), 12866 (netperf data), and 8080 (HTTP file transfer).
 
 ### Scaling up
 
@@ -444,4 +446,4 @@ oc set env deploy/virtwork VIRTWORK_COMMAND=run VIRTWORK_ARGS="--workloads cpu,m
 | VMs stuck in `Provisioning` | CDI not installed or no default StorageClass | Install the OpenShift Virtualization operator and ensure a default StorageClass exists |
 | Timeout waiting for readiness | Slow image pull or boot | Increase `--timeout` (default is 600s), or use `--no-wait` and check manually |
 | Cloud-init failed inside VM | Package install failure or script error | SSH in and check `/var/log/cloud-init-output.log` |
-| `unknown workload` error | Typo in `--workloads` | Available workloads: `cpu`, `database`, `disk`, `memory`, `network` |
+| `unknown workload` error | Typo in `--workloads` | Available workloads: `cpu`, `database`, `disk`, `memory`, `network`, `tps` |
