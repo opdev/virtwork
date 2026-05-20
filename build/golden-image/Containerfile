@@ -1,0 +1,37 @@
+# Golden Container Disk Image for virtwork
+# Copyright 2026 Red Hat
+# SPDX-License-Identifier: Apache-2.0
+
+FROM quay.io/containerdisks/fedora:41
+
+LABEL io.k8s.display-name="virtwork-disk" \
+      io.k8s.description="Fedora 41 container disk with virtwork workload tools pre-installed" \
+      summary="Container disk for virtwork with CPU, memory, database, network, and disk tools" \
+      description="Pre-built Fedora 41 container disk with stress-ng, fio, iperf3, postgresql-server, and chaos engineering tools for faster VM boot times" \
+      name="virtwork-disk" \
+      version="1.0" \
+      maintainer="OpenDev Community"
+
+# Install all workload tools in a single layer to minimize image size
+# Clean DNF cache to reduce final image size
+RUN dnf install -y \
+    stress-ng \
+    fio \
+    iperf3 \
+    postgresql-server \
+    iproute-tc \
+    iptables-nft \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf
+
+# Verify all critical binaries are present
+RUN which stress-ng && \
+    which fio && \
+    which iperf3 && \
+    which pgbench && \
+    which tc && \
+    which iptables-nft
+
+# Expose metadata for KubeVirt compatibility
+# The containerdisk format expects the disk image to be at /disk/
+# This is already handled by the base fedora:41 image
