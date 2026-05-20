@@ -643,8 +643,8 @@ var _ = Describe("CLI end-to-end scenarios", func() {
 				Expect(err).NotTo(HaveOccurred())
 				totalVMs += w.VMCount()
 			}
-			// cpu=1 + database=1 + disk=1 + memory=1 + network=2 = 6
-			Expect(totalVMs).To(Equal(6))
+			// chaos-network=1 + cpu=1 + database=1 + disk=1 + memory=1 + network=2 = 7
+			Expect(totalVMs).To(Equal(7))
 		})
 	})
 

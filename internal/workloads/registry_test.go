@@ -18,8 +18,8 @@ var _ = Describe("Registry", func() {
 		reg = workloads.DefaultRegistry()
 	})
 
-	It("should have 5 entries registered", func() {
-		Expect(reg.List()).To(HaveLen(5))
+	It("should have 6 entries registered", func() {
+		Expect(reg.List()).To(HaveLen(6))
 	})
 
 	It("should return CPU workload by name", func() {
@@ -77,10 +77,22 @@ var _ = Describe("Registry", func() {
 		Expect(w.Name()).To(Equal("disk"))
 	})
 
+	It("should return chaos-network workload by name", func() {
+		w, err := reg.Get("chaos-network", config.WorkloadConfig{
+			Enabled:  true,
+			VMCount:  1,
+			CPUCores: 1,
+			Memory:   "1Gi",
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(w.Name()).To(Equal("chaos-network"))
+	})
+
 	It("should return error for unknown name with available names", func() {
 		_, err := reg.Get("unknown", config.WorkloadConfig{})
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("unknown"))
+		Expect(err.Error()).To(ContainSubstring("chaos-network"))
 		Expect(err.Error()).To(ContainSubstring("cpu"))
 		Expect(err.Error()).To(ContainSubstring("database"))
 		Expect(err.Error()).To(ContainSubstring("disk"))
@@ -90,7 +102,7 @@ var _ = Describe("Registry", func() {
 
 	It("should list all names sorted alphabetically", func() {
 		names := reg.List()
-		Expect(names).To(Equal([]string{"cpu", "database", "disk", "memory", "network"}))
+		Expect(names).To(Equal([]string{"chaos-network", "cpu", "database", "disk", "memory", "network"}))
 	})
 
 	It("should create workloads with provided config", func() {
@@ -157,7 +169,7 @@ var _ = Describe("Registry", func() {
 })
 
 var _ = Describe("AllWorkloadNames", func() {
-	It("should contain all five workload names sorted", func() {
-		Expect(workloads.AllWorkloadNames).To(Equal([]string{"cpu", "database", "disk", "memory", "network"}))
+	It("should contain all six workload names sorted", func() {
+		Expect(workloads.AllWorkloadNames).To(Equal([]string{"chaos-network", "cpu", "database", "disk", "memory", "network"}))
 	})
 })
