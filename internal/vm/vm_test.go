@@ -99,9 +99,9 @@ var _ = Describe("BuildVMSpec", func() {
 		Expect(memReq.Equal(expected)).To(BeTrue())
 	})
 
-	It("should set running to true", func() {
-		Expect(result.Spec.Running).NotTo(BeNil())
-		Expect(*result.Spec.Running).To(BeTrue())
+	It("should set RunStrategy to Always", func() {
+		Expect(result.Spec.RunStrategy).NotTo(BeNil())
+		Expect(*result.Spec.RunStrategy).To(Equal(kubevirtv1.RunStrategyAlways))
 	})
 
 	It("should configure masquerade networking", func() {

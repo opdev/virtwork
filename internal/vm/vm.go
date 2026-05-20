@@ -40,7 +40,7 @@ type VMSpecOpts struct {
 // It configures a containerDisk for the OS image, cloudInitNoCloud for userdata,
 // masquerade networking, and virtio disk bus.
 func BuildVMSpec(opts VMSpecOpts) *kubevirtv1.VirtualMachine {
-	running := true
+	runStrategy := kubevirtv1.RunStrategyAlways
 
 	disks := []kubevirtv1.Disk{
 		{
@@ -109,7 +109,7 @@ func BuildVMSpec(opts VMSpecOpts) *kubevirtv1.VirtualMachine {
 			Labels:    opts.Labels,
 		},
 		Spec: kubevirtv1.VirtualMachineSpec{
-			Running: &running,
+			RunStrategy: &runStrategy,
 			Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: opts.Labels,
