@@ -73,7 +73,7 @@ via systemd.`,
 	}
 
 	f := cmd.Flags()
-	f.StringSlice("workloads", workloads.AllWorkloadNames, "Workloads to deploy (comma-separated)")
+	f.StringSlice("workloads", workloads.AllWorkloadNames(), "Workloads to deploy (comma-separated)")
 	f.Int("vm-count", 1, "Number of VMs per workload")
 	f.Int("cpu-cores", 0, "CPU cores per VM")
 	f.String("memory", "", "Memory per VM (e.g., 2Gi)")

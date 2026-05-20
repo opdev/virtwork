@@ -51,7 +51,7 @@ func newRootCmd() *cobra.Command {
 		},
 	}
 	rf := runCmd.Flags()
-	rf.StringSlice("workloads", workloads.AllWorkloadNames, "Workloads to deploy (comma-separated)")
+	rf.StringSlice("workloads", workloads.AllWorkloadNames(), "Workloads to deploy (comma-separated)")
 	rf.Int("vm-count", 1, "Number of VMs per workload")
 	rf.Int("cpu-cores", 0, "CPU cores per VM")
 	rf.String("memory", "", "Memory per VM (e.g., 2Gi)")
@@ -628,7 +628,7 @@ var _ = Describe("CLI end-to-end scenarios", func() {
 			// Default run creates 8 VMs: cpu=1 + memory=1 + disk=1 + database=1 + network=2 + tps=2
 			registry := workloads.DefaultRegistry()
 			totalVMs := 0
-			for _, name := range workloads.AllWorkloadNames {
+			for _, name := range workloads.AllWorkloadNames() {
 				cfg := config.WorkloadConfig{
 					Enabled:  true,
 					VMCount:  1,

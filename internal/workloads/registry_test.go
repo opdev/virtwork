@@ -86,6 +86,7 @@ var _ = Describe("Registry", func() {
 		Expect(err.Error()).To(ContainSubstring("disk"))
 		Expect(err.Error()).To(ContainSubstring("memory"))
 		Expect(err.Error()).To(ContainSubstring("network"))
+		Expect(err.Error()).To(ContainSubstring("tps"))
 	})
 
 	It("should list all names sorted alphabetically", func() {
@@ -168,7 +169,8 @@ var _ = Describe("Registry", func() {
 })
 
 var _ = Describe("AllWorkloadNames", func() {
-	It("should contain all six workload names sorted", func() {
-		Expect(workloads.AllWorkloadNames).To(Equal([]string{"cpu", "database", "disk", "memory", "network", "tps"}))
+	It("should derive names from DefaultRegistry", func() {
+		// Verify that AllWorkloadNames() always matches DefaultRegistry().List()
+		Expect(workloads.AllWorkloadNames()).To(Equal(workloads.DefaultRegistry().List()))
 	})
 })

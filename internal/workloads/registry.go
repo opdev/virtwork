@@ -53,8 +53,11 @@ type WorkloadFactory func(config.WorkloadConfig, *RegistryOpts) Workload
 // Registry maps workload names to their factory functions.
 type Registry map[string]WorkloadFactory
 
-// AllWorkloadNames is a sorted list of all built-in workload names.
-var AllWorkloadNames = []string{"cpu", "database", "disk", "memory", "network", "tps"}
+// AllWorkloadNames returns a sorted list of all built-in workload names,
+// derived from the default registry.
+func AllWorkloadNames() []string {
+	return DefaultRegistry().List()
+}
 
 // DefaultRegistry returns a Registry pre-populated with all built-in workloads.
 func DefaultRegistry() Registry {
