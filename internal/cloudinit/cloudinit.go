@@ -4,10 +4,14 @@
 package cloudinit
 
 import (
+	"errors"
+	"fmt"
 	"maps"
 
 	"gopkg.in/yaml.v3"
 )
+
+var ErrReservedKey = errors.New("reserved key in Extra map")
 
 // WriteFile represents a file to be written by cloud-init.
 type WriteFile struct {
@@ -66,6 +70,18 @@ func BuildCloudConfig(opts CloudConfigOpts) (string, error) {
 		}
 
 		doc["users"] = []map[string]interface{}{user}
+	}
+
+	// Validate that Extra keys don't collide with reserved keys
+	reservedKeys := []string{"packages", "write_files", "runcmd", "users", "ssh_pwauth"}
+	for _, key := range reservedKeys {
+		if _, exists := opts.Extra[key]; exists {
+			return "", fmt.Errorf(
+				"extra[%q] collides with reserved cloud-config key: %w",
+				key,
+				ErrReservedKey,
+			)
+		}
 	}
 
 	// Merge extra keys at top level

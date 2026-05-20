@@ -333,4 +333,89 @@ var _ = Describe("BuildCloudConfig", func() {
 			Expect(user["name"]).To(Equal("testuser"))
 		})
 	})
+
+	Context("Extra key collision validation", func() {
+		It("should reject Extra with 'packages' key", func() {
+			opts := cloudinit.CloudConfigOpts{
+				Packages: []string{"vim"},
+				Extra: map[string]interface{}{
+					"packages": []string{"curl"},
+				},
+			}
+			_, err := cloudinit.BuildCloudConfig(opts)
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError(ContainSubstring("packages")))
+			Expect(err).To(MatchError(ContainSubstring("reserved")))
+		})
+
+		It("should reject Extra with 'write_files' key", func() {
+			opts := cloudinit.CloudConfigOpts{
+				Extra: map[string]interface{}{
+					"write_files": []interface{}{},
+				},
+			}
+			_, err := cloudinit.BuildCloudConfig(opts)
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError(ContainSubstring("write_files")))
+		})
+
+		It("should reject Extra with 'runcmd' key", func() {
+			opts := cloudinit.CloudConfigOpts{
+				Extra: map[string]interface{}{
+					"runcmd": []interface{}{},
+				},
+			}
+			_, err := cloudinit.BuildCloudConfig(opts)
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError(ContainSubstring("runcmd")))
+		})
+
+		It("should reject Extra with 'users' key", func() {
+			opts := cloudinit.CloudConfigOpts{
+				Extra: map[string]interface{}{
+					"users": []interface{}{},
+				},
+			}
+			_, err := cloudinit.BuildCloudConfig(opts)
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError(ContainSubstring("users")))
+		})
+
+		It("should reject Extra with 'ssh_pwauth' key", func() {
+			opts := cloudinit.CloudConfigOpts{
+				Extra: map[string]interface{}{
+					"ssh_pwauth": true,
+				},
+			}
+			_, err := cloudinit.BuildCloudConfig(opts)
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError(ContainSubstring("ssh_pwauth")))
+		})
+
+		It("should allow Extra with non-reserved keys", func() {
+			opts := cloudinit.CloudConfigOpts{
+				Extra: map[string]interface{}{
+					"timezone": "UTC",
+					"hostname": "test-vm",
+					"locale":   "en_US.UTF-8",
+				},
+			}
+			result, err := cloudinit.BuildCloudConfig(opts)
+			Expect(err).NotTo(HaveOccurred())
+
+			var parsed map[string]interface{}
+			Expect(yaml.Unmarshal([]byte(result), &parsed)).To(Succeed())
+			Expect(parsed["timezone"]).To(Equal("UTC"))
+			Expect(parsed["hostname"]).To(Equal("test-vm"))
+			Expect(parsed["locale"]).To(Equal("en_US.UTF-8"))
+		})
+
+		It("should allow empty Extra map", func() {
+			opts := cloudinit.CloudConfigOpts{
+				Extra: map[string]interface{}{},
+			}
+			_, err := cloudinit.BuildCloudConfig(opts)
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
 })
