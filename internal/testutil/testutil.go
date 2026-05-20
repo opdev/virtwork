@@ -112,11 +112,15 @@ func WaitForVMRunning(ctx context.Context, c client.Client, name, namespace stri
 		if err == nil && phase == "Running" {
 			return nil
 		}
-		if time.Now().After(deadline) {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
 			if err != nil {
 				return fmt.Errorf("timeout waiting for VM %s to be running: %w", name, err)
 			}
 			return fmt.Errorf("waiting for VM %s to be running (phase: %s); %w", name, phase, wait.ErrVMTimeout)
+		}
+		if remaining < interval {
+			interval = remaining
 		}
 		time.Sleep(interval)
 	}
