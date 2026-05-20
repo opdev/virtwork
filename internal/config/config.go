@@ -16,9 +16,9 @@ import (
 
 // WorkloadConfig holds per-workload configuration.
 type WorkloadConfig struct {
-	Enabled  bool   `mapstructure:"enabled"`
-	VMCount  int    `mapstructure:"vm-count"`
-	CPUCores int    `mapstructure:"cpu-cores"`
+	Enabled  bool              `mapstructure:"enabled"`
+	VMCount  int               `mapstructure:"vm-count"`
+	CPUCores int               `mapstructure:"cpu-cores"`
 	Memory   string            `mapstructure:"memory"`
 	Params   map[string]string `mapstructure:"params"`
 }
