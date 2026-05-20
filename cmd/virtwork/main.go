@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -21,6 +22,7 @@ import (
 	"github.com/opdev/virtwork/internal/cluster"
 	"github.com/opdev/virtwork/internal/config"
 	"github.com/opdev/virtwork/internal/constants"
+	"github.com/opdev/virtwork/internal/logging"
 	"github.com/opdev/virtwork/internal/resources"
 	"github.com/opdev/virtwork/internal/vm"
 	"github.com/opdev/virtwork/internal/wait"
@@ -175,6 +177,10 @@ func runE(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
+
+	// Initialize logger
+	verbose, _ := cmd.Flags().GetBool("verbose")
+	logger := logging.NewLogger(cmd.OutOrStdout(), verbose)
 
 	// Initialize auditor
 	auditor, err := initAuditor(cmd, cfg)
@@ -376,7 +382,7 @@ func runE(cmd *cobra.Command, args []string) error {
 
 	// Dry-run: print specs and return
 	if cfg.DryRun {
-		if err := printDryRun(plans); err != nil {
+		if err := printDryRun(logger, plans); err != nil {
 			return err
 		}
 		_ = auditor.CompleteExecution(ctx, execID, "success", "")
@@ -396,7 +402,7 @@ func runE(cmd *cobra.Command, args []string) error {
 	}); err != nil {
 		return fmt.Errorf("ensuring namespace %q: %w", cfg.Namespace, err)
 	}
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Namespace %s ensured\n", cfg.Namespace)
+	logger.Info("namespace ensured", slog.String("namespace", cfg.Namespace))
 
 	// Create services before VMs (DNS must resolve for client VMs)
 	servicesCreated := 0
@@ -425,7 +431,9 @@ func runE(cmd *cobra.Command, args []string) error {
 					return fmt.Errorf("creating service for %q: %w", name, err)
 				}
 				servicesCreated++
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Service %s created\n", svc.Name)
+				logger.Info("service created",
+					slog.String("service_name", svc.Name),
+					slog.String("namespace", svc.Namespace))
 
 				_, _ = auditor.RecordResource(ctx, execID, audit.ResourceRecord{
 					ResourceType: "Service",
@@ -456,7 +464,9 @@ func runE(cmd *cobra.Command, args []string) error {
 		}
 		plans[i].vmSpec.CloudInitSecretName = secretName
 		secretsCreated++
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Secret %s created\n", secretName)
+		logger.Info("secret created",
+			slog.String("secret_name", secretName),
+			slog.String("namespace", cfg.Namespace))
 
 		_, _ = auditor.RecordResource(ctx, execID, audit.ResourceRecord{
 			ResourceType: "Secret",
@@ -479,7 +489,10 @@ func runE(cmd *cobra.Command, args []string) error {
 				})
 				return fmt.Errorf("creating VM %q: %w", p.vmName, err)
 			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "VM %s created\n", p.vmName)
+			logger.Info("vm created",
+				slog.String("vm_name", p.vmName),
+				slog.String("namespace", cfg.Namespace),
+				slog.String("workload", p.component))
 
 			wlID := auditWorkloadIDs[p.component]
 			_, _ = auditor.RecordVM(ctx, execID, wlID, audit.VMRecord{
@@ -507,15 +520,18 @@ func runE(cmd *cobra.Command, args []string) error {
 	// Wait for readiness
 	if cfg.WaitForReady {
 		timeout := time.Duration(cfg.ReadyTimeoutSeconds) * time.Second
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Waiting for %d VMs to become ready (timeout: %s)...\n",
-			len(vmNames), timeout)
-		results := wait.WaitForAllVMsReady(ctx, c, vmNames, cfg.Namespace,
+		logger.Info("waiting for VMs to become ready",
+			slog.Int("vm_count", len(vmNames)),
+			slog.Duration("timeout", timeout))
+		results := wait.WaitForAllVMsReady(ctx, c, logger, vmNames, cfg.Namespace,
 			timeout, constants.DefaultPollInterval)
 
 		failures := 0
 		for name, err := range results {
 			if err != nil {
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "VM %s: %v\n", name, err)
+				logger.Error("vm readiness check failed",
+					slog.String("vm_name", name),
+					slog.String("error", err.Error()))
 				failures++
 				_ = auditor.RecordEvent(ctx, execID, audit.EventRecord{
 					EventType:   "vm_timeout",
@@ -532,7 +548,7 @@ func runE(cmd *cobra.Command, args []string) error {
 		if failures > 0 {
 			return fmt.Errorf("%d of %d VMs failed; %w", failures, len(vmNames), ErrReadinessCheck)
 		}
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "All %d VMs ready\n", len(vmNames))
+		logger.Info("all VMs ready", slog.Int("vm_count", len(vmNames)))
 	}
 
 	// Mark all workloads as created
@@ -545,7 +561,7 @@ func runE(cmd *cobra.Command, args []string) error {
 	err = nil // clear for defer
 
 	// Print summary
-	printSummary(cmd, len(plans), servicesCreated, secretsCreated, cfg, runID)
+	printSummary(logger, len(plans), servicesCreated, secretsCreated, cfg, runID)
 	return nil
 }
 
@@ -555,6 +571,10 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
+
+	// Initialize logger
+	verbose, _ := cmd.Flags().GetBool("verbose")
+	logger := logging.NewLogger(cmd.OutOrStdout(), verbose)
 
 	// Initialize auditor
 	auditor, err := initAuditor(cmd, cfg)
@@ -568,13 +588,9 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	// Start audit execution
-	dryRunBanner := ""
 	cmdName := "cleanup"
 	if cfg.DryRun {
-		// Log the command being executed
 		cmdName = "cleanup --dry-run"
-		// Add banner if '--dry-run' option is passed
-		dryRunBanner = "--- Dry Run ---\n"
 	}
 
 	execID, _, err := auditor.StartExecution(ctx, cmdName, cfg)
@@ -624,17 +640,16 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 	_ = auditor.CompleteExecution(ctx, execID, "success", "")
 	err = nil // clear for defer
 
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%sCleanup complete: %d VMs deleted, %d services deleted, %d secrets deleted",
-		dryRunBanner, result.VMsDeleted, result.ServicesDeleted, result.SecretsDeleted)
-	if result.NamespaceDeleted {
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), ", namespace deleted")
-	}
-	_, _ = fmt.Fprintln(cmd.OutOrStdout())
+	logger.Info("cleanup complete",
+		slog.Bool("dry_run", cfg.DryRun),
+		slog.Int("vms_deleted", result.VMsDeleted),
+		slog.Int("services_deleted", result.ServicesDeleted),
+		slog.Int("secrets_deleted", result.SecretsDeleted),
+		slog.Bool("namespace_deleted", result.NamespaceDeleted))
 
 	if len(result.Errors) > 0 {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warnings (%d):\n", len(result.Errors))
 		for _, e := range result.Errors {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "  - %v\n", e)
+			logger.Warn("cleanup warning", slog.String("error", e.Error()))
 		}
 	}
 
@@ -642,8 +657,8 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 }
 
 // printDryRun outputs VM specs in YAML without connecting to a cluster.
-func printDryRun(plans []vmPlan) error {
-	_, _ = fmt.Printf("--- Dry Run ---\nTotal VMs to create: %d\n\n", len(plans))
+func printDryRun(logger *slog.Logger, plans []vmPlan) error {
+	logger.Info("dry run mode", slog.Int("total_vms", len(plans)))
 
 	for _, p := range plans {
 		vmObj := vm.BuildVMSpec(*p.vmSpec)
@@ -651,34 +666,19 @@ func printDryRun(plans []vmPlan) error {
 		if err != nil {
 			return fmt.Errorf("marshaling VM spec for %q: %w", p.vmName, err)
 		}
+		// Output YAML to stdout for dry-run inspection
 		_, _ = fmt.Printf("# VM: %s (workload: %s)\n%s\n%s\n", p.vmName, p.component, string(data), "---")
 	}
 	return nil
 }
 
-// printSummary outputs a deployment summary table.
-func printSummary(cmd *cobra.Command, vmCount, svcCount, secCount int, cfg *config.Config, runID string) {
-	summaryTemplate := `%s
-Deployment Summary
-%s
-Run ID:       %s
-Namespace:    %s
-VMs created:  %d
-Services:     %d
-Secrets:      %d
-Image:        %s
-%s`
-	_, _ = fmt.Fprintf(
-		cmd.OutOrStdout(),
-		summaryTemplate,
-		strings.Repeat("=", 50),
-		strings.Repeat("=", 50),
-		runID,
-		cfg.Namespace,
-		vmCount,
-		svcCount,
-		secCount,
-		cfg.ContainerDiskImage,
-		strings.Repeat("=", 50),
-	)
+// printSummary outputs a deployment summary.
+func printSummary(logger *slog.Logger, vmCount, svcCount, secCount int, cfg *config.Config, runID string) {
+	logger.Info("deployment summary",
+		slog.String("run_id", runID),
+		slog.String("namespace", cfg.Namespace),
+		slog.Int("vms_created", vmCount),
+		slog.Int("services_created", svcCount),
+		slog.Int("secrets_created", secCount),
+		slog.String("container_image", cfg.ContainerDiskImage))
 }
