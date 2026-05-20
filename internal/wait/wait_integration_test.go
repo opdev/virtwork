@@ -7,6 +7,7 @@ package wait_test
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -42,12 +43,12 @@ var _ = Describe("WaitForVMReady [integration]", Label("slow"), func() {
 		vmObj := vm.BuildVMSpec(opts)
 		Expect(vm.CreateVM(ctx, c, vmObj)).To(Succeed())
 
-		err := wait.WaitForVMReady(ctx, c, "wait-vm-0", namespace, 5*time.Minute, 5*time.Second)
+		err := wait.WaitForVMReady(ctx, c, slog.Default(), "wait-vm-0", namespace, 5*time.Minute, 5*time.Second)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("should return error on timeout for nonexistent VM", func() {
-		err := wait.WaitForVMReady(ctx, c, "nonexistent-vm", namespace, 10*time.Second, 2*time.Second)
+		err := wait.WaitForVMReady(ctx, c, slog.Default(), "nonexistent-vm", namespace, 10*time.Second, 2*time.Second)
 		Expect(err).To(HaveOccurred())
 	})
 })
@@ -76,7 +77,7 @@ var _ = Describe("WaitForAllVMsReady [integration]", Label("slow"), func() {
 			Expect(vm.CreateVM(ctx, c, vm.BuildVMSpec(opts))).To(Succeed())
 		}
 
-		results := wait.WaitForAllVMsReady(ctx, c,
+		results := wait.WaitForAllVMsReady(ctx, c, slog.Default(),
 			[]string{"wait-multi-0", "wait-multi-1"},
 			namespace, 5*time.Minute, 5*time.Second)
 
@@ -86,7 +87,7 @@ var _ = Describe("WaitForAllVMsReady [integration]", Label("slow"), func() {
 	})
 
 	It("should report per-VM errors for nonexistent VMs", func() {
-		results := wait.WaitForAllVMsReady(ctx, c,
+		results := wait.WaitForAllVMsReady(ctx, c, slog.Default(),
 			[]string{"nonexistent-0", "nonexistent-1"},
 			namespace, 10*time.Second, 2*time.Second)
 

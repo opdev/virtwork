@@ -23,6 +23,7 @@ import (
 	"github.com/opdev/virtwork/internal/cluster"
 	"github.com/opdev/virtwork/internal/config"
 	"github.com/opdev/virtwork/internal/constants"
+	"github.com/opdev/virtwork/internal/logging"
 	"github.com/opdev/virtwork/internal/resources"
 	"github.com/opdev/virtwork/internal/vm"
 	"github.com/opdev/virtwork/internal/wait"
@@ -498,7 +499,9 @@ var _ = Describe("Run orchestration", func() {
 			noWait := true
 
 			if !noWait {
-				results := wait.WaitForAllVMsReady(ctx, c, []string{"vm1"}, constants.DefaultNamespace,
+				buf := &bytes.Buffer{}
+				logger := logging.NewLogger(buf, false)
+				results := wait.WaitForAllVMsReady(ctx, c, logger, []string{"vm1"}, constants.DefaultNamespace,
 					time.Duration(600)*time.Second, constants.DefaultPollInterval)
 				Expect(results).NotTo(BeNil())
 			}
