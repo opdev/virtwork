@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 	sigyaml "sigs.k8s.io/yaml"
 
 	"github.com/opdev/virtwork/internal/audit"
@@ -128,6 +129,46 @@ type vmPlan struct {
 	role      string
 }
 
+// namespaceDataVolumes appends the VM name to DataVolume template names and
+// updates corresponding volume references to prevent name collisions when
+// deploying multiple VMs of the same workload type.
+func namespaceDataVolumes(
+	baseTemplates []kubevirtv1.DataVolumeTemplateSpec,
+	baseVolumes []kubevirtv1.Volume,
+	vmName string,
+) ([]kubevirtv1.DataVolumeTemplateSpec, []kubevirtv1.Volume) {
+	if len(baseTemplates) == 0 {
+		return baseTemplates, baseVolumes
+	}
+
+	// Build a map of original DataVolume names to namespaced names
+	nameMap := make(map[string]string, len(baseTemplates))
+	templates := make([]kubevirtv1.DataVolumeTemplateSpec, len(baseTemplates))
+	for i, tmpl := range baseTemplates {
+		oldName := tmpl.Name
+		newName := fmt.Sprintf("%s-%s", oldName, vmName)
+		nameMap[oldName] = newName
+
+		templates[i] = tmpl
+		templates[i].Name = newName
+	}
+
+	// Update volume references to use the namespaced names
+	volumes := make([]kubevirtv1.Volume, len(baseVolumes))
+	for i, vol := range baseVolumes {
+		volumes[i] = vol
+		if vol.DataVolume != nil {
+			if newName, ok := nameMap[vol.DataVolume.Name]; ok {
+				volumes[i].DataVolume = &kubevirtv1.DataVolumeSource{
+					Name: newName,
+				}
+			}
+		}
+	}
+
+	return templates, volumes
+}
+
 // runE is the main orchestration flow for the "run" subcommand.
 func runE(cmd *cobra.Command, args []string) error {
 	cfg, err := config.LoadConfig(cmd)
@@ -234,6 +275,14 @@ func runE(cmd *cobra.Command, args []string) error {
 
 			for i := range vmCount {
 				vmName := fmt.Sprintf("virtwork-%s-%d", name, i)
+
+				// Namespace DataVolume names to avoid collisions across VMs
+				dvTemplates, extraVols := namespaceDataVolumes(
+					w.DataVolumeTemplates(),
+					w.ExtraVolumes(),
+					vmName,
+				)
+
 				plans = append(plans, vmPlan{
 					workload:  w,
 					component: name,
@@ -252,8 +301,8 @@ func runE(cmd *cobra.Command, args []string) error {
 							constants.LabelRunID:     runID,
 						},
 						ExtraDisks:          w.ExtraDisks(),
-						ExtraVolumes:        w.ExtraVolumes(),
-						DataVolumeTemplates: w.DataVolumeTemplates(),
+						ExtraVolumes:        extraVols,
+						DataVolumeTemplates: dvTemplates,
 					},
 				})
 				vmNames = append(vmNames, vmName)
@@ -287,21 +336,30 @@ func runE(cmd *cobra.Command, args []string) error {
 						constants.LabelRunID:     runID,
 						"virtwork/role":          role,
 					}
+
+					// Namespace DataVolume names to avoid collisions across VMs
+					dvTemplates, extraVols := namespaceDataVolumes(
+						w.DataVolumeTemplates(),
+						w.ExtraVolumes(),
+						vmName,
+					)
+
 					plans = append(plans, vmPlan{
 						workload:  w,
 						component: name,
 						vmName:    vmName,
 						role:      role,
 						vmSpec: &vm.VMSpecOpts{
-							Name:               vmName,
-							Namespace:          cfg.Namespace,
-							ContainerDiskImage: cfg.ContainerDiskImage,
-							CloudInitUserdata:  userdata,
-							CPUCores:           res.CPUCores,
-							Memory:             res.Memory,
-							Labels:             labels,
-							ExtraDisks:         w.ExtraDisks(),
-							ExtraVolumes:       w.ExtraVolumes(),
+							Name:                vmName,
+							Namespace:           cfg.Namespace,
+							ContainerDiskImage:  cfg.ContainerDiskImage,
+							CloudInitUserdata:   userdata,
+							CPUCores:            res.CPUCores,
+							Memory:              res.Memory,
+							Labels:              labels,
+							ExtraDisks:          w.ExtraDisks(),
+							ExtraVolumes:        extraVols,
+							DataVolumeTemplates: dvTemplates,
 						},
 					})
 					vmNames = append(vmNames, vmName)

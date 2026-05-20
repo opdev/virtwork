@@ -694,3 +694,59 @@ var _ = Describe("CLI end-to-end scenarios", func() {
 		})
 	})
 })
+
+var _ = Describe("DataVolume namespacing for multi-VM deployments", func() {
+	Context("when deploying multiple VMs of disk workload", func() {
+		It("should return base DataVolume template name", func() {
+			registry := workloads.DefaultRegistry()
+			cfg := config.WorkloadConfig{
+				Enabled:  true,
+				VMCount:  2,
+				CPUCores: constants.DefaultCPUCores,
+				Memory:   constants.DefaultMemory,
+			}
+
+			w, err := registry.Get("disk", cfg,
+				workloads.WithNamespace(constants.DefaultNamespace),
+				workloads.WithSSHCredentials(constants.DefaultSSHUser, "", nil),
+				workloads.WithDataDiskSize("10Gi"),
+			)
+			Expect(err).NotTo(HaveOccurred())
+
+			dvTemplates := w.DataVolumeTemplates()
+			Expect(dvTemplates).To(HaveLen(1))
+			Expect(dvTemplates[0].Name).To(Equal("virtwork-disk-data"))
+
+			extraVolumes := w.ExtraVolumes()
+			Expect(extraVolumes).To(HaveLen(1))
+			Expect(extraVolumes[0].DataVolume.Name).To(Equal("virtwork-disk-data"))
+		})
+	})
+
+	Context("when deploying multiple VMs of database workload", func() {
+		It("should return base DataVolume template name", func() {
+			registry := workloads.DefaultRegistry()
+			cfg := config.WorkloadConfig{
+				Enabled:  true,
+				VMCount:  2,
+				CPUCores: constants.DefaultCPUCores,
+				Memory:   constants.DefaultMemory,
+			}
+
+			w, err := registry.Get("database", cfg,
+				workloads.WithNamespace(constants.DefaultNamespace),
+				workloads.WithSSHCredentials(constants.DefaultSSHUser, "", nil),
+				workloads.WithDataDiskSize("20Gi"),
+			)
+			Expect(err).NotTo(HaveOccurred())
+
+			dvTemplates := w.DataVolumeTemplates()
+			Expect(dvTemplates).To(HaveLen(1))
+			Expect(dvTemplates[0].Name).To(Equal("virtwork-database-data"))
+
+			extraVolumes := w.ExtraVolumes()
+			Expect(extraVolumes).To(HaveLen(1))
+			Expect(extraVolumes[0].DataVolume.Name).To(Equal("virtwork-database-data"))
+		})
+	})
+})
