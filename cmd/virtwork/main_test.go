@@ -628,7 +628,7 @@ var _ = Describe("CLI end-to-end scenarios", func() {
 
 	Context("when running with default arguments", func() {
 		It("should create VMs for all workloads", func() {
-			// Default run creates 8 VMs: cpu=1 + memory=1 + disk=1 + database=1 + network=2 + tps=2
+			// Default run creates 9 VMs: chaos-process=1 + cpu=1 + memory=1 + disk=1 + database=1 + network=2 + tps=2
 			registry := workloads.DefaultRegistry()
 			totalVMs := 0
 			for _, name := range workloads.AllWorkloadNames() {
@@ -647,7 +647,7 @@ var _ = Describe("CLI end-to-end scenarios", func() {
 				totalVMs += w.VMCount()
 			}
 			// cpu=1 + database=1 + disk=1 + memory=1 + network=2 + tps=2 = 8
-			Expect(totalVMs).To(Equal(8))
+			Expect(totalVMs).To(Equal(9))
 		})
 	})
 

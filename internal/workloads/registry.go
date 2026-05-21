@@ -62,6 +62,9 @@ func AllWorkloadNames() []string {
 // DefaultRegistry returns a Registry pre-populated with all built-in workloads.
 func DefaultRegistry() Registry {
 	return Registry{
+		"chaos-process": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
+			return NewChaosProcessWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+		},
 		"cpu": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
 			return NewCPUWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
 		},
