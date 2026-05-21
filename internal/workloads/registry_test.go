@@ -18,8 +18,19 @@ var _ = Describe("Registry", func() {
 		reg = workloads.DefaultRegistry()
 	})
 
-	It("should have 8 entries registered", func() {
-		Expect(reg.List()).To(HaveLen(8))
+	It("should have 9 entries registered", func() {
+		Expect(reg.List()).To(HaveLen(9))
+	})
+
+	It("should return chaos-disk workload by name", func() {
+		w, err := reg.Get("chaos-disk", config.WorkloadConfig{
+			Enabled:  true,
+			VMCount:  1,
+			CPUCores: 2,
+			Memory:   "2Gi",
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(w.Name()).To(Equal("chaos-disk"))
 	})
 
 	It("should return CPU workload by name", func() {
@@ -103,8 +114,9 @@ var _ = Describe("Registry", func() {
 		_, err := reg.Get("unknown", config.WorkloadConfig{})
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("unknown"))
-		Expect(err.Error()).To(ContainSubstring("chaos-process"))
+		Expect(err.Error()).To(ContainSubstring("chaos-disk"))
 		Expect(err.Error()).To(ContainSubstring("chaos-network"))
+		Expect(err.Error()).To(ContainSubstring("chaos-process"))
 		Expect(err.Error()).To(ContainSubstring("cpu"))
 		Expect(err.Error()).To(ContainSubstring("database"))
 		Expect(err.Error()).To(ContainSubstring("disk"))
@@ -116,6 +128,7 @@ var _ = Describe("Registry", func() {
 	It("should list all names sorted alphabetically", func() {
 		names := reg.List()
 		Expect(names).To(Equal([]string{
+			"chaos-disk",
 			"chaos-network",
 			"chaos-process",
 			"cpu",
