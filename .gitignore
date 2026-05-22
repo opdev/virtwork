@@ -12,6 +12,8 @@ wheels/
 .claude
 claude-logs
 docs/engineering-journals
+docs/plans
+tmp/
 
 *install-config.yaml
 *kubeconfig.yaml
@@ -37,6 +39,7 @@ bin/
 # Test coverage
 coverage.out
 *.coverprofile
+cover.out
 
 # Audit database
 virtwork.db
