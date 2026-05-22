@@ -168,6 +168,7 @@ graph LR
 | `internal/config` | No | One-time Viper load at startup |
 | `internal/cloudinit` | No | Pure string/YAML generation |
 | `internal/cluster` | No | One-time client init at startup |
+| `internal/logging` | No | Stateless `slog` wrapper; safe to share across goroutines that call it |
 | `internal/vm` | Yes | CRUD operations run in errgroup goroutines; retry loops use `time.Sleep` |
 | `internal/resources` | Yes | Namespace/Service/Secret creation can run concurrently |
 | `internal/wait` | Yes | Concurrent VMI polling via errgroup; uses `time.Sleep` between polls |
@@ -359,9 +360,13 @@ classDiagram
 |----------|----------|-------------|-------------|----------|---------------|
 | CPU | N (configurable) | No | No | stress-ng | `stress-ng --cpu 0 --cpu-method all` |
 | Memory | N (configurable) | No | No | stress-ng | `stress-ng --vm 1 --vm-bytes 80% --vm-method all` |
-| Database | N (configurable) | Yes (`/var/lib/pgsql/data`) | No | postgresql-server | `pgbench -c 10 -j 2 -T 300` loop |
-| Network | N×2 (server + client pairs) | No | Yes (ClusterIP) | iperf3 | `iperf3 -s` / `iperf3 -c ... --bidir` |
 | Disk | N (configurable) | Yes (`/mnt/data`) | No | fio | Mixed R/W + sequential write profiles |
+| Database | N (configurable) | Yes (`/var/lib/pgsql/data`) | No | postgresql-server | `pgbench -c 10 -j 2 -T 300` loop |
+| Network | N × 2 (server + client) | No | Yes — `virtwork-iperf3-server` :5201 | iperf3 | `iperf3 -s` / `iperf3 -c ... --bidir` |
+| TPS | N × 2 (server + client) | No | Yes — `virtwork-tps-server` :12865 / :12866 / :8080 | netperf, python3 | `netperf -t TCP_RR` + curl HTTP file fetch loop |
+| Chaos-disk | N (configurable) | Yes (`/mnt/data`) | No | (golden image: `fallocate`, `dd`) | Fill to target percent, sleep, release, repeat |
+| Chaos-network | N (configurable) | No | No | iproute-tc (+ `sch_netem` kernel module) | `tc qdisc add ... netem delay 100ms loss 5%` |
+| Chaos-process | N (configurable) | No | No | procps-ng | Random `kill -SIGTERM <pid>` of non-essential processes every 30s |
 
 ---
 
@@ -468,9 +473,13 @@ Viper's built-in priority chain handles this natively when bound to Cobra flags:
 | Network VM scaling | `VMCount() = count * 2` | Honors `--vm-count` to create N server/client pairs instead of a single hardcoded pair. |
 | Cloud-init Secrets | `CloudInitSecretName` → `UserDataSecretRef` | For large userdata, stores cloud-init in a K8s Secret instead of inline in the VM spec. |
 | Cleanup error semantics | Sequential per-resource deletion with error accumulation | Different from create-time error handling (which is fail-fast). Cleanup continues on individual failures. |
-| Audit storage | SQLite (`virtwork.db`) with `Auditor` interface | Local file, zero infrastructure. `NoOpAuditor` when disabled. WAL mode for concurrent safety. |
+| Audit storage | SQLite (`virtwork.db`) with `Auditor` interface | Local file, zero infrastructure. `NoOpAuditor` when disabled. WAL mode for concurrent safety. See [audit-schema.md](audit-schema.md) for the full schema. |
 | Run-to-cleanup linking | `virtwork/run-id` K8s label + `linked_run_ids` JSON array | Labels survive across CLI invocations. JSON array is PostgreSQL JSONB compatible. |
 | Audit credential policy | No SSH credentials stored | Only `ssh_auth_configured` boolean tracked. Security by design. |
+| In-VM disk discovery | `/dev/disk/by-id/virtio-<serial>` via the `Serial` field on KubeVirt `Disk` | `/dev/vdX` device ordering is not stable across VM reboots or migrations; the virtio serial provides a deterministic symlink. The shared `diskSetupScript` helper (`internal/workloads/workload.go`) waits for the symlink, formats if empty, mounts, and writes `/etc/fstab`. |
+| DataVolume names per VM | DV template names are suffixed with the VM name via `namespaceDataVolumes` (`cmd/virtwork/main.go`) | DataVolume names are namespace-scoped; deploying multiple VMs of the same workload would otherwise collide on the template name. |
+| Structured logging | `log/slog` JSON via `internal/logging.NewLogger(out, verbose)` | Machine-parseable logs for pipeline consumption; `--verbose` flips the level from `INFO` to `DEBUG`. New code uses the logger; `fmt.Fprintf` calls were removed from `cmd/virtwork/main.go`. |
+| Chaos workload safety | Opt-in by name, namespace-scoped destructive behavior, no platform-level kill switch | Chaos workloads can fill a data PVC, shape egress traffic, or kill processes — all confined to the VM they run in. Namespace isolation is the safety boundary. See [chaos-workloads.md](chaos-workloads.md) for risk and operational guidance. |
 
 ---
 
