@@ -11,11 +11,16 @@ The golden image is based on `quay.io/containerdisks/fedora:41` and includes all
 - **stress-ng** — CPU and memory stress testing (cpu, memory workloads)
 - **fio** — Flexible I/O tester for disk benchmarking (disk workload)
 - **iperf3** — Network performance testing (network workload)
+- **netperf** — TCP_RR transaction performance (tps workload)
+- **python3** — HTTP file server for the tps workload's application-layer transfers
 - **postgresql-server** — PostgreSQL database with pgbench (database workload)
-- **iproute-tc** — Traffic control for network chaos engineering (future chaos workloads)
-- **iptables-nft** — Firewall rules for network partition simulation (future chaos workloads)
+- **procps-ng** — `ps`, `pkill`, `kill` for chaos-process
+- **iproute-tc** — Traffic control (`tc`) and the `sch_netem` kernel module hooks used by the chaos-network workload to inject latency and packet loss
+- **iptables-nft** — Firewall rules; reserved for future network partition / blackhole scenarios
 
-Additional tools like `fallocate`, `dd`, `kill`, and `pkill` are already present in the base Fedora image.
+Additional tools like `fallocate` and `dd` (used by chaos-disk) are already present in the base Fedora image.
+
+Workloads that need persistent storage (disk, database, chaos-disk) discover their data volume through `/dev/disk/by-id/virtio-<serial>` using the shared `diskSetupScript` helper — they do not depend on any tools beyond the standard userspace utilities already in the base image (`blkid`, `mkfs.xfs`, `mount`, `readlink`).
 
 ## Building
 
@@ -131,10 +136,16 @@ The current approach is simpler and maintains backward compatibility.
 ## Future Enhancements
 
 1. **Multi-architecture support**: Build for arm64 in addition to amd64
-2. **Automated builds**: GitHub Actions workflow on schedule
+2. **Automated builds**: CI workflow on schedule
 3. **Image scanning**: Add Trivy security scanning
 4. **Semantic versioning**: Pin specific package versions for reproducibility
 5. **Image variants**: Create minimal/full variants for different use cases
+
+## Related Docs
+
+- [docs/chaos-workloads.md](../../docs/chaos-workloads.md) — operator guide for the chaos workloads that use `iproute-tc`, `procps-ng`, and `fallocate`
+- [docs/deployment.md](../../docs/deployment.md) — how to set the golden image as the default container disk in your deployment
+- [docs/configuration.md](../../docs/configuration.md) — `--container-disk-image` flag, `VIRTWORK_CONTAINER_DISK_IMAGE` env var, and `container_disk_image` YAML key
 
 ## License
 
