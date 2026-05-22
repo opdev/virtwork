@@ -265,7 +265,7 @@ Chaos workloads are recorded in the audit database exactly like any other worklo
 Source files:
 
 - `internal/workloads/chaos_disk.go` — `ChaosDiskWorkload` struct, `chaosDiskScript`, `chaosDiskSystemdUnit`
-- `internal/workloads/chaos-network.go` — `ChaosNetworkWorkload` struct, `chaosNetworkStartScript`, `chaosNetworkStopScript`, `chaosNetworkSystemdUnit`
+- `internal/workloads/chaos_network.go` — `ChaosNetworkWorkload` struct, `chaosNetworkStartScript`, `chaosNetworkStopScript`, `chaosNetworkSystemdUnit`
 - `internal/workloads/chaos_process.go` — `ChaosProcessWorkload` struct, `chaosProcessScript`, `chaosProcessSystemdUnit`
 - `internal/workloads/registry.go` — `DefaultRegistry()` registers all three under the names `chaos-disk`, `chaos-network`, `chaos-process`
 
