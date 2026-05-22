@@ -1,5 +1,15 @@
 # Plan: OpenShift Virtualization Workload Automation ("virtwork")
 
+> **Historical snapshot — original design rationale.**
+>
+> This document captured the motivation and design choices at project inception, when no application code existed yet. It is preserved as context for *why* the layered architecture, the deploy-and-exit model, and the systemd-inside-VM workload lifecycle were chosen. **Implementation has since evolved.** For the current state, see:
+>
+> - Architecture and design decisions → [architecture.md](architecture.md)
+> - Built-in workloads (now nine total) → [README.md](../README.md#workloads), [architecture.md](architecture.md), [chaos-workloads.md](chaos-workloads.md)
+> - Developer guide and patterns → [development.md](development.md)
+> - Configuration reference → [configuration.md](configuration.md)
+> - OpenShift deployment → [deployment.md](deployment.md)
+
 ## Context
 
 This codebase (`virtwork`) is a Go CLI tool for creating VMs on an OpenShift cluster with OpenShift Virtualization (CNV) already installed. The goal is to run continuous, varied workloads (CPU, memory, database, network, disk I/O) inside those VMs so that monitoring tools (Prometheus, Grafana, etc.) have realistic metrics to observe. The codebase currently has a `go.mod` and documentation — no application code yet.
