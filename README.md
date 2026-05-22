@@ -100,13 +100,31 @@ virtwork cleanup --run-id <uuid>
 
 ## Workloads
 
+virtwork ships nine built-in workloads, grouped by purpose. With `--vm-count 1` and no `--workloads` filter, a full run creates **11 VMs**: seven single-VM workloads plus two server/client pairs (network and tps).
+
+**Core load generators** — saturate one resource per VM:
+
 | Workload | VMs | Description | Tools |
 |----------|-----|-------------|-------|
-| **cpu** | N (configurable) | Continuous CPU stress | `stress-ng --cpu 0 --cpu-method all` |
-| **memory** | N (configurable) | Memory pressure at 80% | `stress-ng --vm 1 --vm-bytes 80%` |
-| **database** | N (configurable) | PostgreSQL with pgbench loop | `pgbench -c 10 -j 2 -T 300` |
-| **network** | N×2 (server + client pairs) | Bidirectional throughput | `iperf3 --bidir` |
-| **disk** | N (configurable) | Mixed random and sequential I/O | `fio` with multiple profiles |
+| **cpu** | N | Continuous CPU stress | `stress-ng --cpu 0 --cpu-method all` |
+| **memory** | N | Memory pressure at 80% | `stress-ng --vm 1 --vm-bytes 80%` |
+| **disk** | N | Mixed random and sequential I/O on a data disk | `fio` with multiple profiles |
+| **database** | N | PostgreSQL with pgbench loop on a data disk | `pgbench -c 10 -j 2 -T 300` |
+
+**Multi-VM benchmarks** — server/client pairs coordinated via a ClusterIP Service:
+
+| Workload | VMs | Description | Tools |
+|----------|-----|-------------|-------|
+| **network** | N × 2 | Bidirectional throughput | `iperf3 --bidir` on port 5201 |
+| **tps** | N × 2 | TCP request/response + HTTP file transfer | `netperf` (12865/12866) + Python HTTP server (8080) |
+
+**Chaos engineering** — inject failures inside the VM to test resilience. ⚠️ See [docs/chaos-workloads.md](docs/chaos-workloads.md) before deploying:
+
+| Workload | VMs | Description | Tools |
+|----------|-----|-------------|-------|
+| **chaos-disk** | N | Fill the data disk to a target percentage, release, repeat | `fallocate`, `dd` |
+| **chaos-network** | N | Inject latency and packet loss on egress | `tc` + `netem` |
+| **chaos-process** | N | Randomly send signals to non-essential processes | shell + `ps`/`kill` |
 
 All workloads run as systemd services inside the VMs, surviving reboots and auto-restarting on failure.
 
@@ -118,7 +136,7 @@ Deploy VMs with workloads.
 
 ```
 Flags:
-      --workloads strings          Workloads to deploy (default [cpu,database,disk,memory,network])
+      --workloads strings          Workloads to deploy (default: all nine — chaos-disk, chaos-network, chaos-process, cpu, database, disk, memory, network, tps)
       --vm-count int               Number of VMs per workload (default 1)
       --cpu-cores int              CPU cores per VM
       --memory string              Memory per VM (e.g., 2Gi)
@@ -163,6 +181,8 @@ virtwork uses a priority chain for configuration (highest to lowest):
 3. YAML config file (`--config`)
 4. Defaults
 
+The tables below cover the common surface. For a complete reference of every flag, environment variable, YAML key, and per-workload parameter, see [docs/configuration.md](docs/configuration.md).
+
 ### Environment Variables
 
 | Variable | Description |
@@ -205,6 +225,8 @@ The audit database records execution parameters, timestamps, workload details, V
 
 No SSH credentials are stored — only a boolean indicating whether SSH authentication was configured.
 
+For the full schema (five tables with relationships and column descriptions) and common query patterns, see [docs/audit-schema.md](docs/audit-schema.md).
+
 ```bash
 # Disable audit tracking
 virtwork run --no-audit
@@ -245,6 +267,8 @@ When no SSH flags are provided, no user account is configured in the VMs.
 ## OpenShift Deployment
 
 virtwork can run as a pod on the cluster using the provided Kustomize manifests in `deploy/`. The deployment manifest uses a semantic version tag (e.g., `v0.0.1`) to pin the image for reproducible deployments. Update the version tag in `deploy/deployment.yaml` when upgrading. For development or testing, you can use `quay.io/opdev/virtwork:latest`.
+
+The section below is a quick reference. For a manifest-by-manifest deep-dive — resource topology, RBAC scope, image pinning policy, sizing, audit-DB persistence — see [docs/deployment.md](docs/deployment.md).
 
 ### Deploy with Kustomize
 
@@ -293,9 +317,11 @@ The codebase follows a strict layered architecture where each layer depends only
 
 ```
 Layer 4 — Orchestration     cmd/virtwork, cleanup, audit
-Layer 3 — Workload Defs     workloads (interface, cpu, memory, database, network, disk, registry)
+Layer 3 — Workload Defs     workloads (Workload + MultiVMWorkload interfaces, registry,
+                            cpu, memory, disk, database, network, tps, chaos-disk,
+                            chaos-network, chaos-process)
 Layer 2 — K8s Abstractions  vm, resources, wait
-Layer 1 — Infrastructure    config, cluster, cloudinit
+Layer 1 — Infrastructure    config, cluster, cloudinit, logging
 Layer 0 — Definitions       constants
 ```
 
@@ -313,15 +339,18 @@ virtwork/
 │   ├── config/                    # Viper-based config priority chain
 │   ├── cluster/                   # controller-runtime client init
 │   ├── cloudinit/                 # Cloud-config YAML builder
+│   ├── logging/                   # Structured logger (log/slog wrapper)
 │   ├── vm/                        # VM spec construction + CRUD + retry
 │   ├── resources/                 # Namespace + Service + Secret helpers
 │   ├── wait/                      # VMI readiness polling
 │   ├── cleanup/                   # Label-based teardown (VMs, Services, Secrets)
 │   ├── audit/                     # SQLite audit tracking (Auditor interface, schema, records)
-│   ├── workloads/                 # Workload interface + 5 implementations + registry
+│   ├── workloads/                 # Workload + MultiVMWorkload interfaces, 9 implementations, registry
 │   └── testutil/                  # Shared test helpers for integration + E2E
 ├── tests/
 │   └── e2e/                       # E2E acceptance tests (//go:build e2e)
+├── build/
+│   └── golden-image/              # Optional Fedora container disk with pre-installed tools
 ├── deploy/                        # Kustomize manifests for OpenShift deployment
 │   ├── kustomization.yaml
 │   ├── namespace.yaml
@@ -332,11 +361,22 @@ virtwork/
 │   ├── pvc.yaml
 │   └── deployment.yaml
 ├── Dockerfile                     # Multi-stage build (Debian builder + UBI9 runtime)
+├── Dockerfile.ci                  # CI variant of the runtime image
 ├── entrypoint.sh                  # Container entrypoint (auto-run or sleep)
+├── Makefile                       # CI targets (test, vet, lint, build, ci, verify)
 ├── docs/
+│   ├── README.md                  # Documentation index
 │   ├── architecture.md            # Layered architecture and diagrams
 │   ├── development.md             # Developer guide
-│   └── implementation-plan.md     # Phased build plan
+│   ├── configuration.md           # Complete config reference (flags, env, YAML)
+│   ├── deployment.md              # OpenShift deployment deep-dive
+│   ├── audit-schema.md            # SQLite audit schema reference
+│   ├── chaos-workloads.md         # Chaos engineering workload guide
+│   ├── virtwork-vs-kube-burner.md # Positioning vs kube-burner
+│   ├── guide/                     # Hands-on guides (overview, deploying, adding workloads)
+│   ├── implementation-plan.md     # Historical: original phased build plan
+│   └── openshift-virtualization-workload-automation.md  # Historical: original design rationale
+├── OWNERS
 ├── go.mod
 └── go.sum
 ```
@@ -369,6 +409,17 @@ go test -tags "integration e2e" ./...
 
 ```bash
 go build -o virtwork ./cmd/virtwork
+```
+
+### Makefile shortcuts
+
+```bash
+make help          # list all targets
+make test          # unit tests with race detector and coverage
+make ci            # vet + test + build (no cluster required)
+make verify        # fmt + vet + lint + test (full pre-commit)
+make build         # build binary to bin/virtwork
+make container-build  # build the OCI image locally
 ```
 
 See [docs/development.md](docs/development.md) for the full developer guide, including instructions for adding new workloads.
