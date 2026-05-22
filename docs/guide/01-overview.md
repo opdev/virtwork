@@ -208,17 +208,23 @@ func (b *BaseWorkload) RequiresService() bool              { return false }
 // ... etc
 ```
 
-Concrete workloads embed `BaseWorkload` and only override what they need. This creates a natural complexity spectrum:
+Concrete workloads embed `BaseWorkload` and only override what they need. This creates a natural complexity spectrum across all nine built-in workloads:
 
 | Workload | Overrides Beyond Name + CloudInit | Complexity |
 |----------|-----------------------------------|------------|
 | **CPU** | Nothing | Simplest |
 | **Memory** | Nothing | Simplest |
-| **Database** | `DataVolumeTemplates`, `ExtraDisks`, `ExtraVolumes` | Medium |
-| **Disk** | `DataVolumeTemplates`, `ExtraDisks`, `ExtraVolumes` | Medium |
-| **Network** | `VMCount`, `RequiresService`, `ServiceSpec`, plus `MultiVMWorkload` interface | Most complex |
+| **Chaos-process** | Nothing (systemd unit defaults baked in) | Simplest |
+| **Chaos-network** | Nothing in Go (`Latency`, `PacketLoss` baked into struct) | Simple |
+| **Disk** | `DataVolumeTemplates`, `ExtraDisks`, `ExtraVolumes` (virtio Serial + `diskSetupScript`) | Medium |
+| **Database** | `DataVolumeTemplates`, `ExtraDisks`, `ExtraVolumes` (virtio Serial + `diskSetupScript`) | Medium |
+| **Chaos-disk** | `DataVolumeTemplates`, `ExtraDisks`, `ExtraVolumes` (virtio Serial + `diskSetupScript`) | Medium |
+| **Network** | `VMCount`, `Roles`, `UserdataForRole`, `RequiresService`, `ServiceSpec` (implements `MultiVMWorkload`) | Most complex |
+| **TPS** | `VMCount`, `Roles`, `UserdataForRole`, `RequiresService`, `ServiceSpec`, `Params` (implements `MultiVMWorkload`) | Most complex |
 
-The network workload is the most involved — it creates two VMs per configured count (a server and a client), needs a Kubernetes Service for DNS routing between them, and generates different cloud-init YAML for each role.
+The multi-VM workloads (network, tps) are the most involved — they create two VMs per configured count (a server and a client), need a Kubernetes Service for DNS routing between them, and generate different cloud-init YAML for each role.
+
+`MultiVMWorkload` extends `Workload` with `Roles()` and `UserdataForRole(role, namespace)`. The orchestrator type-asserts to this interface and dispatches per role; see [development.md](../development.md) for the implementation pattern.
 
 ```mermaid
 flowchart LR
@@ -263,15 +269,18 @@ If you want to dig deeper into how each component works:
 
 | I want to understand... | Look at... |
 |------------------------|------------|
-| How workloads define themselves | `internal/workloads/` — interface in `workload.go`, implementations in `cpu.go`, `memory.go`, etc. |
+| How workloads define themselves | `internal/workloads/` — `Workload` and `MultiVMWorkload` interfaces in `workload.go`; implementations in `cpu.go`, `memory.go`, `disk.go`, `database.go`, `network.go`, `tps.go`, `chaos_disk.go`, `chaos-network.go`, `chaos_process.go` |
+| The `diskSetupScript` helper for storage-backed workloads | `internal/workloads/workload.go` — generates the wait/format/mount/fstab script for `/dev/disk/by-id/virtio-<serial>` |
 | How VMs are built from workload data | `internal/vm/vm.go` — `BuildVMSpec()` and `CreateVM()` |
-| The CLI orchestration flow | `cmd/virtwork/main.go` — `runE()` and `cleanupE()` |
+| The CLI orchestration flow | `cmd/virtwork/main.go` — `runE()` and `cleanupE()`, including `namespaceDataVolumes` for per-VM DV naming |
 | Configuration loading | `internal/config/config.go` — `LoadConfig()` with Viper |
 | Cloud-init YAML generation | `internal/cloudinit/cloudinit.go` — `BuildCloudConfig()` |
 | Resource helpers (namespace, service, secret) | `internal/resources/resources.go` |
 | VM readiness polling | `internal/wait/wait.go` — concurrent VMI phase polling |
 | Cleanup by label selector | `internal/cleanup/cleanup.go` — `CleanupAll()` |
-| Audit logging | `internal/audit/` — `Auditor` interface, SQLite schema, records |
+| Audit logging | `internal/audit/` — `Auditor` interface, SQLite schema, records (see [audit-schema.md](../audit-schema.md) for the full schema) |
+| Structured logging | `internal/logging/logging.go` — `NewLogger(out, verbose)` returning a `*slog.Logger` |
 | Constants and defaults | `internal/constants/constants.go` |
+| Golden container disk image | `build/golden-image/` — Containerfile and build script for the optional pre-tooled image |
 
 For the full layered architecture with dependency diagrams, see [docs/architecture.md](../architecture.md).
