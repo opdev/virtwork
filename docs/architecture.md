@@ -499,6 +499,8 @@ virtwork/
 │   │   └── cluster.go             # controller-runtime client init + scheme registration
 │   ├── cloudinit/
 │   │   └── cloudinit.go           # Cloud-config YAML builder
+│   ├── logging/
+│   │   └── logging.go             # Structured slog logger (verbose -> DEBUG)
 │   ├── vm/
 │   │   └── vm.go                  # VM spec construction + typed CRUD + retry
 │   ├── resources/
@@ -512,25 +514,43 @@ virtwork/
 │   │   ├── schema.go              # DDL for 5 audit tables + indexes
 │   │   └── records.go             # WorkloadRecord, VMRecord, ResourceRecord, EventRecord
 │   ├── workloads/
-│   │   ├── workload.go            # Workload interface + BaseWorkload
-│   │   ├── registry.go            # Registry map + lookup
+│   │   ├── workload.go            # Workload + MultiVMWorkload interfaces, BaseWorkload, diskSetupScript
+│   │   ├── registry.go            # Registry map + DefaultRegistry (nine entries)
 │   │   ├── cpu.go                 # stress-ng CPU continuous workload
 │   │   ├── memory.go              # stress-ng VM memory pressure workload
+│   │   ├── disk.go                # fio mixed I/O profiles
 │   │   ├── database.go            # PostgreSQL + pgbench loop
-│   │   ├── network.go             # iperf3 server/client pair
-│   │   └── disk.go                # fio mixed I/O profiles
+│   │   ├── network.go             # iperf3 server/client pair (MultiVMWorkload)
+│   │   ├── tps.go                 # netperf TCP_RR + HTTP file transfer (MultiVMWorkload)
+│   │   ├── chaos_disk.go          # Fill-and-release disk pressure loop
+│   │   ├── chaos-network.go       # tc/netem latency + loss injection
+│   │   └── chaos_process.go       # Random kill loop with excluded process patterns
 │   └── testutil/
 │       ├── testutil.go            # Shared test helpers (namespace, connect, cleanup)
 │       └── binary.go              # Binary build/run helpers for E2E
 ├── tests/
 │   └── e2e/                       # E2E acceptance tests (//go:build e2e)
+├── build/
+│   └── golden-image/              # Optional Fedora container disk with pre-installed tools
+├── deploy/                        # Kustomize manifests for OpenShift deployment
 ├── docs/
+│   ├── README.md                  # Documentation index
 │   ├── architecture.md            # This file
 │   ├── development.md             # Developer guide
-│   ├── implementation-plan.md     # Phased build plan
-│   ├── openshift-virtualization-workload-automation.md  # Design plan
-│   └── engineering-journals/      # Per-phase development journals
+│   ├── configuration.md           # Complete config reference
+│   ├── deployment.md              # OpenShift deployment deep-dive
+│   ├── audit-schema.md            # SQLite audit schema reference
+│   ├── chaos-workloads.md         # Chaos engineering workload guide
+│   ├── virtwork-vs-kube-burner.md # Positioning vs kube-burner
+│   ├── guide/                     # Hands-on guides (overview, deploying, adding workloads)
+│   ├── implementation-plan.md     # Historical: original phased build plan
+│   └── openshift-virtualization-workload-automation.md  # Historical: original design rationale
+├── Dockerfile                     # Multi-stage build (Debian builder + UBI9 runtime)
+├── Dockerfile.ci                  # CI variant of the runtime image
+├── entrypoint.sh
+├── Makefile
 ├── go.mod
 ├── go.sum
+├── OWNERS
 └── CLAUDE.md
 ```
