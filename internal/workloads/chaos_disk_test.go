@@ -115,10 +115,11 @@ var _ = Describe("ChaosDiskWorkload", func() {
 		Expect(dvts[0].Name).To(Equal("virtwork-chaos-disk-data"))
 	})
 
-	It("should have extra disk for data volume", func() {
+	It("should have extra disk for data volume with serial", func() {
 		disks := w.ExtraDisks()
 		Expect(disks).To(HaveLen(1))
 		Expect(disks[0].Name).To(Equal("datadisk"))
+		Expect(disks[0].Serial).To(Equal("virtwork-chdisk"))
 
 		volumes := w.ExtraVolumes()
 		Expect(volumes).To(HaveLen(1))
@@ -145,7 +146,28 @@ var _ = Describe("ChaosDiskWorkload", func() {
 		Expect(hasPackages).To(BeFalse())
 	})
 
-	It("should mount data disk and enable service via runcmd", func() {
+	It("should include disk-setup script in write_files", func() {
+		result, err := w.CloudInitUserdata()
+		Expect(err).NotTo(HaveOccurred())
+
+		parsed := parseYAML(result)
+		files := parsed["write_files"].([]interface{})
+
+		var setupContent string
+		for _, f := range files {
+			fm := f.(map[string]interface{})
+			if fm["path"] == "/usr/local/bin/virtwork-disk-setup.sh" {
+				setupContent = fm["content"].(string)
+				break
+			}
+		}
+		Expect(setupContent).NotTo(BeEmpty())
+		Expect(setupContent).To(ContainSubstring("virtio-virtwork-chdisk"))
+		Expect(setupContent).To(ContainSubstring("/mnt/data"))
+		Expect(setupContent).To(ContainSubstring("mkfs.xfs"))
+	})
+
+	It("should run disk-setup script and enable service via runcmd", func() {
 		result, err := w.CloudInitUserdata()
 		Expect(err).NotTo(HaveOccurred())
 
@@ -166,6 +188,7 @@ var _ = Describe("ChaosDiskWorkload", func() {
 			cmdStrings = append(cmdStrings, s)
 		}
 
+		Expect(cmdStrings).To(ContainElement(ContainSubstring("virtwork-disk-setup.sh")))
 		Expect(cmdStrings).To(ContainElement(ContainSubstring("daemon-reload")))
 		Expect(cmdStrings).To(ContainElement(ContainSubstring("virtwork-chaos-disk.service")))
 	})

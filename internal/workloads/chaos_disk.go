@@ -87,6 +87,11 @@ func (w *ChaosDiskWorkload) CloudInitUserdata() (string, error) {
 	return w.BuildCloudConfig(CloudConfigOpts{
 		WriteFiles: []WriteFile{
 			{
+				Path:        "/usr/local/bin/virtwork-disk-setup.sh",
+				Content:     diskSetupScript("virtwork-chdisk", "/mnt/data"),
+				Permissions: "0755",
+			},
+			{
 				Path:        "/usr/local/bin/chaos-disk.sh",
 				Content:     chaosDiskScript,
 				Permissions: "0755",
@@ -98,7 +103,7 @@ func (w *ChaosDiskWorkload) CloudInitUserdata() (string, error) {
 			},
 		},
 		RunCmd: [][]string{
-			{"mkdir", "-p", "/mnt/data"},
+			{"/usr/local/bin/virtwork-disk-setup.sh"},
 			{"systemctl", "daemon-reload"},
 			{"systemctl", "enable", "--now", "virtwork-chaos-disk.service"},
 		},
@@ -116,7 +121,8 @@ func (w *ChaosDiskWorkload) DataVolumeTemplates() []kubevirtv1.DataVolumeTemplat
 func (w *ChaosDiskWorkload) ExtraDisks() []kubevirtv1.Disk {
 	return []kubevirtv1.Disk{
 		{
-			Name: "datadisk",
+			Name:   "datadisk",
+			Serial: "virtwork-chdisk",
 			DiskDevice: kubevirtv1.DiskDevice{
 				Disk: &kubevirtv1.DiskTarget{
 					Bus: "virtio",

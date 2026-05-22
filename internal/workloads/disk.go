@@ -92,6 +92,11 @@ func (w *DiskWorkload) CloudInitUserdata() (string, error) {
 		Packages: []string{"fio"},
 		WriteFiles: []WriteFile{
 			{
+				Path:        "/usr/local/bin/virtwork-disk-setup.sh",
+				Content:     diskSetupScript("virtwork-disk", "/mnt/data"),
+				Permissions: "0755",
+			},
+			{
 				Path:        "/etc/fio/mixed-rw.fio",
 				Content:     fioMixedRWProfile,
 				Permissions: "0644",
@@ -108,7 +113,7 @@ func (w *DiskWorkload) CloudInitUserdata() (string, error) {
 			},
 		},
 		RunCmd: [][]string{
-			{"mkdir", "-p", "/mnt/data"},
+			{"/usr/local/bin/virtwork-disk-setup.sh"},
 			{"systemctl", "daemon-reload"},
 			{"systemctl", "enable", "--now", "virtwork-disk.service"},
 		},
@@ -126,7 +131,8 @@ func (w *DiskWorkload) DataVolumeTemplates() []kubevirtv1.DataVolumeTemplateSpec
 func (w *DiskWorkload) ExtraDisks() []kubevirtv1.Disk {
 	return []kubevirtv1.Disk{
 		{
-			Name: "datadisk",
+			Name:   "datadisk",
+			Serial: "virtwork-disk",
 			DiskDevice: kubevirtv1.DiskDevice{
 				Disk: &kubevirtv1.DiskTarget{
 					Bus: "virtio",

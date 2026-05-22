@@ -37,20 +37,21 @@ var _ = Describe("DiskWorkload", func() {
 		Expect(pkgs).To(ContainElement("fio"))
 	})
 
-	It("should include fio profiles in write_files", func() {
+	It("should include fio profiles and disk-setup script in write_files", func() {
 		result, err := w.CloudInitUserdata()
 		Expect(err).NotTo(HaveOccurred())
 
 		parsed := parseYAML(result)
 		files := parsed["write_files"].([]interface{})
 
-		// Should have: mixed-rw.fio, seq-write.fio, systemd unit = 3 files
-		Expect(files).To(HaveLen(3))
+		// Should have: disk-setup.sh, mixed-rw.fio, seq-write.fio, systemd unit = 4 files
+		Expect(files).To(HaveLen(4))
 
 		paths := make([]string, len(files))
 		for i, f := range files {
 			paths[i] = f.(map[string]interface{})["path"].(string)
 		}
+		Expect(paths).To(ContainElement("/usr/local/bin/virtwork-disk-setup.sh"))
 		Expect(paths).To(ContainElement("/etc/fio/mixed-rw.fio"))
 		Expect(paths).To(ContainElement("/etc/fio/seq-write.fio"))
 		Expect(paths).To(ContainElement("/etc/systemd/system/virtwork-disk.service"))
@@ -62,14 +63,36 @@ var _ = Describe("DiskWorkload", func() {
 		Expect(dvts[0].Name).To(Equal("virtwork-disk-data"))
 	})
 
-	It("should have extra disk for data volume", func() {
+	It("should have extra disk for data volume with serial", func() {
 		disks := w.ExtraDisks()
 		Expect(disks).To(HaveLen(1))
 		Expect(disks[0].Name).To(Equal("datadisk"))
+		Expect(disks[0].Serial).To(Equal("virtwork-disk"))
 
 		volumes := w.ExtraVolumes()
 		Expect(volumes).To(HaveLen(1))
 		Expect(volumes[0].Name).To(Equal("datadisk"))
+	})
+
+	It("should include disk-setup script with serial discovery", func() {
+		result, err := w.CloudInitUserdata()
+		Expect(err).NotTo(HaveOccurred())
+
+		parsed := parseYAML(result)
+		files := parsed["write_files"].([]interface{})
+
+		var setupContent string
+		for _, f := range files {
+			fm := f.(map[string]interface{})
+			if fm["path"] == "/usr/local/bin/virtwork-disk-setup.sh" {
+				setupContent = fm["content"].(string)
+				break
+			}
+		}
+		Expect(setupContent).NotTo(BeEmpty())
+		Expect(setupContent).To(ContainSubstring("virtio-virtwork-disk"))
+		Expect(setupContent).To(ContainSubstring("/mnt/data"))
+		Expect(setupContent).To(ContainSubstring("mkfs.xfs"))
 	})
 
 	It("should not require service", func() {
