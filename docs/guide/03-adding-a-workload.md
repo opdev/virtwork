@@ -466,23 +466,30 @@ go run ./cmd/virtwork cleanup
 
 ## Going Further
 
-### Adding a Data Disk
+### Adding a Data Disk (Storage-Backed Workloads)
 
-If your workload needs persistent storage (for example, a workload that writes benchmark results to disk), override three methods. Look at `internal/workloads/disk.go` for the complete pattern:
+If your workload needs persistent storage (for example, a workload that writes benchmark results to disk), override three methods. Look at `internal/workloads/disk.go`, `database.go`, or `chaos_disk.go` for the complete pattern. The key things to get right:
 
 ```go
-// DataVolumeTemplates returns a CDI DataVolumeTemplateSpec.
+// DataVolumeTemplates returns a CDI DataVolumeTemplateSpec. The orchestrator
+// suffixes the template name with the VM name (namespaceDataVolumes in
+// cmd/virtwork/main.go) to avoid collisions when --vm-count > 1, so use the
+// un-suffixed base name here.
 func (w *MyWorkload) DataVolumeTemplates() []kubevirtv1.DataVolumeTemplateSpec {
     return []kubevirtv1.DataVolumeTemplateSpec{
         vm.BuildDataVolumeTemplate("my-data", w.DataDiskSize),
     }
 }
 
-// ExtraDisks adds the disk definition to the VM spec.
+// ExtraDisks adds the disk definition to the VM spec. ALWAYS set the Serial
+// field — the in-VM script discovers the device via
+// /dev/disk/by-id/virtio-<serial>, which is stable across reboots and
+// migrations (unlike /dev/vdX, which is not).
 func (w *MyWorkload) ExtraDisks() []kubevirtv1.Disk {
     return []kubevirtv1.Disk{
         {
-            Name: "datadisk",
+            Name:   "datadisk",
+            Serial: "virtwork-mydata",
             DiskDevice: kubevirtv1.DiskDevice{
                 Disk: &kubevirtv1.DiskTarget{Bus: "virtio"},
             },
@@ -490,7 +497,8 @@ func (w *MyWorkload) ExtraDisks() []kubevirtv1.Disk {
     }
 }
 
-// ExtraVolumes links the disk to the DataVolume.
+// ExtraVolumes links the disk to the DataVolume. The Name must match
+// ExtraDisks; the DataVolume.Name must match the template name above.
 func (w *MyWorkload) ExtraVolumes() []kubevirtv1.Volume {
     return []kubevirtv1.Volume{
         {
@@ -503,27 +511,46 @@ func (w *MyWorkload) ExtraVolumes() []kubevirtv1.Volume {
 }
 ```
 
-All three methods must return matching `Name` values — the disk, volume, and DataVolume are linked by name.
+In your cloud-init, write the shared `diskSetupScript(serial, mountPoint)` helper as the first script and run it from `runcmd` before the workload service starts. It waits for the `/dev/disk/by-id/virtio-<serial>` symlink, formats with XFS if empty, mounts at `mountPoint`, and writes `/etc/fstab` so the mount survives reboots.
+
+```go
+return w.BuildCloudConfig(CloudConfigOpts{
+    WriteFiles: []WriteFile{
+        {
+            Path:        "/usr/local/bin/virtwork-disk-setup.sh",
+            Content:     diskSetupScript("virtwork-mydata", "/mnt/data"),
+            Permissions: "0755",
+        },
+        // ... workload service unit and script ...
+    },
+    RunCmd: [][]string{
+        {"/usr/local/bin/virtwork-disk-setup.sh"},
+        {"systemctl", "daemon-reload"},
+        {"systemctl", "enable", "--now", "virtwork-my-workload.service"},
+    },
+})
+```
 
 ### Making It Multi-VM
 
-If you wanted nginx on one VM and `ab` on another (for more realistic cross-network metrics), you would implement the `MultiVMWorkload` interface. See `internal/workloads/network.go` for the complete pattern:
+If your workload needs more than one role of VM (a server and one or more clients, for example), implement the `MultiVMWorkload` interface. The two canonical references are `internal/workloads/network.go` (simplest — one Service port, iperf3) and `internal/workloads/tps.go` (multi-port Service with configurable `Params` for `file-size`, `iterations`, `duration`).
 
-1. Add a `Namespace` field to your struct (the client needs the server's DNS name)
-2. Implement `UserdataForRole(role, namespace) (string, error)` — return different cloud-init YAML for `"server"` vs `"client"`
-3. Override `VMCount()` to return `count * 2`
-4. Override `RequiresService()` to return `true`
-5. Implement `ServiceSpec()` to create a ClusterIP Service targeting the server VM by label selector
+1. Add a `Namespace` field to your struct — the client needs it to build the server's in-cluster DNS name.
+2. Implement `Roles() []string` (e.g., `[]string{"server", "client"}`).
+3. Implement `UserdataForRole(role, namespace) (string, error)` — return different cloud-init YAML per role. The orchestrator dispatches per role; the client constructs `<service>.<namespace>.svc.cluster.local` and never polls for pod IPs.
+4. Override `VMCount()` to return `count * len(Roles())` so the orchestrator creates the right number of VMs.
+5. Override `RequiresService()` to return `true`.
+6. Implement `ServiceSpec()` to create a ClusterIP Service. Its selector should match `virtwork/role: server` (and ideally `app.kubernetes.io/component: <your-workload>`) — the orchestrator applies the `virtwork/role` label to each VM automatically.
 
-The orchestrator detects `MultiVMWorkload` via type assertion and calls `UserdataForRole()` for each VM instead of `CloudInitUserdata()`.
+The orchestrator detects `MultiVMWorkload` via type assertion and calls `UserdataForRole()` per role/instance instead of `CloudInitUserdata()`.
 
 ### Workload Complexity Spectrum
 
 ```mermaid
 flowchart LR
-    A["<b>Simple</b><br/>CPU, Memory, HTTP<br/><i>Name + CloudInit only</i>"]
-    B["<b>With Storage</b><br/>Database, Disk<br/><i>+ DataVolumeTemplates<br/>+ ExtraDisks/Volumes</i>"]
-    C["<b>Multi-VM</b><br/>Network<br/><i>+ MultiVMWorkload<br/>+ Service + VMCount</i>"]
+    A["<b>Simple</b><br/>CPU, Memory, Chaos-process<br/><i>Name + CloudInit only</i>"]
+    B["<b>With Storage</b><br/>Disk, Database, Chaos-disk<br/><i>+ DataVolumeTemplates<br/>+ ExtraDisks (with Serial)<br/>+ ExtraVolumes<br/>+ diskSetupScript</i>"]
+    C["<b>Multi-VM</b><br/>Network, TPS<br/><i>+ MultiVMWorkload<br/>(Roles, UserdataForRole)<br/>+ Service + VMCount</i>"]
     A --> B --> C
 ```
 
@@ -534,17 +561,30 @@ Start simple. Add complexity only when the workload needs it.
 Before submitting a new workload, verify:
 
 - [ ] Workload struct embeds `BaseWorkload`
-- [ ] Constructor follows the `NewXWorkload(cfg, sshUser, sshPassword, sshKeys)` signature
-- [ ] `Name()` returns a lowercase, single-word identifier
+- [ ] Constructor follows the `NewXWorkload(cfg, sshUser, sshPassword, sshKeys)` signature (or extended signature for storage / namespace-aware workloads)
+- [ ] `Name()` returns a lowercase, hyphen-or-single-word identifier
 - [ ] `CloudInitUserdata()` calls `w.BuildCloudConfig()` (not `cloudinit.BuildCloudConfig()`)
-- [ ] Packages used are available in Fedora's default repos
+- [ ] Packages used are available in Fedora's default repos (or pre-installed in the golden image, if applicable)
 - [ ] Systemd unit has `Restart=always` and `WantedBy=multi-user.target`
 - [ ] Tests cover: Name, packages, systemd unit content, valid YAML, VMResources, defaults for optional methods
-- [ ] Registered in `DefaultRegistry()` with a factory function
-- [ ] Added to `AllWorkloadNames` (alphabetical order)
+- [ ] Registered in `DefaultRegistry()` (`internal/workloads/registry.go`) with a factory function
 - [ ] Existing registry/orchestration test counts updated
 - [ ] `go test ./...` passes
 - [ ] `go test -race ./...` passes
 - [ ] `--dry-run` produces a valid VM spec
+
+**If multi-VM:**
+
+- [ ] Implements `Roles() []string`
+- [ ] Implements `UserdataForRole(role, namespace) (string, error)`
+- [ ] `VMCount()` returns `Config.VMCount * len(Roles())`
+- [ ] `ServiceSpec().Spec.Selector` includes `virtwork/role: <server-role>` and `app.kubernetes.io/component: <name>`
+- [ ] Client userdata builds the server DNS as `<service>.<namespace>.svc.cluster.local`
+
+**If storage-backed:**
+
+- [ ] `DataVolumeTemplates()` returns templates with stable base names (orchestrator suffixes with VM name)
+- [ ] `ExtraDisks()` sets the `Serial` field on each Disk
+- [ ] Cloud-init runs `diskSetupScript(serial, mountPoint)` from `runcmd` before any service that uses the mount
 
 See [docs/development.md](../development.md) for the reference version of the "Adding a New Workload" checklist.
