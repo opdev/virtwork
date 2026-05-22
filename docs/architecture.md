@@ -249,6 +249,12 @@ classDiagram
         +VMCount() int
     }
 
+    class MultiVMWorkload {
+        <<interface>>
+        +Roles() []string
+        +UserdataForRole(role, namespace) (string, error)
+    }
+
     class BaseWorkload {
         +Config WorkloadConfig
         +SSHUser string
@@ -267,43 +273,80 @@ classDiagram
     class CPUWorkload {
         +Name() "cpu"
         +CloudInitUserdata() stress-ng --cpu config
-        +VMResources() cpu/memory from config
     }
 
     class MemoryWorkload {
         +Name() "memory"
         +CloudInitUserdata() stress-ng --vm config
-        +VMResources() cpu/memory from config
-    }
-
-    class DatabaseWorkload {
-        +Name() "database"
-        +CloudInitUserdata() postgresql + pgbench
-        +DataVolumeTemplates() blank DV for /var/lib/pgsql/data
-    }
-
-    class NetworkWorkload {
-        +Namespace string
-        +Name() "network"
-        +VMCount() count * 2 (server+client pairs)
-        +RequiresService() true
-        +ServerUserdata() iperf3 -s
-        +ClientUserdata() iperf3 -c
-        +ServiceSpec() ClusterIP for server
     }
 
     class DiskWorkload {
         +Name() "disk"
         +CloudInitUserdata() fio profiles
         +DataVolumeTemplates() blank DV for /mnt/data
+        +ExtraDisks() data disk with virtio Serial
     }
 
+    class DatabaseWorkload {
+        +Name() "database"
+        +CloudInitUserdata() postgresql + pgbench
+        +DataVolumeTemplates() blank DV for /var/lib/pgsql/data
+        +ExtraDisks() data disk with virtio Serial
+    }
+
+    class NetworkWorkload {
+        +Namespace string
+        +Name() "network"
+        +VMCount() count * 2
+        +Roles() ["server", "client"]
+        +UserdataForRole(role, ns) iperf3 server or client
+        +RequiresService() true
+        +ServiceSpec() ClusterIP virtwork-iperf3-server :5201
+    }
+
+    class TPSWorkload {
+        +Namespace string
+        +Name() "tps"
+        +VMCount() count * 2
+        +Roles() ["server", "client"]
+        +UserdataForRole(role, ns) netperf + HTTP server / client loop
+        +RequiresService() true
+        +ServiceSpec() ClusterIP virtwork-tps-server :12865/:12866/:8080
+        +Params file-size, iterations, duration
+    }
+
+    class ChaosDiskWorkload {
+        +Name() "chaos-disk"
+        +CloudInitUserdata() fallocate fill / rm release loop
+        +DataVolumeTemplates() blank DV for /mnt/data
+        +ExtraDisks() data disk with virtio Serial
+    }
+
+    class ChaosNetworkWorkload {
+        +Latency int (ms)
+        +PacketLoss float64 (%)
+        +Name() "chaos-network"
+        +CloudInitUserdata() tc qdisc netem delay + loss
+    }
+
+    class ChaosProcessWorkload {
+        +Name() "chaos-process"
+        +CloudInitUserdata() random kill loop with excluded patterns
+    }
+
+    Workload <|-- MultiVMWorkload
     Workload <|.. BaseWorkload
     BaseWorkload <|-- CPUWorkload
     BaseWorkload <|-- MemoryWorkload
+    BaseWorkload <|-- DiskWorkload
     BaseWorkload <|-- DatabaseWorkload
     BaseWorkload <|-- NetworkWorkload
-    BaseWorkload <|-- DiskWorkload
+    BaseWorkload <|-- TPSWorkload
+    BaseWorkload <|-- ChaosDiskWorkload
+    BaseWorkload <|-- ChaosNetworkWorkload
+    BaseWorkload <|-- ChaosProcessWorkload
+    MultiVMWorkload <|.. NetworkWorkload
+    MultiVMWorkload <|.. TPSWorkload
 ```
 
 `BaseWorkload` is an embedded struct that provides default implementations for optional interface methods. Concrete workloads embed `BaseWorkload` and override only the methods they need — idiomatic Go composition over inheritance.
