@@ -1,5 +1,17 @@
 # Virtwork Implementation Plan
 
+> **Historical snapshot — original phased build (phases 0–12).**
+>
+> This document describes the original incremental plan executed to build virtwork through phase 12. It is preserved as a record of the layered design and as context for why packages are organized the way they are. **Subsequent additions are not reflected here.** For the current state, see:
+>
+> - Chaos workloads (chaos-disk, chaos-network, chaos-process) → [chaos-workloads.md](chaos-workloads.md)
+> - TPS workload → [architecture.md](architecture.md) and [guide/02-deploying-workloads.md](guide/02-deploying-workloads.md)
+> - Structured logging (`internal/logging`) → [architecture.md](architecture.md) and [development.md](development.md)
+> - Golden container disk image → [../build/golden-image/README.md](../build/golden-image/README.md)
+> - Audit schema (5 tables) → [audit-schema.md](audit-schema.md)
+> - Complete configuration reference → [configuration.md](configuration.md)
+> - OpenShift deployment deep-dive → [deployment.md](deployment.md)
+
 This document breaks the [design plan](openshift-virtualization-workload-automation.md) into incremental phases. Each phase produces a testable, committable increment that builds on the previous one. See [architecture.md](architecture.md) for the high-level architecture and diagrams.
 
 ---
