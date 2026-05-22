@@ -200,20 +200,25 @@ This creates 3 VMs, 3 cloud-init secrets, and 0 services:
 virtwork run
 ```
 
-With no `--workloads` flag, all workload types deploy. This creates **8 VMs** total — the network and tps workloads each create server/client pairs:
+With no `--workloads` flag, all nine workload types deploy. This creates **11 VMs** total — seven single-VM workloads plus the network and tps workloads, which each create a server/client pair:
 
 | VM Name | Workload | Role |
 |---------|----------|------|
 | `virtwork-cpu-0` | CPU | — |
-| `virtwork-database-0` | Database | — |
-| `virtwork-disk-0` | Disk | — |
 | `virtwork-memory-0` | Memory | — |
+| `virtwork-disk-0` | Disk | — |
+| `virtwork-database-0` | Database | — |
 | `virtwork-network-server-0` | Network | server |
 | `virtwork-network-client-0` | Network | client |
 | `virtwork-tps-server-0` | TPS | server |
 | `virtwork-tps-client-0` | TPS | client |
+| `virtwork-chaos-disk-0` | Chaos-disk | — |
+| `virtwork-chaos-network-0` | Chaos-network | — |
+| `virtwork-chaos-process-0` | Chaos-process | — |
 
-The network workload creates a `virtwork-iperf3-server` ClusterIP Service on port 5201. The tps workload creates a `virtwork-tps-server` ClusterIP Service on ports 12865 (netperf control), 12866 (netperf data), and 8080 (HTTP file transfer).
+The network workload creates a `virtwork-iperf3-server` ClusterIP Service on port 5201. The tps workload creates a `virtwork-tps-server` ClusterIP Service on ports 12865 (netperf control), 12866 (netperf data), and 8080 (HTTP file transfer). The chaos workloads do not create Services — their behavior is confined to the VM they run in.
+
+> ⚠️ The chaos workloads inject destructive behavior inside their VMs (disk fill, network latency/loss, random process kills). They are safe to run in an isolated namespace but should never share a namespace with workloads you care about. See [chaos-workloads.md](../chaos-workloads.md) for operational guidance.
 
 ### Scaling up
 
@@ -435,6 +440,71 @@ Set the `VIRTWORK_COMMAND` and `VIRTWORK_ARGS` environment variables in the Depl
 oc set env deploy/virtwork VIRTWORK_COMMAND=run VIRTWORK_ARGS="--workloads cpu,memory --vm-count 2"
 ```
 
+See [deployment.md](../deployment.md) for a manifest-by-manifest deep dive on the Kustomize layout.
+
+---
+
+## Scenario 8: Inject Network Chaos
+
+The chaos-network workload uses `tc` and `netem` to add latency and packet loss to the VM's egress interface — useful for testing how an application or monitoring stack reacts to a degraded network.
+
+```bash
+virtwork run --workloads chaos-network --ssh-user virtwork --ssh-key-file ~/.ssh/id_ed25519.pub
+```
+
+After the VM is ready, SSH in and confirm the qdisc is applied:
+
+```bash
+virtctl ssh --ssh-key ~/.ssh/id_ed25519 virtwork@virtwork-chaos-network-0 -n virtwork
+
+# Inside the VM:
+tc qdisc show dev eth0
+```
+
+You should see a `netem` qdisc with `delay 100ms` and `loss 5%` on the default-route interface. Verify with a ping to a known host:
+
+```bash
+ping -c 5 1.1.1.1
+```
+
+Expect ~100ms RTT and occasional packet loss in the output. The qdisc is managed by the `virtwork-chaos-network.service` systemd unit, so it will be reapplied on reboot.
+
+For chaos-disk and chaos-process, plus the full risk model, see [chaos-workloads.md](../chaos-workloads.md).
+
+---
+
+## Scenario 9: Transaction Performance with tps
+
+The tps workload measures transactions per second using two complementary tests on a server/client pair: `netperf TCP_RR` (small-packet round-trips at the transport layer) and an HTTP file-transfer loop (larger transfers at the application layer).
+
+```bash
+virtwork run --workloads tps --ssh-user virtwork --ssh-key-file ~/.ssh/id_ed25519.pub
+```
+
+Two VMs are created — `virtwork-tps-server-0` (runs `netserver` and a Python HTTP server) and `virtwork-tps-client-0` (loops through netperf and curl tests against the server's Service DNS name) — plus the `virtwork-tps-server` ClusterIP Service on ports 12865, 12866, and 8080.
+
+Watch the client's output:
+
+```bash
+virtctl ssh --ssh-key ~/.ssh/id_ed25519 virtwork@virtwork-tps-client-0 -n virtwork
+
+# Inside the VM:
+journalctl -u virtwork-tps.service -f
+```
+
+You will see alternating TCP_RR iteration blocks (transactions/sec) and HTTP iteration blocks (transfers/sec, MB/s).
+
+The defaults are 30 iterations × 60 seconds each, 10MB transfer file. To customize, set `workloads.tps.params` in a YAML config:
+
+```yaml
+workloads:
+  tps:
+    params:
+      file-size: "50M"
+      iterations: "10"
+      duration: "30"
+```
+
 ---
 
 ## Troubleshooting
@@ -446,4 +516,5 @@ oc set env deploy/virtwork VIRTWORK_COMMAND=run VIRTWORK_ARGS="--workloads cpu,m
 | VMs stuck in `Provisioning` | CDI not installed or no default StorageClass | Install the OpenShift Virtualization operator and ensure a default StorageClass exists |
 | Timeout waiting for readiness | Slow image pull or boot | Increase `--timeout` (default is 600s), or use `--no-wait` and check manually |
 | Cloud-init failed inside VM | Package install failure or script error | SSH in and check `/var/log/cloud-init-output.log` |
-| `unknown workload` error | Typo in `--workloads` | Available workloads: `cpu`, `database`, `disk`, `memory`, `network`, `tps` |
+| chaos-network: `tc` does nothing inside the VM | `sch_netem` kernel module not loaded | Confirm the VM image has `iproute-tc` and `kernel-modules-extra` available; check `journalctl -u virtwork-chaos-network.service` |
+| `unknown workload` error | Typo in `--workloads` | Available workloads: `cpu`, `memory`, `disk`, `database`, `network`, `tps`, `chaos-disk`, `chaos-network`, `chaos-process` |
