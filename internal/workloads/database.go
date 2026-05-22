@@ -22,11 +22,27 @@ if [ -f "${MARKER}" ]; then
     exit 0
 fi
 
+# Discover the data disk by virtio serial
+DISK="/dev/disk/by-id/virtio-virtwork-dbdisk"
+for i in $(seq 1 30); do
+    [ -e "${DISK}" ] && break
+    sleep 1
+done
+if [ ! -e "${DISK}" ]; then
+    echo "ERROR: disk ${DISK} not found after 30s" >&2
+    exit 1
+fi
+REAL_DEV=$(readlink -f "${DISK}")
+
 # Format and mount the data disk
 if ! mountpoint -q "${DATA_DIR}"; then
-    mkfs.xfs /dev/vdc
-    mount /dev/vdc "${DATA_DIR}"
-    echo '/dev/vdc /var/lib/pgsql/data xfs defaults 0 0' >> /etc/fstab
+    if ! blkid -o value -s TYPE "${REAL_DEV}" > /dev/null 2>&1; then
+        mkfs.xfs "${REAL_DEV}"
+    fi
+    mount "${REAL_DEV}" "${DATA_DIR}"
+    if ! grep -q "${DATA_DIR}" /etc/fstab; then
+        echo "${REAL_DEV} ${DATA_DIR} xfs defaults,nofail 0 0" >> /etc/fstab
+    fi
 fi
 
 # Set ownership for postgres user
@@ -136,7 +152,8 @@ func (w *DatabaseWorkload) DataVolumeTemplates() []kubevirtv1.DataVolumeTemplate
 func (w *DatabaseWorkload) ExtraDisks() []kubevirtv1.Disk {
 	return []kubevirtv1.Disk{
 		{
-			Name: "datadisk",
+			Name:   "datadisk",
+			Serial: "virtwork-dbdisk",
 			DiskDevice: kubevirtv1.DiskDevice{
 				Disk: &kubevirtv1.DiskTarget{
 					Bus: "virtio",

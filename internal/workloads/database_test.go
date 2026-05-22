@@ -51,7 +51,7 @@ var _ = Describe("DatabaseWorkload", func() {
 		Expect(paths).To(ContainElement("/usr/local/bin/virtwork-db-setup.sh"))
 	})
 
-	It("should include setup script with initdb and pgbench init", func() {
+	It("should include setup script with serial discovery and initdb", func() {
 		result, err := w.CloudInitUserdata()
 		Expect(err).NotTo(HaveOccurred())
 
@@ -67,6 +67,7 @@ var _ = Describe("DatabaseWorkload", func() {
 			}
 		}
 		Expect(setupContent).NotTo(BeEmpty())
+		Expect(setupContent).To(ContainSubstring("virtio-virtwork-dbdisk"))
 		Expect(setupContent).To(ContainSubstring("postgresql-setup --initdb"))
 		Expect(setupContent).To(ContainSubstring("pgbench"))
 		Expect(setupContent).To(ContainSubstring("scale"))
@@ -142,10 +143,11 @@ var _ = Describe("DatabaseWorkload", func() {
 		Expect(dvts[0].Name).To(Equal("virtwork-database-data"))
 	})
 
-	It("should have extra disk for data volume", func() {
+	It("should have extra disk for data volume with serial", func() {
 		disks := w.ExtraDisks()
 		Expect(disks).To(HaveLen(1))
 		Expect(disks[0].Name).To(Equal("datadisk"))
+		Expect(disks[0].Serial).To(Equal("virtwork-dbdisk"))
 
 		volumes := w.ExtraVolumes()
 		Expect(volumes).To(HaveLen(1))

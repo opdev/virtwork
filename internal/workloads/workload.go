@@ -4,6 +4,8 @@
 package workloads
 
 import (
+	"fmt"
+
 	corev1 "k8s.io/api/core/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
@@ -114,6 +116,46 @@ func (b *BaseWorkload) VMCount() int {
 		return 1
 	}
 	return b.Config.VMCount
+}
+
+func diskSetupScript(serial, mountPoint string) string {
+	return fmt.Sprintf(`#!/bin/bash
+set -euo pipefail
+
+DISK="/dev/disk/by-id/virtio-%s"
+MOUNT_POINT="%s"
+
+# Wait for the disk symlink to appear (udev may be slow)
+for i in $(seq 1 30); do
+    [ -e "${DISK}" ] && break
+    sleep 1
+done
+
+if [ ! -e "${DISK}" ]; then
+    echo "ERROR: disk ${DISK} not found after 30s" >&2
+    exit 1
+fi
+
+# Resolve the symlink to the real block device
+REAL_DEV=$(readlink -f "${DISK}")
+
+mkdir -p "${MOUNT_POINT}"
+
+# Format only if no filesystem exists
+if ! blkid -o value -s TYPE "${REAL_DEV}" > /dev/null 2>&1; then
+    mkfs.xfs "${REAL_DEV}"
+fi
+
+# Mount if not already mounted
+if ! mountpoint -q "${MOUNT_POINT}"; then
+    mount "${REAL_DEV}" "${MOUNT_POINT}"
+fi
+
+# Ensure fstab entry for persistence across reboots
+if ! grep -q "${MOUNT_POINT}" /etc/fstab; then
+    echo "${REAL_DEV} ${MOUNT_POINT} xfs defaults,nofail 0 0" >> /etc/fstab
+fi
+`, serial, mountPoint)
 }
 
 // BuildCloudConfig injects SSH credentials into the given options and delegates
