@@ -31,7 +31,7 @@ graph TD
         NET["internal/workloads/network.go\niperf3 server/client"]
         TPS["internal/workloads/tps.go\nnetperf TCP_RR + HTTP"]
         CDISK["internal/workloads/chaos_disk.go\nfill/release loop"]
-        CNET["internal/workloads/chaos-network.go\ntc/netem latency + loss"]
+        CNET["internal/workloads/chaos_network.go\ntc/netem latency + loss"]
         CPROC["internal/workloads/chaos_process.go\nrandom signal killer"]
     end
 
@@ -523,7 +523,7 @@ virtwork/
 │   │   ├── network.go             # iperf3 server/client pair (MultiVMWorkload)
 │   │   ├── tps.go                 # netperf TCP_RR + HTTP file transfer (MultiVMWorkload)
 │   │   ├── chaos_disk.go          # Fill-and-release disk pressure loop
-│   │   ├── chaos-network.go       # tc/netem latency + loss injection
+│   │   ├── chaos_network.go       # tc/netem latency + loss injection
 │   │   └── chaos_process.go       # Random kill loop with excluded process patterns
 │   └── testutil/
 │       ├── testutil.go            # Shared test helpers (namespace, connect, cleanup)

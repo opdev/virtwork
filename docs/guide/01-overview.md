@@ -269,7 +269,7 @@ If you want to dig deeper into how each component works:
 
 | I want to understand... | Look at... |
 |------------------------|------------|
-| How workloads define themselves | `internal/workloads/` — `Workload` and `MultiVMWorkload` interfaces in `workload.go`; implementations in `cpu.go`, `memory.go`, `disk.go`, `database.go`, `network.go`, `tps.go`, `chaos_disk.go`, `chaos-network.go`, `chaos_process.go` |
+| How workloads define themselves | `internal/workloads/` — `Workload` and `MultiVMWorkload` interfaces in `workload.go`; implementations in `cpu.go`, `memory.go`, `disk.go`, `database.go`, `network.go`, `tps.go`, `chaos_disk.go`, `chaos_network.go`, `chaos_process.go` |
 | The `diskSetupScript` helper for storage-backed workloads | `internal/workloads/workload.go` — generates the wait/format/mount/fstab script for `/dev/disk/by-id/virtio-<serial>` |
 | How VMs are built from workload data | `internal/vm/vm.go` — `BuildVMSpec()` and `CreateVM()` |
 | The CLI orchestration flow | `cmd/virtwork/main.go` — `runE()` and `cleanupE()`, including `namespaceDataVolumes` for per-VM DV naming |
