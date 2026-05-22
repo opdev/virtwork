@@ -421,20 +421,28 @@ internal/           # Application packages (not importable externally)
   config/           # Config struct, Viper priority chain
   cluster/          # controller-runtime client init + scheme
   cloudinit/        # Cloud-config YAML builder
+  logging/          # Structured slog logger (verbose -> DEBUG)
   vm/               # VM spec construction + typed CRUD + retry
   resources/        # Namespace + Service + Secret helpers
   wait/             # VMI readiness polling (errgroup)
   cleanup/          # Label-based teardown (VMs, Services, Secrets)
   audit/            # SQLite audit tracking (Auditor interface, schema, records)
-  workloads/        # Workload interface, 5 implementations, registry
+  workloads/        # Workload + MultiVMWorkload interfaces, nine implementations, registry
   testutil/         # Shared test helpers for integration and E2E tests
 tests/              # Tests requiring external infrastructure
   e2e/              # E2E acceptance tests (//go:build e2e)
+build/
+  golden-image/     # Optional Fedora container disk with pre-installed tools
+deploy/             # Kustomize manifests for OpenShift deployment
 docs/               # Documentation
+  README.md         # Documentation index
   architecture.md   # Layered architecture and mermaid diagrams
-  implementation-plan.md  # Phased build plan
   development.md    # This file
-  engineering-journals/   # Per-phase development journals
+  configuration.md  # Complete configuration reference
+  deployment.md     # OpenShift deployment deep-dive
+  audit-schema.md   # SQLite audit schema reference
+  chaos-workloads.md  # Chaos engineering workload guide
+  guide/            # Hands-on guides (overview, deploying, adding workloads)
 ```
 
 ## Architecture Layers
@@ -444,7 +452,7 @@ The codebase follows a strict layered architecture where each layer depends only
 | Layer | Packages | Goroutines | Purpose |
 |-------|----------|------------|---------|
 | 0 | `constants` | No | Pure values — API coordinates, labels, defaults |
-| 1 | `config`, `cloudinit`, `cluster` | No | Configuration, cloud-init YAML, K8s client init |
+| 1 | `config`, `cloudinit`, `cluster`, `logging` | No | Configuration, cloud-init YAML, K8s client init, structured logging |
 | 2 | `vm`, `resources`, `wait` | Yes | K8s CRUD operations with retry, readiness polling |
 | 3 | `workloads` | No | Pure data producers — cloud-init specs, resource structs |
 | 4 | `cmd/virtwork`, `cleanup`, `audit` | Yes | Orchestration, teardown, and audit tracking |
@@ -531,17 +539,21 @@ func (w *MyWorkload) UserdataForRole(role string, namespace string) (string, err
 
 ### 3. Register the Workload
 
-Add the constructor to `internal/workloads/registry.go`:
+Add the constructor to `internal/workloads/registry.go`. `DefaultRegistry()` currently has nine entries; add yours alongside:
 
 ```go
 func DefaultRegistry() Registry {
     return Registry{
-        "cpu":         func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewCPUWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
-        "memory":      func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewMemoryWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
-        "database":    func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewDatabaseWorkload(cfg, opts.DataDiskSize, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
-        "network":     func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewNetworkWorkload(cfg, opts.Namespace, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
-        "disk":        func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewDiskWorkload(cfg, opts.DataDiskSize, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
-        "my-workload": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewMyWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
+        "cpu":           func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewCPUWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
+        "memory":        func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewMemoryWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
+        "disk":          func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewDiskWorkload(cfg, opts.DataDiskSize, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
+        "database":      func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewDatabaseWorkload(cfg, opts.DataDiskSize, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
+        "network":       func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewNetworkWorkload(cfg, opts.Namespace, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
+        "tps":           func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewTPSWorkload(cfg, opts.Namespace, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
+        "chaos-disk":    func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewChaosDiskWorkload(cfg, opts.DataDiskSize, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
+        "chaos-network": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewChaosNetworkWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
+        "chaos-process": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewChaosProcessWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
+        "my-workload":   func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewMyWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
     }
 }
 ```
@@ -550,6 +562,55 @@ func DefaultRegistry() Registry {
 - Registry tests will fail (entry count, name list assertions)
 - Orchestration BDD tests will fail (total VM count assertions)
 - Update both before considering the feature complete
+
+### Going Further: Multi-VM Workloads
+
+If your workload needs more than one role of VM (e.g., a server and a client), implement the `MultiVMWorkload` interface in addition to `Workload`:
+
+```go
+// In internal/workloads/workload.go
+type MultiVMWorkload interface {
+    Workload
+    Roles() []string
+    UserdataForRole(role string, namespace string) (string, error)
+}
+```
+
+Pattern:
+
+1. Embed `BaseWorkload` and store any per-workload state (e.g., a `Namespace` field for in-cluster DNS).
+2. Override `VMCount()` to return `count * len(Roles())` so the orchestrator creates the right number of VMs per role.
+3. Override `Roles()` to return the role names (e.g., `[]string{"server", "client"}`).
+4. Override `UserdataForRole(role, namespace)` to return role-specific cloud-init. The default `CloudInitUserdata()` typically delegates to `UserdataForRole("server", namespace)`.
+5. Set `RequiresService()` to `true` and provide a `ServiceSpec()` selecting server VMs by the `virtwork/role: server` label that the orchestrator applies automatically.
+6. Clients reach servers via the in-cluster DNS name `<service-name>.<namespace>.svc.cluster.local` — never poll for pod IPs.
+
+The canonical references are `internal/workloads/network.go` (simplest — one port, iperf3) and `internal/workloads/tps.go` (multi-port Service with configurable `Params` for `file-size`, `iterations`, `duration`).
+
+### Going Further: Storage-Backed Workloads
+
+If your workload needs persistent storage inside the VM:
+
+1. Override `DataVolumeTemplates()` to return a CDI `DataVolume` for each volume needed. Use `vm.BuildDataVolumeTemplate(name, size)` from `internal/vm`.
+2. Override `ExtraVolumes()` and `ExtraDisks()` to wire the DataVolume into the VM. **Always set the `Serial` field on the `Disk`** — the in-VM script discovers the device through `/dev/disk/by-id/virtio-<serial>`, which is deterministic across reboots (unlike `/dev/vdX`, which is not).
+3. In your cloud-init userdata, write the shared `diskSetupScript(serial, mountPoint)` helper (from `internal/workloads/workload.go`) as the first script. It waits for the symlink, formats with XFS if empty, mounts, and writes `/etc/fstab` for persistence across reboots.
+4. The orchestrator's `namespaceDataVolumes` helper automatically suffixes DV template names with the VM name to avoid collisions across multiple VMs of the same workload. Your template name should be the un-suffixed base (e.g., `virtwork-chaos-disk-data`).
+
+Reference workloads: `disk.go` (single fio mount), `database.go` (PostgreSQL data dir), `chaos_disk.go` (fill/release loop). All three follow the same pattern.
+
+### Going Further: Structured Logging
+
+The `internal/logging` package provides a shared `*slog.Logger` returned by `NewLogger(w io.Writer, verbose bool)`. Use it instead of `fmt.Fprintf` or `log.Printf` in any code path under `cmd/` or in packages that perform I/O (`internal/wait` is the current example):
+
+```go
+logger := logging.NewLogger(cmd.OutOrStdout(), verbose)
+logger.Info("vm created",
+    slog.String("vm_name", name),
+    slog.String("namespace", ns),
+    slog.String("workload", component))
+```
+
+The output is JSON. `--verbose` flips the level from `INFO` to `DEBUG`. Workload constructors and the pure data layer (`internal/workloads`, `internal/cloudinit`) should not log — they remain pure data producers.
 
 ### 4. Write Tests
 
@@ -733,6 +794,19 @@ This project uses [Conventional Commits](https://www.conventionalcommits.org/):
 | `docs:` | Documentation only |
 | `refactor:` | Code restructuring without behavior change |
 | `chore:` | Build, tooling, or maintenance |
+
+Every commit must include a DCO `Signed-off-by` trailer matching the author's identity; a `commit-msg` hook enforces this.
+
+---
+
+## Related Documentation
+
+- [architecture.md](architecture.md) — Layered architecture, mermaid diagrams, key design decisions
+- [configuration.md](configuration.md) — Complete config reference (flags, env vars, YAML keys, ConfigMap)
+- [audit-schema.md](audit-schema.md) — SQLite schema for the audit database
+- [chaos-workloads.md](chaos-workloads.md) — Operator guide for chaos-disk, chaos-network, chaos-process
+- [deployment.md](deployment.md) — OpenShift deployment via Kustomize
+- [guide/03-adding-a-workload.md](guide/03-adding-a-workload.md) — TDD walkthrough that builds a new workload from scratch
 
 ## Idempotency and Safety
 
