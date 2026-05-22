@@ -23,11 +23,16 @@ graph TD
     subgraph "Layer 3 — Workload Definitions"
         REGISTRY["internal/workloads/registry.go\nregistry + lookup"]
         IFACE["internal/workloads/workload.go\nWorkload interface"]
+        MULTI["internal/workloads/workload.go\nMultiVMWorkload interface\n(Roles, UserdataForRole)"]
         CPU["internal/workloads/cpu.go\nstress-ng CPU"]
         MEM["internal/workloads/memory.go\nstress-ng VM memory"]
+        DISK["internal/workloads/disk.go\nfio profiles"]
         DB["internal/workloads/database.go\nPostgreSQL + pgbench"]
         NET["internal/workloads/network.go\niperf3 server/client"]
-        DISK["internal/workloads/disk.go\nfio profiles"]
+        TPS["internal/workloads/tps.go\nnetperf TCP_RR + HTTP"]
+        CDISK["internal/workloads/chaos_disk.go\nfill/release loop"]
+        CNET["internal/workloads/chaos-network.go\ntc/netem latency + loss"]
+        CPROC["internal/workloads/chaos_process.go\nrandom signal killer"]
     end
 
     subgraph "Layer 2 — K8s Abstractions"
@@ -40,6 +45,7 @@ graph TD
         CLUSTER["internal/cluster/cluster.go\ncontroller-runtime client init"]
         CONFIG["internal/config/config.go\nViper config"]
         CLOUDINIT["internal/cloudinit/cloudinit.go\ncloud-config YAML builder"]
+        LOGGING["internal/logging/logging.go\nstructured slog logger"]
     end
 
     subgraph "Layer 0 — Definitions"
@@ -54,6 +60,7 @@ graph TD
     CMD --> WAIT
     CMD --> CLEANUP
     CMD --> AUDIT
+    CMD --> LOGGING
 
     AUDIT --> CONFIG
     AUDIT --> CONST
@@ -64,15 +71,25 @@ graph TD
 
     REGISTRY --> CPU
     REGISTRY --> MEM
+    REGISTRY --> DISK
     REGISTRY --> DB
     REGISTRY --> NET
-    REGISTRY --> DISK
+    REGISTRY --> TPS
+    REGISTRY --> CDISK
+    REGISTRY --> CNET
+    REGISTRY --> CPROC
 
     CPU --> IFACE
     MEM --> IFACE
-    DB --> IFACE
-    NET --> IFACE
     DISK --> IFACE
+    DB --> IFACE
+    CDISK --> IFACE
+    CNET --> IFACE
+    CPROC --> IFACE
+
+    NET --> MULTI
+    TPS --> MULTI
+    MULTI --> IFACE
 
     VM --> CLUSTER
     VM --> CONST
@@ -83,6 +100,7 @@ graph TD
 
     WAIT --> CLUSTER
     WAIT --> CONST
+    WAIT --> LOGGING
 
     CLUSTER --> CONST
     CONFIG --> CONST
