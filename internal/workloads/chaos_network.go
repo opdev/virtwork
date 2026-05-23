@@ -49,8 +49,6 @@ WantedBy=multi-user.target
 // using tc (traffic control) and netem (network emulation).
 type ChaosNetworkWorkload struct {
 	BaseWorkload
-	Latency    int     // Latency in milliseconds (default: 100)
-	PacketLoss float64 // Packet loss percentage (default: 5.0)
 }
 
 // NewChaosNetworkWorkload creates a ChaosNetworkWorkload with the given configuration
@@ -60,12 +58,6 @@ func NewChaosNetworkWorkload(
 	sshUser, sshPassword string,
 	sshKeys []string,
 ) *ChaosNetworkWorkload {
-	latency := 100
-	packetLoss := 5.0
-
-	// Allow configuration via WorkloadConfig if needed in future
-	// For now, use sensible defaults as specified in the issue
-
 	return &ChaosNetworkWorkload{
 		BaseWorkload: BaseWorkload{
 			Config:            cfg,
@@ -73,9 +65,25 @@ func NewChaosNetworkWorkload(
 			SSHPassword:       sshPassword,
 			SSHAuthorizedKeys: sshKeys,
 		},
-		Latency:    latency,
-		PacketLoss: packetLoss,
 	}
+}
+
+func (w *ChaosNetworkWorkload) latencyMs() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["latency-ms"]; ok && val != "" {
+			return val
+		}
+	}
+	return "100"
+}
+
+func (w *ChaosNetworkWorkload) packetLossPercent() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["packet-loss-percent"]; ok && val != "" {
+			return val
+		}
+	}
+	return "5.0"
 }
 
 // Name returns "chaos-network".
@@ -87,8 +95,8 @@ func (w *ChaosNetworkWorkload) Name() string {
 // injection via systemd. Assumes iproute-tc is pre-installed (golden image dependency).
 func (w *ChaosNetworkWorkload) CloudInitUserdata() (string, error) {
 	startScript := fmt.Sprintf(chaosNetworkStartScript,
-		fmt.Sprintf("%d", w.Latency),
-		fmt.Sprintf("%.1f", w.PacketLoss))
+		w.latencyMs(),
+		w.packetLossPercent())
 
 	return w.BuildCloudConfig(CloudConfigOpts{
 		Packages: []string{"iproute-tc"},

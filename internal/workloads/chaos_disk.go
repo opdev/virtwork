@@ -4,20 +4,22 @@
 package workloads
 
 import (
+	"fmt"
+
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	"github.com/opdev/virtwork/internal/config"
 	"github.com/opdev/virtwork/internal/vm"
 )
 
-const chaosDiskScript = `#!/bin/bash
+const chaosDiskScriptTemplate = `#!/bin/bash
 set -euo pipefail
 
-MOUNT_POINT="${CHAOS_DISK_MOUNT:-/mnt/data}"
-FILL_PERCENT="${CHAOS_DISK_FILL_PERCENT:-90}"
+MOUNT_POINT="%s"
+FILL_PERCENT="%s"
 FILL_FILE="${MOUNT_POINT}/chaos-disk-fill"
-RELEASE_SLEEP="${CHAOS_DISK_RELEASE_SLEEP:-30}"
-FILL_SLEEP="${CHAOS_DISK_FILL_SLEEP:-60}"
+RELEASE_SLEEP="%s"
+FILL_SLEEP="%s"
 
 while true; do
     TOTAL_KB=$(df -k "${MOUNT_POINT}" | awk 'NR==2 {print $2}')
@@ -37,12 +39,16 @@ while true; do
 done
 `
 
-const chaosDiskSystemdUnit = `[Unit]
+const chaosDiskSystemdUnitTemplate = `[Unit]
 Description=Virtwork chaos-disk fill/release workload
 After=network.target local-fs.target
 
 [Service]
 Type=simple
+Environment="CHAOS_DISK_MOUNT=%s"
+Environment="CHAOS_DISK_FILL_PERCENT=%s"
+Environment="CHAOS_DISK_FILL_SLEEP=%s"
+Environment="CHAOS_DISK_RELEASE_SLEEP=%s"
 ExecStart=/usr/local/bin/chaos-disk.sh
 Restart=always
 RestartSec=10
@@ -76,6 +82,42 @@ func NewChaosDiskWorkload(
 	}
 }
 
+func (w *ChaosDiskWorkload) mount() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["mount"]; ok && val != "" {
+			return val
+		}
+	}
+	return "/mnt/data"
+}
+
+func (w *ChaosDiskWorkload) fillPercent() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["fill-percent"]; ok && val != "" {
+			return val
+		}
+	}
+	return "90"
+}
+
+func (w *ChaosDiskWorkload) fillSleep() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["fill-sleep"]; ok && val != "" {
+			return val
+		}
+	}
+	return "60"
+}
+
+func (w *ChaosDiskWorkload) releaseSleep() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["release-sleep"]; ok && val != "" {
+			return val
+		}
+	}
+	return "30"
+}
+
 // Name returns "chaos-disk".
 func (w *ChaosDiskWorkload) Name() string {
 	return "chaos-disk"
@@ -84,21 +126,33 @@ func (w *ChaosDiskWorkload) Name() string {
 // CloudInitUserdata returns cloud-init YAML that writes a fill/release script
 // and a systemd service that runs it in a loop.
 func (w *ChaosDiskWorkload) CloudInitUserdata() (string, error) {
+	mountPoint := w.mount()
+	script := fmt.Sprintf(chaosDiskScriptTemplate,
+		mountPoint,
+		w.fillPercent(),
+		w.releaseSleep(),
+		w.fillSleep())
+	unit := fmt.Sprintf(chaosDiskSystemdUnitTemplate,
+		mountPoint,
+		w.fillPercent(),
+		w.fillSleep(),
+		w.releaseSleep())
+
 	return w.BuildCloudConfig(CloudConfigOpts{
 		WriteFiles: []WriteFile{
 			{
 				Path:        "/usr/local/bin/virtwork-disk-setup.sh",
-				Content:     diskSetupScript("virtwork-chdisk", "/mnt/data"),
+				Content:     diskSetupScript("virtwork-chdisk", mountPoint),
 				Permissions: "0755",
 			},
 			{
 				Path:        "/usr/local/bin/chaos-disk.sh",
-				Content:     chaosDiskScript,
+				Content:     script,
 				Permissions: "0755",
 			},
 			{
 				Path:        "/etc/systemd/system/virtwork-chaos-disk.service",
-				Content:     chaosDiskSystemdUnit,
+				Content:     unit,
 				Permissions: "0644",
 			},
 		},

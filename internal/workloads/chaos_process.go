@@ -4,6 +4,8 @@
 package workloads
 
 import (
+	"fmt"
+
 	"github.com/opdev/virtwork/internal/config"
 )
 
@@ -103,15 +105,15 @@ main() {
 main "$@"
 `
 
-const chaosProcessSystemdUnit = `[Unit]
+const chaosProcessSystemdUnitTemplate = `[Unit]
 Description=Virtwork chaos-process workload
 After=network.target
 
 [Service]
 Type=simple
-Environment="CHAOS_SIGNAL=SIGTERM"
-Environment="CHAOS_INTERVAL=30"
-Environment="CHAOS_MIN_PID=1000"
+Environment="CHAOS_SIGNAL=%s"
+Environment="CHAOS_INTERVAL=%s"
+Environment="CHAOS_MIN_PID=%s"
 ExecStart=/usr/local/bin/chaos-process.sh
 Restart=always
 RestartSec=10
@@ -144,6 +146,33 @@ func NewChaosProcessWorkload(
 	}
 }
 
+func (w *ChaosProcessWorkload) signal() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["signal"]; ok && val != "" {
+			return val
+		}
+	}
+	return "SIGTERM"
+}
+
+func (w *ChaosProcessWorkload) interval() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["interval"]; ok && val != "" {
+			return val
+		}
+	}
+	return "30"
+}
+
+func (w *ChaosProcessWorkload) minPid() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["min-pid"]; ok && val != "" {
+			return val
+		}
+	}
+	return "1000"
+}
+
 // Name returns "chaos-process".
 func (w *ChaosProcessWorkload) Name() string {
 	return "chaos-process"
@@ -152,6 +181,11 @@ func (w *ChaosProcessWorkload) Name() string {
 // CloudInitUserdata returns cloud-init YAML that installs the chaos-process script
 // and runs it as a systemd service.
 func (w *ChaosProcessWorkload) CloudInitUserdata() (string, error) {
+	unit := fmt.Sprintf(chaosProcessSystemdUnitTemplate,
+		w.signal(),
+		w.interval(),
+		w.minPid())
+
 	return w.BuildCloudConfig(CloudConfigOpts{
 		Packages: []string{"procps-ng"},
 		WriteFiles: []WriteFile{
@@ -162,7 +196,7 @@ func (w *ChaosProcessWorkload) CloudInitUserdata() (string, error) {
 			},
 			{
 				Path:        "/etc/systemd/system/virtwork-chaos-process.service",
-				Content:     chaosProcessSystemdUnit,
+				Content:     unit,
 				Permissions: "0644",
 			},
 		},
