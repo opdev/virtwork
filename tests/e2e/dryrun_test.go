@@ -76,6 +76,6 @@ var _ = Describe("virtwork run --dry-run", func() {
 			"run", "--dry-run", "--workloads", "nonexistent")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(exitCode).NotTo(Equal(0))
-		Expect(stderr).To(ContainSubstring("unknown workload"))
+		Expect(stderr).To(ContainSubstring("workload not found"))
 	})
 })
