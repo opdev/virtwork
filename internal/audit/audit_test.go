@@ -412,6 +412,118 @@ var _ = Describe("SQLiteAuditor", func() {
 			Expect(sshAuth).To(Equal(0))
 		})
 	})
+
+	Describe("cluster context tracking", func() {
+		It("records cluster_context when provided", func() {
+			cfg := &config.Config{
+				Namespace:      "test-ns",
+				ClusterContext: "my-cluster-context",
+			}
+			execID, _, err := auditor.StartExecution(ctx, "run", cfg)
+			Expect(err).NotTo(HaveOccurred())
+
+			db := auditor.DB()
+			var clusterContext sql.NullString
+			err = db.QueryRow(`SELECT cluster_context FROM audit_log WHERE id = ?`, execID).Scan(&clusterContext)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(clusterContext.Valid).To(BeTrue())
+			Expect(clusterContext.String).To(Equal("my-cluster-context"))
+		})
+
+		It("sets cluster_context to NULL when empty", func() {
+			cfg := &config.Config{
+				Namespace:      "test-ns",
+				ClusterContext: "",
+			}
+			execID, _, err := auditor.StartExecution(ctx, "run", cfg)
+			Expect(err).NotTo(HaveOccurred())
+
+			db := auditor.DB()
+			var clusterContext sql.NullString
+			err = db.QueryRow(`SELECT cluster_context FROM audit_log WHERE id = ?`, execID).Scan(&clusterContext)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(clusterContext.Valid).To(BeFalse())
+		})
+
+		It("records 'in-cluster' context for in-cluster execution", func() {
+			cfg := &config.Config{
+				Namespace:      "test-ns",
+				ClusterContext: "in-cluster",
+			}
+			execID, _, err := auditor.StartExecution(ctx, "run", cfg)
+			Expect(err).NotTo(HaveOccurred())
+
+			db := auditor.DB()
+			var clusterContext string
+			err = db.QueryRow(`SELECT cluster_context FROM audit_log WHERE id = ?`, execID).Scan(&clusterContext)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(clusterContext).To(Equal("in-cluster"))
+		})
+	})
+
+	Describe("cleanup mode tracking", func() {
+		It("records cleanup_mode='all' for unfiltered cleanup", func() {
+			cfg := &config.Config{
+				Namespace:   "test-ns",
+				CleanupMode: "all",
+			}
+			execID, _, err := auditor.StartExecution(ctx, "cleanup", cfg)
+			Expect(err).NotTo(HaveOccurred())
+
+			db := auditor.DB()
+			var cleanupMode sql.NullString
+			err = db.QueryRow(`SELECT cleanup_mode FROM audit_log WHERE id = ?`, execID).Scan(&cleanupMode)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cleanupMode.Valid).To(BeTrue())
+			Expect(cleanupMode.String).To(Equal("all"))
+		})
+
+		It("records cleanup_mode='run-id' for filtered cleanup", func() {
+			cfg := &config.Config{
+				Namespace:   "test-ns",
+				CleanupMode: "run-id",
+			}
+			execID, _, err := auditor.StartExecution(ctx, "cleanup", cfg)
+			Expect(err).NotTo(HaveOccurred())
+
+			db := auditor.DB()
+			var cleanupMode string
+			err = db.QueryRow(`SELECT cleanup_mode FROM audit_log WHERE id = ?`, execID).Scan(&cleanupMode)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cleanupMode).To(Equal("run-id"))
+		})
+
+		It("records cleanup_mode='dry-run' for dry-run cleanup", func() {
+			cfg := &config.Config{
+				Namespace:   "test-ns",
+				CleanupMode: "dry-run",
+				DryRun:      true,
+			}
+			execID, _, err := auditor.StartExecution(ctx, "cleanup --dry-run", cfg)
+			Expect(err).NotTo(HaveOccurred())
+
+			db := auditor.DB()
+			var cleanupMode string
+			err = db.QueryRow(`SELECT cleanup_mode FROM audit_log WHERE id = ?`, execID).Scan(&cleanupMode)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cleanupMode).To(Equal("dry-run"))
+		})
+
+		It("sets cleanup_mode to NULL for run commands", func() {
+			cfg := &config.Config{
+				Namespace:   "test-ns",
+				CleanupMode: "",
+			}
+			execID, _, err := auditor.StartExecution(ctx, "run", cfg)
+			Expect(err).NotTo(HaveOccurred())
+
+			db := auditor.DB()
+			var cleanupMode sql.NullString
+			err = db.QueryRow(`SELECT cleanup_mode FROM audit_log WHERE id = ?`, execID).Scan(&cleanupMode)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cleanupMode.Valid).To(BeFalse())
+		})
+	})
 })
 
 var _ = Describe("NoOpAuditor", func() {

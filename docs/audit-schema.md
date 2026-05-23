@@ -48,7 +48,7 @@ erDiagram
         TEXT    memory
         INTEGER has_data_disk
         INTEGER requires_service
-        TEXT    status "pending | created | failed"
+        TEXT    status "pending | created"
     }
 
     vm_details {
@@ -97,7 +97,7 @@ erDiagram
 | `command` | TEXT NOT NULL | `run`, `dry-run`, `cleanup`, or `cleanup --dry-run` |
 | `status` | TEXT NOT NULL | `in_progress` initially, `success` or `failed` on completion |
 | `kubeconfig_path` | TEXT | Path used to connect (NULL when in-cluster) |
-| `cluster_context` | TEXT | Reserved — currently unused |
+| `cluster_context` | TEXT | Current kubeconfig context name; `in-cluster` when using service account; NULL for dry-run |
 | `namespace` | TEXT NOT NULL | Target namespace |
 | `container_disk_image` | TEXT | Configured boot image |
 | `default_cpu_cores` | INTEGER | Global `--cpu-cores` default |
@@ -108,7 +108,7 @@ erDiagram
 | `total_workload_count` | INTEGER | Number of workload types deployed |
 | `dry_run` | INTEGER NOT NULL | 0 or 1 |
 | `ssh_auth_configured` | INTEGER NOT NULL | 1 if any SSH credential was provided. **Credentials are never stored.** |
-| `cleanup_mode` | TEXT | Reserved — currently unused |
+| `cleanup_mode` | TEXT | Cleanup command only: `all` (no filter), `run-id` (specific run), `dry-run` (no deletion); NULL for run commands |
 | `wait_for_ready` | INTEGER NOT NULL | 0 or 1; reflects `--no-wait` inverted |
 | `ready_timeout_seconds` | INTEGER | Effective readiness timeout |
 | `vms_deleted` | INTEGER | Cleanup only: count from `CleanupResult` |
@@ -136,8 +136,6 @@ Indexes: `started_at`, `namespace`, `status`, `run_id`.
 | `data_disk_size` | TEXT | NULL when `has_data_disk = 0` |
 | `requires_service` | INTEGER NOT NULL | 1 for multi-VM workloads (network, tps) |
 | `status` | TEXT NOT NULL | `pending` → `created` (after VM create succeeds) → `failed` |
-| `started_at` | TEXT | Reserved — currently unset |
-| `completed_at` | TEXT | Reserved — currently unset |
 
 Indexes: `audit_id`, `workload_type`.
 
