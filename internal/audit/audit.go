@@ -108,14 +108,14 @@ func (a *SQLiteAuditor) StartExecution(ctx context.Context, cmd string, cfg *con
 
 	res, err := a.db.ExecContext(ctx, `
 		INSERT INTO audit_log (
-			run_id, command, status, kubeconfig_path, namespace,
+			run_id, command, status, kubeconfig_path, cluster_context, namespace,
 			container_disk_image, default_cpu_cores, default_memory, data_disk_size,
 			workloads_csv, dry_run, ssh_auth_configured, cleanup_mode,
 			wait_for_ready, ready_timeout_seconds, started_at
-		) VALUES (?, ?, 'in_progress', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		runID, cmd, cfg.KubeconfigPath, cfg.Namespace,
+		) VALUES (?, ?, 'in_progress', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		runID, cmd, nullIfEmpty(cfg.KubeconfigPath), nullIfEmpty(cfg.ClusterContext), cfg.Namespace,
 		cfg.ContainerDiskImage, cfg.CPUCores, cfg.Memory, cfg.DataDiskSize,
-		workloadsCSV, boolToInt(cfg.DryRun), boolToInt(sshConfigured), cfg.CleanupMode,
+		workloadsCSV, boolToInt(cfg.DryRun), boolToInt(sshConfigured), nullIfEmpty(cfg.CleanupMode),
 		boolToInt(cfg.WaitForReady), cfg.ReadyTimeoutSeconds, now(),
 	)
 	if err != nil {
@@ -173,10 +173,10 @@ func (a *SQLiteAuditor) RecordWorkload(ctx context.Context, executionID int64, w
 	res, err := a.db.ExecContext(ctx, `
 		INSERT INTO workload_details (
 			audit_id, workload_type, enabled, vm_count, cpu_cores, memory,
-			has_data_disk, data_disk_size, requires_service, status, started_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'created', ?)`,
+			has_data_disk, data_disk_size, requires_service, status
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
 		executionID, w.WorkloadType, boolToInt(w.Enabled), w.VMCount, w.CPUCores, w.Memory,
-		boolToInt(w.HasDataDisk), nullIfEmpty(w.DataDiskSize), boolToInt(w.RequiresService), now(),
+		boolToInt(w.HasDataDisk), nullIfEmpty(w.DataDiskSize), boolToInt(w.RequiresService),
 	)
 	if err != nil {
 		return 0, fmt.Errorf("inserting workload_details: %w", err)
@@ -186,8 +186,8 @@ func (a *SQLiteAuditor) RecordWorkload(ctx context.Context, executionID int64, w
 
 func (a *SQLiteAuditor) UpdateWorkloadStatus(ctx context.Context, id int64, status string) error {
 	_, err := a.db.ExecContext(ctx,
-		`UPDATE workload_details SET status = ?, completed_at = ? WHERE id = ?`,
-		status, now(), id)
+		`UPDATE workload_details SET status = ? WHERE id = ?`,
+		status, id)
 	return err
 }
 

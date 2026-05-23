@@ -30,25 +30,42 @@ func NewScheme() *runtime.Scheme {
 // in-cluster configuration; on failure it falls back to the kubeconfig at
 // the given path (checking the KUBECONFIG env var when the path is empty).
 // Both failures produce a wrapped error.
-func Connect(kubeconfigPath string) (client.Client, error) {
+func Connect(kubeconfigPath string) (client.Client, string, error) {
 	scheme := NewScheme()
 
+	var contextName string
 	if kubeconfigPath == "" {
 		kubeconfigPath = os.Getenv("KUBECONFIG")
 	}
 
 	restConfig, err := rest.InClusterConfig()
 	if err != nil {
-		restConfig, err = clientcmd.BuildConfigFromFlags("", kubeconfigPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build kubeconfig from %q: %w", kubeconfigPath, err)
+		// Not in-cluster, load from kubeconfig
+		loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+		if kubeconfigPath != "" {
+			loadingRules.ExplicitPath = kubeconfigPath
 		}
+		configOverrides := &clientcmd.ConfigOverrides{}
+		kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
+		restConfig, err = kubeConfig.ClientConfig()
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to build kubeconfig from %q: %w", kubeconfigPath, err)
+		}
+
+		// Get the current context name
+		rawConfig, err := kubeConfig.RawConfig()
+		if err == nil {
+			contextName = rawConfig.CurrentContext
+		}
+	} else {
+		// In-cluster - no context name
+		contextName = "in-cluster"
 	}
 
 	c, err := client.New(restConfig, client.Options{Scheme: scheme})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create controller-runtime client: %w", err)
+		return nil, "", fmt.Errorf("failed to create controller-runtime client: %w", err)
 	}
 
-	return c, nil
+	return c, contextName, nil
 }

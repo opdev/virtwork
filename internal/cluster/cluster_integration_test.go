@@ -26,13 +26,13 @@ func kubeconfigPath() string {
 
 var _ = Describe("Connect [integration]", func() {
 	It("should connect using the configured kubeconfig", func() {
-		c, err := cluster.Connect(kubeconfigPath())
+		c, _, err := cluster.Connect(kubeconfigPath())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(c).NotTo(BeNil())
 	})
 
 	It("should return a functional client that can list namespaces", func() {
-		c, err := cluster.Connect(kubeconfigPath())
+		c, _, err := cluster.Connect(kubeconfigPath())
 		Expect(err).NotTo(HaveOccurred())
 
 		nsList := &corev1.NamespaceList{}
@@ -42,7 +42,7 @@ var _ = Describe("Connect [integration]", func() {
 	})
 
 	It("should register KubeVirt types", func() {
-		c, err := cluster.Connect(kubeconfigPath())
+		c, _, err := cluster.Connect(kubeconfigPath())
 		Expect(err).NotTo(HaveOccurred())
 
 		// Listing VMs should not return a "no kind registered" error.
@@ -53,7 +53,7 @@ var _ = Describe("Connect [integration]", func() {
 	})
 
 	It("should return error for invalid kubeconfig path", func() {
-		_, err := cluster.Connect("/nonexistent/kubeconfig")
+		_, _, err := cluster.Connect("/nonexistent/kubeconfig")
 		Expect(err).To(HaveOccurred())
 	})
 })

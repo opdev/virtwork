@@ -66,7 +66,7 @@ func MustConnect(kubeconfigPath string) client.Client {
 	if kubeconfigPath == "" {
 		kubeconfigPath = os.Getenv("KUBECONFIG")
 	}
-	c, err := cluster.Connect(kubeconfigPath)
+	c, _, err := cluster.Connect(kubeconfigPath)
 	if err != nil {
 		panic(fmt.Sprintf("testutil.MustConnect: %v", err))
 	}

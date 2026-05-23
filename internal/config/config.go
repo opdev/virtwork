@@ -32,6 +32,7 @@ type Config struct {
 	Memory              string                    `mapstructure:"memory"`
 	Workloads           map[string]WorkloadConfig `mapstructure:"workloads"`
 	KubeconfigPath      string                    `mapstructure:"kubeconfig"`
+	ClusterContext      string                    // Runtime-only: current kubeconfig context
 	CleanupMode         string                    `mapstructure:"cleanup-mode"`
 	WaitForReady        bool                      `mapstructure:"wait-for-ready"`
 	ReadyTimeoutSeconds int                       `mapstructure:"timeout"`

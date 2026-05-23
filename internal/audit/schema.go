@@ -54,9 +54,7 @@ CREATE TABLE IF NOT EXISTS workload_details (
 	has_data_disk    INTEGER NOT NULL DEFAULT 0,
 	data_disk_size   TEXT,
 	requires_service INTEGER NOT NULL DEFAULT 0,
-	status           TEXT    NOT NULL DEFAULT 'pending',
-	started_at       TEXT,
-	completed_at     TEXT
+	status           TEXT    NOT NULL DEFAULT 'pending'
 );
 
 CREATE INDEX IF NOT EXISTS idx_workload_details_audit_id ON workload_details(audit_id);

@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	sigyaml "sigs.k8s.io/yaml"
 
 	"github.com/opdev/virtwork/internal/audit"
@@ -191,6 +192,17 @@ func runE(cmd *cobra.Command, args []string) error {
 	}()
 
 	ctx := context.Background()
+
+	// Connect to cluster early (unless dry-run) to capture context for audit
+	var c client.Client
+	if !cfg.DryRun {
+		var contextName string
+		c, contextName, err = cluster.Connect(cfg.KubeconfigPath)
+		if err != nil {
+			return fmt.Errorf("connecting to cluster: %w", err)
+		}
+		cfg.ClusterContext = contextName
+	}
 
 	// Start audit execution
 	cmdName := "run"
@@ -389,12 +401,6 @@ func runE(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Connect to cluster
-	c, err := cluster.Connect(cfg.KubeconfigPath)
-	if err != nil {
-		return fmt.Errorf("connecting to cluster: %w", err)
-	}
-
 	// Ensure namespace exists
 	if err := resources.EnsureNamespace(ctx, c, cfg.Namespace, map[string]string{
 		constants.LabelManagedBy: constants.ManagedByValue,
@@ -586,6 +592,26 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
+	// Get cleanup flags
+	deleteNS, _ := cmd.Flags().GetBool("delete-namespace")
+	targetRunID, _ := cmd.Flags().GetString("run-id")
+
+	// Set cleanup mode for audit
+	if cfg.DryRun {
+		cfg.CleanupMode = "dry-run"
+	} else if targetRunID != "" {
+		cfg.CleanupMode = "run-id"
+	} else {
+		cfg.CleanupMode = "all"
+	}
+
+	// Connect to cluster early to capture context for audit
+	c, contextName, err := cluster.Connect(cfg.KubeconfigPath)
+	if err != nil {
+		return fmt.Errorf("connecting to cluster: %w", err)
+	}
+	cfg.ClusterContext = contextName
+
 	// Start audit execution
 	cmdName := "cleanup"
 	if cfg.DryRun {
@@ -602,18 +628,10 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	deleteNS, _ := cmd.Flags().GetBool("delete-namespace")
-	targetRunID, _ := cmd.Flags().GetString("run-id")
-
 	_ = auditor.RecordEvent(ctx, execID, audit.EventRecord{
 		EventType: "cleanup_started",
 		Message:   fmt.Sprintf("Started %s: (namespace: %s, run-id filter: %q)", cmdName, cfg.Namespace, targetRunID),
 	})
-
-	c, err := cluster.Connect(cfg.KubeconfigPath)
-	if err != nil {
-		return fmt.Errorf("connecting to cluster: %w", err)
-	}
 
 	result, err := cleanup.CleanupAll(ctx, c, cfg, deleteNS, targetRunID)
 	if err != nil {

@@ -56,7 +56,7 @@ var _ = Describe("Connect", func() {
 			}
 		}()
 
-		_, err := cluster.Connect("/nonexistent/kubeconfig/path")
+		_, _, err := cluster.Connect("/nonexistent/kubeconfig/path")
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("kubeconfig"))
 	})
@@ -99,8 +99,9 @@ users:
 		}()
 
 		// Connect should succeed (client creation doesn't dial the server)
-		c, err := cluster.Connect(tmpFile.Name())
+		c, contextName, err := cluster.Connect(tmpFile.Name())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(c).NotTo(BeNil())
+		Expect(contextName).NotTo(BeEmpty())
 	})
 })
