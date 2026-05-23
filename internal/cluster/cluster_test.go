@@ -45,30 +45,58 @@ var _ = Describe("NewScheme", func() {
 	})
 })
 
-var _ = Describe("Connect", func() {
-	It("should return error when both in-cluster and kubeconfig fail", func() {
-		// Ensure we're not running in-cluster by unsetting the env var
-		origHost := os.Getenv("KUBERNETES_SERVICE_HOST")
-		_ = os.Unsetenv("KUBERNETES_SERVICE_HOST")
-		defer func() {
-			if origHost != "" {
-				_ = os.Setenv("KUBERNETES_SERVICE_HOST", origHost)
-			}
-		}()
+var _ = Describe("ResolveKubeconfigPath", func() {
+	var origKubeconfig string
+	var hadKubeconfig bool
 
-		_, _, err := cluster.Connect("/nonexistent/kubeconfig/path")
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("kubeconfig"))
+	BeforeEach(func() {
+		origKubeconfig, hadKubeconfig = os.LookupEnv("KUBECONFIG")
+		_ = os.Unsetenv("KUBECONFIG")
 	})
 
-	It("should use kubeconfig path when provided", func() {
-		// Create a minimal but invalid kubeconfig to confirm the path is used
+	AfterEach(func() {
+		if hadKubeconfig {
+			_ = os.Setenv("KUBECONFIG", origKubeconfig)
+		} else {
+			_ = os.Unsetenv("KUBECONFIG")
+		}
+	})
+
+	It("should return explicit path when provided", func() {
+		_ = os.Setenv("KUBECONFIG", "/from-env")
+		result := cluster.ResolveKubeconfigPath("/explicit/path")
+		Expect(result).To(Equal("/explicit/path"))
+	})
+
+	It("should fall back to KUBECONFIG env when explicit path is empty", func() {
+		_ = os.Setenv("KUBECONFIG", "/from-kubeconfig-env")
+		result := cluster.ResolveKubeconfigPath("")
+		Expect(result).To(Equal("/from-kubeconfig-env"))
+	})
+
+	It("should return empty when no explicit path and no KUBECONFIG", func() {
+		result := cluster.ResolveKubeconfigPath("")
+		Expect(result).To(BeEmpty())
+	})
+})
+
+var _ = Describe("Connect", func() {
+	// Helper to disable in-cluster detection for tests running outside a pod
+	disableInCluster := func() func() {
+		origHost, hadHost := os.LookupEnv("KUBERNETES_SERVICE_HOST")
+		_ = os.Unsetenv("KUBERNETES_SERVICE_HOST")
+		return func() {
+			if hadHost {
+				_ = os.Setenv("KUBERNETES_SERVICE_HOST", origHost)
+			} else {
+				_ = os.Unsetenv("KUBERNETES_SERVICE_HOST")
+			}
+		}
+	}
+
+	writeFakeKubeconfig := func(contextName string) string {
 		tmpFile, err := os.CreateTemp("", "kubeconfig-*.yaml")
 		Expect(err).NotTo(HaveOccurred())
-		defer func() {
-			_ = os.Remove(tmpFile.Name())
-		}()
-
 		_, err = tmpFile.WriteString(`apiVersion: v1
 kind: Config
 clusters:
@@ -79,8 +107,8 @@ contexts:
 - context:
     cluster: test
     user: test
-  name: test
-current-context: test
+  name: ` + contextName + `
+current-context: ` + contextName + `
 users:
 - name: test
   user:
@@ -88,20 +116,64 @@ users:
 `)
 		Expect(err).NotTo(HaveOccurred())
 		_ = tmpFile.Close()
+		return tmpFile.Name()
+	}
 
-		// Ensure we're not running in-cluster
-		origHost := os.Getenv("KUBERNETES_SERVICE_HOST")
-		_ = os.Unsetenv("KUBERNETES_SERVICE_HOST")
+	It("should return error when both in-cluster and kubeconfig fail", func() {
+		restore := disableInCluster()
+		defer restore()
+
+		_, _, err := cluster.Connect("/nonexistent/kubeconfig/path")
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("kubeconfig"))
+	})
+
+	It("should use explicit kubeconfig path when provided", func() {
+		restore := disableInCluster()
+		defer restore()
+
+		path := writeFakeKubeconfig("explicit-ctx")
+		defer func() { _ = os.Remove(path) }()
+
+		c, contextName, err := cluster.Connect(path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(c).NotTo(BeNil())
+		Expect(contextName).To(Equal("explicit-ctx"))
+	})
+
+	It("should skip in-cluster when explicit path is provided", func() {
+		path := writeFakeKubeconfig("explicit-over-incluster")
+		defer func() { _ = os.Remove(path) }()
+
+		c, contextName, err := cluster.Connect(path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(c).NotTo(BeNil())
+		Expect(contextName).To(Equal("explicit-over-incluster"))
+	})
+
+	It("should fall back to default rules when path is empty and not in-cluster", func() {
+		restore := disableInCluster()
+		defer restore()
+
+		origKubeconfig, had := os.LookupEnv("KUBECONFIG")
 		defer func() {
-			if origHost != "" {
-				_ = os.Setenv("KUBERNETES_SERVICE_HOST", origHost)
+			if had {
+				_ = os.Setenv("KUBECONFIG", origKubeconfig)
+			} else {
+				_ = os.Unsetenv("KUBECONFIG")
 			}
 		}()
 
-		// Connect should succeed (client creation doesn't dial the server)
-		c, contextName, err := cluster.Connect(tmpFile.Name())
+		path := writeFakeKubeconfig("default-rules-ctx")
+		defer func() { _ = os.Remove(path) }()
+		_ = os.Setenv("KUBECONFIG", path)
+
+		// ResolveKubeconfigPath("") would pick up KUBECONFIG, but
+		// Connect("") should use default loading rules which also
+		// check KUBECONFIG. Verify it works with an empty path.
+		c, contextName, err := cluster.Connect("")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(c).NotTo(BeNil())
-		Expect(contextName).NotTo(BeEmpty())
+		Expect(contextName).To(Equal("default-rules-ctx"))
 	})
 })
