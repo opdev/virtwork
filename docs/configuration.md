@@ -26,7 +26,7 @@ These apply to both `virtwork run` and `virtwork cleanup`.
 | Flag | Env Var | YAML Key | Default | Description |
 |---|---|---|---|---|
 | `--namespace` | `VIRTWORK_NAMESPACE` | `namespace` | `virtwork` | Kubernetes namespace for VMs and supporting resources |
-| `--kubeconfig` | `VIRTWORK_KUBECONFIG` | `kubeconfig` | _empty (in-cluster, then `~/.kube/config`)_ | Path to kubeconfig file |
+| `--kubeconfig` | `VIRTWORK_KUBECONFIG` | `kubeconfig` | _empty (in-cluster, then `~/.kube/config`)_ | Path to kubeconfig file (see [kubeconfig resolution](#kubeconfig-resolution)) |
 | `--config` | — | — | _empty_ | Path to a YAML config file to merge in |
 | `--verbose` | `VIRTWORK_VERBOSE` | `verbose` | `false` | Switch the logger from INFO to DEBUG |
 | `--audit` | `VIRTWORK_AUDIT` | `audit` | `true` | Enable SQLite audit tracking |
@@ -80,7 +80,7 @@ Global flags (`--namespace`, `--kubeconfig`, `--audit`, `--no-audit`, `--audit-d
 | `VIRTWORK_CPU_CORES` | int | `2` | flag-bound | Default per-VM CPU cores |
 | `VIRTWORK_DATA_DISK_SIZE` | string | `10Gi` | flag-bound | Default data disk size |
 | `VIRTWORK_DRY_RUN` | bool | `false` | flag-bound | Default for `--dry-run` |
-| `VIRTWORK_KUBECONFIG` | string | _empty_ | flag-bound | Kubeconfig path |
+| `VIRTWORK_KUBECONFIG` | string | _empty_ | flag-bound | Kubeconfig path (takes precedence over `KUBECONFIG`; see [kubeconfig resolution](#kubeconfig-resolution)) |
 | `VIRTWORK_MEMORY` | string | `2Gi` | flag-bound | Default per-VM memory |
 | `VIRTWORK_NAMESPACE` | string | `virtwork` | flag-bound | Target namespace |
 | `VIRTWORK_SSH_AUTHORIZED_KEYS` | string (csv) | _empty_ | env-only | Comma-separated SSH public keys |
@@ -254,6 +254,21 @@ flowchart TD
     YAML -->|3rd| MERGE
     DEF -->|4th| MERGE
 ```
+
+### Kubeconfig resolution
+
+The `kubeconfig` key has an additional resolution layer handled by `cluster.ResolveKubeconfigPath` before the connection is established:
+
+```
+--kubeconfig / VIRTWORK_KUBECONFIG  >  KUBECONFIG env var  >  in-cluster service-account  >  ~/.kube/config
+```
+
+1. **Explicit path** — `--kubeconfig` flag or `VIRTWORK_KUBECONFIG` env var (resolved via the standard Viper priority chain above). When set, in-cluster detection is skipped entirely.
+2. **`KUBECONFIG` env var** — the standard Kubernetes variable. Checked only when no explicit path is provided.
+3. **In-cluster service-account** — `rest.InClusterConfig()` is attempted only when *no* kubeconfig path is resolved from steps 1–2.
+4. **Default loading rules** — `~/.kube/config` (via `clientcmd` default loading rules) is the final fallback.
+
+This means setting `VIRTWORK_KUBECONFIG` in a CI/CD pipeline or ConfigMap will always win over `KUBECONFIG`, and any explicit path will bypass in-cluster detection — even when running inside a pod.
 
 How it works in code (`internal/config/config.go` → `LoadConfig`):
 
