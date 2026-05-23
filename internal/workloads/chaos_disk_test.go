@@ -192,4 +192,117 @@ var _ = Describe("ChaosDiskWorkload", func() {
 		Expect(cmdStrings).To(ContainElement(ContainSubstring("daemon-reload")))
 		Expect(cmdStrings).To(ContainElement(ContainSubstring("virtwork-chaos-disk.service")))
 	})
+
+	Context("param wiring", func() {
+		It("should use default param values when Params is nil", func() {
+			result, err := w.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+
+			var scriptContent, unitContent, setupContent string
+			for _, f := range files {
+				fm := f.(map[string]interface{})
+				switch fm["path"] {
+				case "/usr/local/bin/chaos-disk.sh":
+					scriptContent = fm["content"].(string)
+				case "/etc/systemd/system/virtwork-chaos-disk.service":
+					unitContent = fm["content"].(string)
+				case "/usr/local/bin/virtwork-disk-setup.sh":
+					setupContent = fm["content"].(string)
+				}
+			}
+
+			Expect(scriptContent).To(ContainSubstring(`MOUNT_POINT="/mnt/data"`))
+			Expect(scriptContent).To(ContainSubstring(`FILL_PERCENT="90"`))
+			Expect(scriptContent).To(ContainSubstring(`FILL_SLEEP="60"`))
+			Expect(scriptContent).To(ContainSubstring(`RELEASE_SLEEP="30"`))
+
+			Expect(unitContent).To(ContainSubstring("CHAOS_DISK_MOUNT=/mnt/data"))
+			Expect(unitContent).To(ContainSubstring("CHAOS_DISK_FILL_PERCENT=90"))
+			Expect(unitContent).To(ContainSubstring("CHAOS_DISK_FILL_SLEEP=60"))
+			Expect(unitContent).To(ContainSubstring("CHAOS_DISK_RELEASE_SLEEP=30"))
+
+			Expect(setupContent).To(ContainSubstring("/mnt/data"))
+		})
+
+		It("should wire custom params from WorkloadConfig.Params", func() {
+			custom := workloads.NewChaosDiskWorkload(config.WorkloadConfig{
+				Enabled:  true,
+				VMCount:  1,
+				CPUCores: 2,
+				Memory:   "2Gi",
+				Params: map[string]string{
+					"mount":         "/data",
+					"fill-percent":  "75",
+					"fill-sleep":    "120",
+					"release-sleep": "45",
+				},
+			}, "10Gi", "virtwork", "", nil)
+
+			result, err := custom.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+
+			var scriptContent, unitContent, setupContent string
+			for _, f := range files {
+				fm := f.(map[string]interface{})
+				switch fm["path"] {
+				case "/usr/local/bin/chaos-disk.sh":
+					scriptContent = fm["content"].(string)
+				case "/etc/systemd/system/virtwork-chaos-disk.service":
+					unitContent = fm["content"].(string)
+				case "/usr/local/bin/virtwork-disk-setup.sh":
+					setupContent = fm["content"].(string)
+				}
+			}
+
+			Expect(scriptContent).To(ContainSubstring(`MOUNT_POINT="/data"`))
+			Expect(scriptContent).To(ContainSubstring(`FILL_PERCENT="75"`))
+			Expect(scriptContent).To(ContainSubstring(`FILL_SLEEP="120"`))
+			Expect(scriptContent).To(ContainSubstring(`RELEASE_SLEEP="45"`))
+
+			Expect(unitContent).To(ContainSubstring("CHAOS_DISK_MOUNT=/data"))
+			Expect(unitContent).To(ContainSubstring("CHAOS_DISK_FILL_PERCENT=75"))
+			Expect(unitContent).To(ContainSubstring("CHAOS_DISK_FILL_SLEEP=120"))
+			Expect(unitContent).To(ContainSubstring("CHAOS_DISK_RELEASE_SLEEP=45"))
+
+			Expect(setupContent).To(ContainSubstring("/data"))
+		})
+
+		It("should use defaults for missing individual params", func() {
+			partial := workloads.NewChaosDiskWorkload(config.WorkloadConfig{
+				Enabled:  true,
+				VMCount:  1,
+				CPUCores: 2,
+				Memory:   "2Gi",
+				Params: map[string]string{
+					"fill-percent": "50",
+				},
+			}, "10Gi", "virtwork", "", nil)
+
+			result, err := partial.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+
+			var scriptContent string
+			for _, f := range files {
+				fm := f.(map[string]interface{})
+				if fm["path"] == "/usr/local/bin/chaos-disk.sh" {
+					scriptContent = fm["content"].(string)
+					break
+				}
+			}
+
+			Expect(scriptContent).To(ContainSubstring(`MOUNT_POINT="/mnt/data"`))
+			Expect(scriptContent).To(ContainSubstring(`FILL_PERCENT="50"`))
+			Expect(scriptContent).To(ContainSubstring(`FILL_SLEEP="60"`))
+			Expect(scriptContent).To(ContainSubstring(`RELEASE_SLEEP="30"`))
+		})
+	})
 })

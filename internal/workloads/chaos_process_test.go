@@ -153,4 +153,91 @@ var _ = Describe("ChaosProcessWorkload", func() {
 	It("should default to 1 VM", func() {
 		Expect(w.VMCount()).To(Equal(1))
 	})
+
+	Context("param wiring", func() {
+		It("should use default param values when Params is nil", func() {
+			result, err := w.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+
+			var unitContent string
+			for _, f := range files {
+				fm := f.(map[string]interface{})
+				if fm["path"] == "/etc/systemd/system/virtwork-chaos-process.service" {
+					unitContent = fm["content"].(string)
+					break
+				}
+			}
+
+			Expect(unitContent).To(ContainSubstring("CHAOS_SIGNAL=SIGTERM"))
+			Expect(unitContent).To(ContainSubstring("CHAOS_INTERVAL=30"))
+			Expect(unitContent).To(ContainSubstring("CHAOS_MIN_PID=1000"))
+		})
+
+		It("should wire custom params from WorkloadConfig.Params", func() {
+			custom := workloads.NewChaosProcessWorkload(config.WorkloadConfig{
+				Enabled:  true,
+				VMCount:  1,
+				CPUCores: 2,
+				Memory:   "2Gi",
+				Params: map[string]string{
+					"signal":   "SIGKILL",
+					"interval": "10",
+					"min-pid":  "500",
+				},
+			}, "virtwork", "", nil)
+
+			result, err := custom.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+
+			var unitContent string
+			for _, f := range files {
+				fm := f.(map[string]interface{})
+				if fm["path"] == "/etc/systemd/system/virtwork-chaos-process.service" {
+					unitContent = fm["content"].(string)
+					break
+				}
+			}
+
+			Expect(unitContent).To(ContainSubstring("CHAOS_SIGNAL=SIGKILL"))
+			Expect(unitContent).To(ContainSubstring("CHAOS_INTERVAL=10"))
+			Expect(unitContent).To(ContainSubstring("CHAOS_MIN_PID=500"))
+		})
+
+		It("should use defaults for missing individual params", func() {
+			partial := workloads.NewChaosProcessWorkload(config.WorkloadConfig{
+				Enabled:  true,
+				VMCount:  1,
+				CPUCores: 2,
+				Memory:   "2Gi",
+				Params: map[string]string{
+					"signal": "SIGUSR1",
+				},
+			}, "virtwork", "", nil)
+
+			result, err := partial.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+
+			var unitContent string
+			for _, f := range files {
+				fm := f.(map[string]interface{})
+				if fm["path"] == "/etc/systemd/system/virtwork-chaos-process.service" {
+					unitContent = fm["content"].(string)
+					break
+				}
+			}
+
+			Expect(unitContent).To(ContainSubstring("CHAOS_SIGNAL=SIGUSR1"))
+			Expect(unitContent).To(ContainSubstring("CHAOS_INTERVAL=30"))
+			Expect(unitContent).To(ContainSubstring("CHAOS_MIN_PID=1000"))
+		})
+	})
 })

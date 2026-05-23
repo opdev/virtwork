@@ -131,4 +131,87 @@ var _ = Describe("ChaosNetworkWorkload", func() {
 	It("should have VMCount of 1", func() {
 		Expect(w.VMCount()).To(Equal(1))
 	})
+
+	Context("param wiring", func() {
+		It("should use default param values when Params is nil", func() {
+			result, err := w.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+
+			var startScript string
+			for _, f := range files {
+				fm := f.(map[string]interface{})
+				if fm["path"] == "/usr/local/bin/virtwork-chaos-network-start.sh" {
+					startScript = fm["content"].(string)
+					break
+				}
+			}
+
+			Expect(startScript).To(ContainSubstring("delay 100ms"))
+			Expect(startScript).To(ContainSubstring("loss 5.0%"))
+		})
+
+		It("should wire custom params from WorkloadConfig.Params", func() {
+			custom := workloads.NewChaosNetworkWorkload(config.WorkloadConfig{
+				Enabled:  true,
+				VMCount:  1,
+				CPUCores: 1,
+				Memory:   "1Gi",
+				Params: map[string]string{
+					"latency-ms":          "200",
+					"packet-loss-percent": "10.5",
+				},
+			}, "virtwork", "", nil)
+
+			result, err := custom.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+
+			var startScript string
+			for _, f := range files {
+				fm := f.(map[string]interface{})
+				if fm["path"] == "/usr/local/bin/virtwork-chaos-network-start.sh" {
+					startScript = fm["content"].(string)
+					break
+				}
+			}
+
+			Expect(startScript).To(ContainSubstring("delay 200ms"))
+			Expect(startScript).To(ContainSubstring("loss 10.5%"))
+		})
+
+		It("should use defaults for missing individual params", func() {
+			partial := workloads.NewChaosNetworkWorkload(config.WorkloadConfig{
+				Enabled:  true,
+				VMCount:  1,
+				CPUCores: 1,
+				Memory:   "1Gi",
+				Params: map[string]string{
+					"latency-ms": "50",
+				},
+			}, "virtwork", "", nil)
+
+			result, err := partial.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+
+			var startScript string
+			for _, f := range files {
+				fm := f.(map[string]interface{})
+				if fm["path"] == "/usr/local/bin/virtwork-chaos-network-start.sh" {
+					startScript = fm["content"].(string)
+					break
+				}
+			}
+
+			Expect(startScript).To(ContainSubstring("delay 50ms"))
+			Expect(startScript).To(ContainSubstring("loss 5.0%"))
+		})
+	})
 })
