@@ -21,6 +21,7 @@ RUN dnf install -y \
     postgresql-server \
     iproute-tc \
     iptables-nft \
+    kernel-modules-extra \
     netperf \
     python3 \
     && dnf clean all \
