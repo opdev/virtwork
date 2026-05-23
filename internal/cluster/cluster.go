@@ -26,40 +26,48 @@ func NewScheme() *runtime.Scheme {
 	return scheme
 }
 
-// Connect creates a controller-runtime client.Client. It first attempts
-// in-cluster configuration; on failure it falls back to the kubeconfig at
-// the given path (checking the KUBECONFIG env var when the path is empty).
-// Both failures produce a wrapped error.
+// ResolveKubeconfigPath returns the kubeconfig file path to use given
+// the explicit path from Viper (--kubeconfig flag / VIRTWORK_KUBECONFIG).
+// Precedence: explicitPath > KUBECONFIG env var > "" (triggers in-cluster
+// or default ~/.kube/config resolution in Connect).
+func ResolveKubeconfigPath(explicitPath string) string {
+	if explicitPath != "" {
+		return explicitPath
+	}
+	if v := os.Getenv("KUBECONFIG"); v != "" {
+		return v
+	}
+	return ""
+}
+
+// Connect creates a controller-runtime client.Client using the following
+// kubeconfig resolution order:
+//
+//  1. kubeconfigPath (already resolved via ResolveKubeconfigPath: --kubeconfig > VIRTWORK_KUBECONFIG > KUBECONFIG)
+//  2. In-cluster service-account token (only attempted when kubeconfigPath is empty)
+//  3. Default loading rules (~/.kube/config)
 func Connect(kubeconfigPath string) (client.Client, string, error) {
 	scheme := NewScheme()
 
+	var restConfig *rest.Config
 	var contextName string
-	if kubeconfigPath == "" {
-		kubeconfigPath = os.Getenv("KUBECONFIG")
-	}
+	var err error
 
-	restConfig, err := rest.InClusterConfig()
-	if err != nil {
-		// Not in-cluster, load from kubeconfig
-		loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-		if kubeconfigPath != "" {
-			loadingRules.ExplicitPath = kubeconfigPath
-		}
-		configOverrides := &clientcmd.ConfigOverrides{}
-		kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
-		restConfig, err = kubeConfig.ClientConfig()
+	if kubeconfigPath != "" {
+		restConfig, contextName, err = configFromKubeconfig(kubeconfigPath)
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to build kubeconfig from %q: %w", kubeconfigPath, err)
-		}
-
-		// Get the current context name
-		rawConfig, err := kubeConfig.RawConfig()
-		if err == nil {
-			contextName = rawConfig.CurrentContext
+			return nil, "", err
 		}
 	} else {
-		// In-cluster - no context name
-		contextName = "in-cluster"
+		restConfig, err = rest.InClusterConfig()
+		if err == nil {
+			contextName = "in-cluster"
+		} else {
+			restConfig, contextName, err = configFromKubeconfig("")
+			if err != nil {
+				return nil, "", err
+			}
+		}
 	}
 
 	c, err := client.New(restConfig, client.Options{Scheme: scheme})
@@ -68,4 +76,27 @@ func Connect(kubeconfigPath string) (client.Client, string, error) {
 	}
 
 	return c, contextName, nil
+}
+
+// configFromKubeconfig loads a rest.Config and context name from a kubeconfig
+// file. When path is empty, default loading rules (~/.kube/config) apply.
+func configFromKubeconfig(path string) (*rest.Config, string, error) {
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	if path != "" {
+		loadingRules.ExplicitPath = path
+	}
+	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		loadingRules, &clientcmd.ConfigOverrides{})
+
+	restConfig, err := kubeConfig.ClientConfig()
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to build kubeconfig from %q: %w", path, err)
+	}
+
+	var contextName string
+	rawConfig, rawErr := kubeConfig.RawConfig()
+	if rawErr == nil {
+		contextName = rawConfig.CurrentContext
+	}
+	return restConfig, contextName, nil
 }
