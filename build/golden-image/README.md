@@ -15,7 +15,8 @@ The golden image is based on `quay.io/containerdisks/fedora:41` and includes all
 - **python3** — HTTP file server for the tps workload's application-layer transfers
 - **postgresql-server** — PostgreSQL database with pgbench (database workload)
 - **procps-ng** — `ps`, `pkill`, `kill` for chaos-process
-- **iproute-tc** — Traffic control (`tc`) and the `sch_netem` kernel module hooks used by the chaos-network workload to inject latency and packet loss
+- **iproute-tc** — Traffic control (`tc`) used by the chaos-network workload to inject latency and packet loss
+- **kernel-modules-extra** — Provides the `sch_netem` kernel module required by chaos-network; pre-installing means the cloud-init `dnf install` completes instantly (package already present) instead of fetching over the network
 - **iptables-nft** — Firewall rules; reserved for future network partition / blackhole scenarios
 
 Additional tools like `fallocate` and `dd` (used by chaos-disk) are already present in the base Fedora image.

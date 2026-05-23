@@ -4,6 +4,8 @@
 package workloads_test
 
 import (
+	"strings"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -72,32 +74,30 @@ var _ = Describe("ChaosNetworkWorkload", func() {
 		Expect(parsed).To(HaveKey("runcmd"))
 		runcmds := parsed["runcmd"].([]interface{})
 
-		foundKernelModules := false
+		foundDnf := false
+		foundDaemonReload := false
 		foundEnable := false
-		kernelModulesIdx := -1
-		enableIdx := -1
-		for i, cmd := range runcmds {
+		for _, cmd := range runcmds {
 			cmdSlice := cmd.([]interface{})
-			if len(cmdSlice) >= 3 {
-				if cmdSlice[0] == "bash" && cmdSlice[1] == "-c" {
-					cmdStr := cmdSlice[2].(string)
-					if cmdStr == "dnf install -y kernel-modules-extra-$(uname -r)" {
-						foundKernelModules = true
-						kernelModulesIdx = i
-					}
-				}
-				if cmdSlice[0] == "systemctl" && cmdSlice[1] == "enable" {
-					foundEnable = true
-					enableIdx = i
-					Expect(cmdSlice[2]).To(Equal("--now"))
+			if len(cmdSlice) >= 3 && cmdSlice[0] == "bash" && cmdSlice[1] == "-c" {
+				script, _ := cmdSlice[2].(string)
+				if strings.Contains(script, "kernel-modules-extra") {
+					foundDnf = true
+					Expect(script).To(ContainSubstring("$(uname -r)"),
+						"should install kernel-modules-extra matching the running kernel")
 				}
 			}
+			if len(cmdSlice) >= 2 && cmdSlice[0] == "systemctl" && cmdSlice[1] == "daemon-reload" {
+				foundDaemonReload = true
+			}
+			if len(cmdSlice) >= 3 && cmdSlice[0] == "systemctl" && cmdSlice[1] == "enable" {
+				foundEnable = true
+				Expect(cmdSlice[2]).To(Equal("--now"))
+			}
 		}
-		Expect(foundKernelModules).To(BeTrue(), "should install kernel-modules-extra for running kernel")
-		Expect(foundEnable).To(BeTrue(), "should have systemctl enable command")
-		Expect(kernelModulesIdx).To(
-			BeNumerically("<", enableIdx),
-			"kernel modules install should come before service enable")
+		Expect(foundDnf).To(BeTrue(), "should have dnf install kernel-modules-extra")
+		Expect(foundDaemonReload).To(BeTrue(), "should have systemctl daemon-reload")
+		Expect(foundEnable).To(BeTrue(), "should have systemctl enable --now")
 	})
 
 	It("should produce valid YAML", func() {

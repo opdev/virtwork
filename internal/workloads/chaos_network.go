@@ -92,7 +92,8 @@ func (w *ChaosNetworkWorkload) Name() string {
 }
 
 // CloudInitUserdata returns cloud-init YAML that configures tc/netem for network chaos
-// injection via systemd. Assumes iproute-tc is pre-installed (golden image dependency).
+// injection via systemd. The golden image pre-installs iproute-tc and kernel-modules-extra
+// (sch_netem); the start script runs modprobe as a fallback for non-golden images.
 func (w *ChaosNetworkWorkload) CloudInitUserdata() (string, error) {
 	startScript := fmt.Sprintf(chaosNetworkStartScript,
 		w.latencyMs(),

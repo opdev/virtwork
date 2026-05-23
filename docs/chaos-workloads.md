@@ -133,7 +133,7 @@ workloads:
 
 ### Dependencies
 
-The workload installs `iproute-tc` and loads the `sch_netem` kernel module on start. The base Fedora container disk has both available; the golden image (`build/golden-image/`) pre-installs `iproute-tc` to avoid the first-boot package install. `sch_netem` is loaded from the `kernel-modules-extra` package, which the cloud-init runs `dnf install` for on first boot.
+The workload requires `iproute-tc` and the `sch_netem` kernel module. The golden image (`build/golden-image/`) pre-installs both `iproute-tc` and `kernel-modules-extra` (which provides `sch_netem`), so the cloud-init `dnf install` completes instantly (package already present) and no network fetch is needed. On the default Fedora container disk, cloud-init installs `iproute-tc` via `packages` and `kernel-modules-extra-$(uname -r)` via `runcmd`, which ensures the module version matches the running kernel. The start script runs `modprobe sch_netem` to load the module before applying the qdisc.
 
 ### Example
 
