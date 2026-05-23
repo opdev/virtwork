@@ -39,16 +39,12 @@ while true; do
 done
 `
 
-const chaosDiskSystemdUnitTemplate = `[Unit]
+const chaosDiskSystemdUnit = `[Unit]
 Description=Virtwork chaos-disk fill/release workload
 After=network.target local-fs.target
 
 [Service]
 Type=simple
-Environment="CHAOS_DISK_MOUNT=%s"
-Environment="CHAOS_DISK_FILL_PERCENT=%s"
-Environment="CHAOS_DISK_FILL_SLEEP=%s"
-Environment="CHAOS_DISK_RELEASE_SLEEP=%s"
 ExecStart=/usr/local/bin/chaos-disk.sh
 Restart=always
 RestartSec=10
@@ -132,11 +128,7 @@ func (w *ChaosDiskWorkload) CloudInitUserdata() (string, error) {
 		w.fillPercent(),
 		w.releaseSleep(),
 		w.fillSleep())
-	unit := fmt.Sprintf(chaosDiskSystemdUnitTemplate,
-		mountPoint,
-		w.fillPercent(),
-		w.fillSleep(),
-		w.releaseSleep())
+	unit := chaosDiskSystemdUnit
 
 	return w.BuildCloudConfig(CloudConfigOpts{
 		WriteFiles: []WriteFile{

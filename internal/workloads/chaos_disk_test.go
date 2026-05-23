@@ -219,10 +219,8 @@ var _ = Describe("ChaosDiskWorkload", func() {
 			Expect(scriptContent).To(ContainSubstring(`FILL_SLEEP="60"`))
 			Expect(scriptContent).To(ContainSubstring(`RELEASE_SLEEP="30"`))
 
-			Expect(unitContent).To(ContainSubstring("CHAOS_DISK_MOUNT=/mnt/data"))
-			Expect(unitContent).To(ContainSubstring("CHAOS_DISK_FILL_PERCENT=90"))
-			Expect(unitContent).To(ContainSubstring("CHAOS_DISK_FILL_SLEEP=60"))
-			Expect(unitContent).To(ContainSubstring("CHAOS_DISK_RELEASE_SLEEP=30"))
+			Expect(unitContent).NotTo(ContainSubstring("Environment="))
+			Expect(unitContent).To(ContainSubstring("ExecStart=/usr/local/bin/chaos-disk.sh"))
 
 			Expect(setupContent).To(ContainSubstring("/mnt/data"))
 		})
@@ -265,10 +263,8 @@ var _ = Describe("ChaosDiskWorkload", func() {
 			Expect(scriptContent).To(ContainSubstring(`FILL_SLEEP="120"`))
 			Expect(scriptContent).To(ContainSubstring(`RELEASE_SLEEP="45"`))
 
-			Expect(unitContent).To(ContainSubstring("CHAOS_DISK_MOUNT=/data"))
-			Expect(unitContent).To(ContainSubstring("CHAOS_DISK_FILL_PERCENT=75"))
-			Expect(unitContent).To(ContainSubstring("CHAOS_DISK_FILL_SLEEP=120"))
-			Expect(unitContent).To(ContainSubstring("CHAOS_DISK_RELEASE_SLEEP=45"))
+			Expect(unitContent).NotTo(ContainSubstring("Environment="))
+			Expect(unitContent).To(ContainSubstring("ExecStart=/usr/local/bin/chaos-disk.sh"))
 
 			Expect(setupContent).To(ContainSubstring("/data"))
 		})
