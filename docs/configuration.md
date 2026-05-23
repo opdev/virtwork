@@ -131,48 +131,66 @@ audit_db: /data/virtwork.db
 # Per-workload overrides (everything optional; unspecified keys inherit globals)
 workloads:
   cpu:
-    enabled: true
+    enabled: true              # explicitly enable (can be omitted; defaults to enabled)
     vm_count: 2
     cpu_cores: 4
     memory: 4Gi
   memory:
-    enabled: true
-    vm_count: 1
+    vm_count: 1                # enabled by default when not specified
   disk:
-    enabled: true
+    enabled: false             # skip this workload entirely
   database:
-    enabled: true
     cpu_cores: 2
     memory: 4Gi
   network:
-    enabled: true
     vm_count: 1                # creates 1 server + 1 client = 2 VMs
   tps:
-    enabled: true
     vm_count: 1                # creates 1 server + 1 client = 2 VMs
     params:
       file-size: "50M"         # default 10M
       iterations: "10"         # default 30
       duration: "30"           # default 60 (seconds per iteration)
   chaos-disk:
-    enabled: true
     params:
       mount: /mnt/data         # default /mnt/data
       fill-percent: "80"       # default 90
       fill-sleep: "120"        # default 60
       release-sleep: "60"      # default 30
   chaos-network:
-    enabled: true
     params:
       latency-ms: "250"        # default 100
       packet-loss-percent: "10"  # default 5.0
   chaos-process:
-    enabled: true
     params:
       signal: "SIGKILL"        # default SIGTERM
       interval: "15"           # default 30
       min-pid: "500"           # default 1000
 ```
+
+### Per-workload `enabled` field
+
+The `enabled` field controls whether a workload is deployed when listed in the `--workloads` flag. This provides a declarative way to disable workloads in YAML config without modifying command-line flags.
+
+- **`enabled: true`** — workload is deployed (explicit)
+- **`enabled: false`** — workload is skipped entirely; no VMs, services, or resources created
+- **Field omitted** — workload is enabled by default (treated as `true`)
+
+**Precedence:** The `--workloads` flag determines the candidate set; the YAML `enabled` field then filters it. For example:
+
+```bash
+virtwork run --workloads cpu,disk,network --config config.yaml
+```
+
+With `config.yaml`:
+```yaml
+workloads:
+  disk:
+    enabled: false
+```
+
+**Result:** Only `cpu` and `network` are deployed. `disk` is skipped despite being in the `--workloads` flag.
+
+**Audit event:** When a workload is skipped due to `enabled: false`, an audit event of type `workload_skipped` is recorded with the message `Workload "name" disabled via config (enabled: false)`.
 
 ### Per-workload `params` keys
 

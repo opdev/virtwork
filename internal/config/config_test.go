@@ -356,11 +356,13 @@ workloads:
 			cfg, err := config.LoadConfig(cmd)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(cfg.Workloads).To(HaveKey("cpu"))
-			Expect(cfg.Workloads["cpu"].Enabled).To(BeTrue())
+			Expect(cfg.Workloads["cpu"].Enabled).NotTo(BeNil())
+			Expect(*cfg.Workloads["cpu"].Enabled).To(BeTrue())
 			Expect(cfg.Workloads["cpu"].VMCount).To(Equal(2))
 			Expect(cfg.Workloads["cpu"].CPUCores).To(Equal(4))
 			Expect(cfg.Workloads["cpu"].Memory).To(Equal("4Gi"))
-			Expect(cfg.Workloads["disk"].Enabled).To(BeFalse())
+			Expect(cfg.Workloads["disk"].Enabled).NotTo(BeNil())
+			Expect(*cfg.Workloads["disk"].Enabled).To(BeFalse())
 		})
 
 		It("should load workload params from YAML", func() {

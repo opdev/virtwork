@@ -16,7 +16,7 @@ var _ = Describe("DiskWorkload", func() {
 
 	BeforeEach(func() {
 		w = workloads.NewDiskWorkload(config.WorkloadConfig{
-			Enabled:  true,
+			Enabled:  config.BoolPtr(true),
 			VMCount:  1,
 			CPUCores: 2,
 			Memory:   "2Gi",

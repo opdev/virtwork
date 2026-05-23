@@ -241,8 +241,22 @@ func runE(cmd *cobra.Command, args []string) error {
 	auditWorkloadIDs := make(map[string]int64) // workload name -> audit workload ID
 
 	for _, name := range workloadNames {
+		// Check if workload is explicitly disabled in YAML config
+		if fileCfg, ok := cfg.Workloads[name]; ok {
+			if fileCfg.Enabled != nil && !*fileCfg.Enabled {
+				_ = auditor.RecordEvent(ctx, execID, audit.EventRecord{
+					EventType: "workload_skipped",
+					Message:   fmt.Sprintf("Workload %q disabled via config (enabled: false)", name),
+				})
+				logger.Info("workload skipped",
+					slog.String("workload", name),
+					slog.String("reason", "disabled in config"))
+				continue
+			}
+		}
+
 		wlCfg := config.WorkloadConfig{
-			Enabled:  true,
+			Enabled:  config.BoolPtr(true),
 			VMCount:  vmCountFlag,
 			CPUCores: cfg.CPUCores,
 			Memory:   cfg.Memory,
@@ -412,9 +426,16 @@ func runE(cmd *cobra.Command, args []string) error {
 	// Create services before VMs (DNS must resolve for client VMs)
 	servicesCreated := 0
 	for _, name := range workloadNames {
+		// Skip if workload is explicitly disabled
+		if fileCfg, ok := cfg.Workloads[name]; ok {
+			if fileCfg.Enabled != nil && !*fileCfg.Enabled {
+				continue
+			}
+		}
+
 		// Re-fetch workload to check service requirement
 		wlCfg := config.WorkloadConfig{
-			Enabled:  true,
+			Enabled:  config.BoolPtr(true),
 			VMCount:  vmCountFlag,
 			CPUCores: cfg.CPUCores,
 			Memory:   cfg.Memory,
