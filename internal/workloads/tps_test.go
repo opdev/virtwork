@@ -368,6 +368,50 @@ var _ = Describe("TPSWorkload", func() {
 		})
 	})
 
+	Context("invalid file-size params", func() {
+		DescribeTable("should return error for malformed file-size",
+			func(fileSize string) {
+				w2 := workloads.NewTPSWorkload(config.WorkloadConfig{
+					Enabled:  config.BoolPtr(true),
+					VMCount:  1,
+					CPUCores: 2,
+					Memory:   "2Gi",
+					Params:   map[string]string{"file-size": fileSize},
+				}, "virtwork", "virtwork", "", nil)
+
+				_, err := w2.UserdataForRole("server", "virtwork")
+				Expect(err).To(HaveOccurred())
+				Expect(err).To(MatchError(workloads.ErrInvalidFileSize))
+
+				_, err = w2.UserdataForRole("client", "virtwork")
+				Expect(err).To(HaveOccurred())
+				Expect(err).To(MatchError(workloads.ErrInvalidFileSize))
+			},
+			Entry("decimal number", "1.5G"),
+			Entry("multi-char suffix GB", "2GB"),
+			Entry("binary suffix MiB", "10MiB"),
+			Entry("suffix only, no number", "M"),
+			Entry("unknown suffix", "10X"),
+			Entry("no valid structure", "garbage"),
+			Entry("zero value", "0M"),
+			Entry("negative value", "-5M"),
+		)
+
+		It("should propagate file-size error through CloudInitUserdata", func() {
+			w2 := workloads.NewTPSWorkload(config.WorkloadConfig{
+				Enabled:  config.BoolPtr(true),
+				VMCount:  1,
+				CPUCores: 2,
+				Memory:   "2Gi",
+				Params:   map[string]string{"file-size": "garbage"},
+			}, "virtwork", "virtwork", "", nil)
+
+			_, err := w2.CloudInitUserdata()
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError(workloads.ErrInvalidFileSize))
+		})
+	})
+
 	Context("configurable params", func() {
 		It("should default file size to 10M", func() {
 			result, err := w.UserdataForRole("server", "virtwork")

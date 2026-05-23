@@ -45,6 +45,7 @@ WantedBy=multi-user.target
 `
 
 var ErrUnknownTPSRole = errors.New("unexpected tps role; expected 'server' or 'client'")
+var ErrInvalidFileSize = errors.New("invalid file-size format: must be a positive integer followed by K, M, or G (e.g. \"10M\", \"1G\", \"512K\")")
 
 // TPSWorkload generates cloud-init userdata for a combined TPS benchmark.
 // It creates server/client VM pairs. The server runs netserver and python3
@@ -187,49 +188,71 @@ func (w *TPSWorkload) duration() string {
 	return "60"
 }
 
-func (w *TPSWorkload) fileSizeBytes() string {
-	raw := w.fileSize()
+func parseFileSize(raw string) (num int, suffix string, err error) {
 	raw = strings.TrimSpace(raw)
-	suffix := raw[len(raw)-1:]
-	numStr := raw[:len(raw)-1]
-	num, err := strconv.Atoi(numStr)
-	if err != nil {
-		return "10485760" // 10M fallback
+	if len(raw) < 2 {
+		return 0, "", fmt.Errorf("%w: %q", ErrInvalidFileSize, raw)
 	}
-	switch strings.ToUpper(suffix) {
-	case "G":
-		return strconv.Itoa(num * 1024 * 1024 * 1024)
-	case "M":
-		return strconv.Itoa(num * 1024 * 1024)
-	case "K":
-		return strconv.Itoa(num * 1024)
+	suffix = strings.ToUpper(raw[len(raw)-1:])
+	numStr := raw[:len(raw)-1]
+
+	switch suffix {
+	case "K", "M", "G":
 	default:
-		return raw
+		return 0, "", fmt.Errorf("%w: %q (unrecognized suffix %q)", ErrInvalidFileSize, raw, raw[len(raw)-1:])
+	}
+
+	num, err = strconv.Atoi(numStr)
+	if err != nil {
+		return 0, "", fmt.Errorf("%w: %q (%q is not a valid integer)", ErrInvalidFileSize, raw, numStr)
+	}
+	if num <= 0 {
+		return 0, "", fmt.Errorf("%w: %q (value must be positive)", ErrInvalidFileSize, raw)
+	}
+
+	return num, suffix, nil
+}
+
+func (w *TPSWorkload) fileSizeBytes() (string, error) {
+	num, suffix, err := parseFileSize(w.fileSize())
+	if err != nil {
+		return "", err
+	}
+	switch suffix {
+	case "G":
+		return strconv.Itoa(num * 1024 * 1024 * 1024), nil
+	case "M":
+		return strconv.Itoa(num * 1024 * 1024), nil
+	case "K":
+		return strconv.Itoa(num * 1024), nil
+	default:
+		return "", fmt.Errorf("%w: %q", ErrInvalidFileSize, w.fileSize())
 	}
 }
 
-func (w *TPSWorkload) fileSizeMBCount() string {
-	raw := w.fileSize()
-	raw = strings.TrimSpace(raw)
-	suffix := raw[len(raw)-1:]
-	numStr := raw[:len(raw)-1]
-	num, err := strconv.Atoi(numStr)
+func (w *TPSWorkload) fileSizeMBCount() (string, error) {
+	num, suffix, err := parseFileSize(w.fileSize())
 	if err != nil {
-		return "10"
+		return "", err
 	}
-	switch strings.ToUpper(suffix) {
+	switch suffix {
 	case "G":
-		return strconv.Itoa(num * 1024)
+		return strconv.Itoa(num * 1024), nil
 	case "M":
-		return numStr
+		return strconv.Itoa(num), nil
 	case "K":
-		return "1" // minimum 1MB
+		return "1", nil
 	default:
-		return raw
+		return "", fmt.Errorf("%w: %q", ErrInvalidFileSize, w.fileSize())
 	}
 }
 
 func (w *TPSWorkload) buildServerUserdata() (string, error) {
+	mbCount, err := w.fileSizeMBCount()
+	if err != nil {
+		return "", fmt.Errorf("tps server: %w", err)
+	}
+
 	serverScript := fmt.Sprintf(`#!/usr/bin/env bash
 set -e
 
@@ -252,7 +275,7 @@ echo "  HTTP:     port 8080  (pid $HTTP_PID)"
 echo "  testfile: /srv/virtwork/testfile (%s)"
 
 wait
-`, w.fileSize(), w.fileSizeMBCount(), w.fileSize())
+`, w.fileSize(), mbCount, w.fileSize())
 
 	return w.BuildCloudConfig(CloudConfigOpts{
 		Packages: []string{"netperf", "python3"},
@@ -276,6 +299,11 @@ wait
 }
 
 func (w *TPSWorkload) buildClientUserdata(namespace string) (string, error) {
+	fileSizeBytes, err := w.fileSizeBytes()
+	if err != nil {
+		return "", fmt.Errorf("tps client: %w", err)
+	}
+
 	dnsName := w.serverDNSName(namespace)
 
 	clientScript := fmt.Sprintf(`#!/usr/bin/env bash
@@ -364,7 +392,7 @@ done
 echo "=========================================="
 echo "  TPS testing complete"
 echo "=========================================="
-`, dnsName, w.iterations(), w.duration(), w.fileSizeBytes(), w.fileSize())
+`, dnsName, w.iterations(), w.duration(), fileSizeBytes, w.fileSize())
 
 	return w.BuildCloudConfig(CloudConfigOpts{
 		Packages: []string{"netperf", "curl"},
