@@ -1,0 +1,228 @@
+# config.yaml.example — Complete virtwork configuration reference
+#
+# Pass to virtwork with: virtwork run --config config.yaml
+#
+# Priority chain (highest wins):
+#   CLI flags  >  environment variables (VIRTWORK_*)  >  this YAML file  >  built-in defaults
+#
+# All keys are optional. Unset keys fall back to built-in defaults.
+# YAML keys use underscores (e.g., cpu_cores); the equivalent CLI flags
+# and env vars use hyphens and SCREAMING_SNAKE_CASE respectively:
+#   YAML: cpu_cores  |  Flag: --cpu-cores  |  Env: VIRTWORK_CPU_CORES
+
+# ---------------------------------------------------------------------------
+# Cluster connection
+# ---------------------------------------------------------------------------
+
+# Kubernetes namespace where VMs and supporting resources are created.
+# Env: VIRTWORK_NAMESPACE  |  Flag: --namespace
+# namespace: virtwork
+
+# Path to kubeconfig file. When empty, virtwork uses in-cluster config
+# (if running inside a pod) or falls back to ~/.kube/config.
+# Env: VIRTWORK_KUBECONFIG  |  Flag: --kubeconfig
+# kubeconfig: ""
+
+# ---------------------------------------------------------------------------
+# VM defaults (global — per-workload overrides are in the workloads section)
+# ---------------------------------------------------------------------------
+
+# Container disk image used as the boot volume for every VM.
+# Set to a golden image with pre-installed packages for faster boot.
+# Env: VIRTWORK_CONTAINER_DISK_IMAGE  |  Flag: --container-disk-image
+# container_disk_image: quay.io/containerdisks/fedora:41
+
+# Size of the additional data disk attached to storage-backed workloads
+# (disk, database, chaos-disk).
+# Env: VIRTWORK_DATA_DISK_SIZE  |  Flag: --data-disk-size
+# data_disk_size: 10Gi
+
+# Default CPU cores allocated to each VM.
+# Env: VIRTWORK_CPU_CORES  |  Flag: --cpu-cores
+# cpu_cores: 2
+
+# Default memory allocated to each VM (Kubernetes quantity, e.g., 2Gi).
+# Env: VIRTWORK_MEMORY  |  Flag: --memory
+# memory: 2Gi
+
+# ---------------------------------------------------------------------------
+# Run behavior
+# ---------------------------------------------------------------------------
+
+# Print VM YAML specs and exit without creating any cluster resources.
+# Env: VIRTWORK_DRY_RUN  |  Flag: --dry-run
+# dry_run: false
+
+# Enable DEBUG-level structured logging (default is INFO).
+# Env: VIRTWORK_VERBOSE  |  Flag: --verbose
+# verbose: false
+
+# Wait for all VMs to reach the Ready condition after creation.
+# Set to false (or use --no-wait) to skip readiness polling.
+# Env: VIRTWORK_WAIT_FOR_READY  |  Flag: --no-wait (inverts this value)
+# wait_for_ready: true
+
+# Maximum seconds to wait for VM readiness before timing out.
+# Env: VIRTWORK_TIMEOUT  |  Flag: --timeout
+# timeout: 600
+
+# ---------------------------------------------------------------------------
+# SSH access (optional)
+#
+# When at least one SSH credential (password or key) is provided, virtwork
+# creates an in-VM user account with the given username. When all SSH fields
+# are empty, no user account is created and VMs are headless.
+# ---------------------------------------------------------------------------
+
+# Username for the in-VM SSH user account.
+# Env: VIRTWORK_SSH_USER  |  Flag: --ssh-user
+# ssh_user: virtwork
+
+# Password for the SSH user (plain-text in the VM spec — prefer keys).
+# Env: VIRTWORK_SSH_PASSWORD  |  Flag: --ssh-password
+# ssh_password: ""
+
+# List of SSH public keys injected into the VM's authorized_keys.
+# In YAML, provide a list. Via env var, provide a comma-separated string.
+# Via CLI, use --ssh-key (repeatable) or --ssh-key-file (path, repeatable).
+# Env: VIRTWORK_SSH_AUTHORIZED_KEYS (comma-separated)
+# Flag: --ssh-key / --ssh-key-file
+# ssh_authorized_keys: []
+  # - ssh-ed25519 AAAAC3Nz... user@host
+  # - ssh-rsa AAAAB3NzaC1yc2E... user@host
+
+# ---------------------------------------------------------------------------
+# Audit
+#
+# Virtwork records each run in a local SQLite database for post-run analysis.
+# ---------------------------------------------------------------------------
+
+# Enable or disable audit tracking. Override with --no-audit to hard-disable.
+# Env: VIRTWORK_AUDIT  |  Flag: --audit / --no-audit
+# audit: true
+
+# Path to the SQLite audit database file.
+# In-cluster, mount a PVC and set to /data/virtwork.db.
+# Env: VIRTWORK_AUDIT_DB  |  Flag: --audit-db
+# audit_db: virtwork.db
+
+# ---------------------------------------------------------------------------
+# Per-workload overrides
+#
+# Each key under "workloads" is a workload name. Available workloads:
+#   chaos-disk, chaos-network, chaos-process, cpu, database, disk,
+#   memory, network, tps
+#
+# Every field is optional — unspecified fields inherit the global defaults.
+# The "params" sub-map accepts string-valued, workload-specific tuning knobs.
+# Workloads not listed here still run (unless filtered via --workloads flag).
+# ---------------------------------------------------------------------------
+
+# workloads:
+
+  # --- CPU stress workload ---
+  # Drives all allocated cores to 100% utilization.
+#   cpu:
+#     enabled: true
+#     vm_count: 1
+#     cpu_cores: 2
+#     memory: 2Gi
+    # No workload-specific params.
+
+  # --- Memory stress workload ---
+  # Allocates and touches memory to stress the VM's memory subsystem.
+#   memory:
+#     enabled: true
+#     vm_count: 1
+#     cpu_cores: 2
+#     memory: 2Gi
+    # No workload-specific params.
+
+  # --- Disk I/O workload ---
+  # Performs sequential/random I/O against the data disk.
+#   disk:
+#     enabled: true
+#     vm_count: 1
+#     cpu_cores: 2
+#     memory: 2Gi
+    # No workload-specific params.
+
+  # --- Database workload ---
+  # Runs a database benchmark against a local database instance.
+#   database:
+#     enabled: true
+#     vm_count: 1
+#     cpu_cores: 2
+#     memory: 4Gi
+    # No workload-specific params.
+
+  # --- Network throughput workload ---
+  # Client/server pair measuring network throughput.
+  # vm_count is per-role: 1 creates 1 server + 1 client = 2 VMs total.
+#   network:
+#     enabled: true
+#     vm_count: 1
+#     cpu_cores: 2
+#     memory: 2Gi
+    # No workload-specific params.
+
+  # --- TPS (transactions per second) workload ---
+  # HTTP-based throughput test between a server and client VM.
+  # vm_count is per-role: 1 creates 1 server + 1 client = 2 VMs total.
+#   tps:
+#     enabled: true
+#     vm_count: 1
+#     cpu_cores: 2
+#     memory: 2Gi
+#     params:
+      # Size of the HTTP test file. Accepts K/M/G suffixes.
+#       file-size: "10M"
+      # Number of test iterations to run.
+#       iterations: "30"
+      # Seconds per iteration.
+#       duration: "60"
+
+  # --- Chaos disk workload ---
+  # Fills a data disk to a target percentage, holds, releases, and repeats.
+#   chaos-disk:
+#     enabled: true
+#     vm_count: 1
+#     cpu_cores: 2
+#     memory: 2Gi
+#     params:
+      # Mountpoint of the data disk to fill.
+#       mount: "/mnt/data"
+      # Target fill percentage (0-100).
+#       fill-percent: "90"
+      # Seconds the disk is held at the target fill level.
+#       fill-sleep: "60"
+      # Seconds the disk is empty before refilling.
+#       release-sleep: "30"
+
+  # --- Chaos network workload ---
+  # Injects latency and packet loss via tc/netem on the VM's default interface.
+#   chaos-network:
+#     enabled: true
+#     vm_count: 1
+#     cpu_cores: 1
+#     memory: 1Gi
+#     params:
+      # Egress delay in milliseconds added via netem.
+#       latency-ms: "100"
+      # Egress packet drop rate (percentage, e.g., "5.0" for 5%).
+#       packet-loss-percent: "5.0"
+
+  # --- Chaos process workload ---
+  # Periodically sends a signal to a random non-essential process in the VM.
+#   chaos-process:
+#     enabled: true
+#     vm_count: 1
+#     cpu_cores: 2
+#     memory: 2Gi
+#     params:
+      # Signal sent to the randomly selected victim process.
+#       signal: "SIGTERM"
+      # Seconds between kills.
+#       interval: "30"
+      # Minimum PID considered eligible for the kill (filters out system processes).
+#       min-pid: "1000"
