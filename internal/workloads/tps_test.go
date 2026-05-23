@@ -18,7 +18,7 @@ var _ = Describe("TPSWorkload", func() {
 
 	BeforeEach(func() {
 		w = workloads.NewTPSWorkload(config.WorkloadConfig{
-			Enabled:  true,
+			Enabled:  config.BoolPtr(true),
 			VMCount:  2,
 			CPUCores: 2,
 			Memory:   "2Gi",
@@ -389,7 +389,7 @@ var _ = Describe("TPSWorkload", func() {
 
 		It("should use custom file size from params", func() {
 			w2 := workloads.NewTPSWorkload(config.WorkloadConfig{
-				Enabled:  true,
+				Enabled:  config.BoolPtr(true),
 				VMCount:  2,
 				CPUCores: 2,
 				Memory:   "2Gi",
@@ -415,7 +415,7 @@ var _ = Describe("TPSWorkload", func() {
 
 		It("should use custom iterations from params", func() {
 			w2 := workloads.NewTPSWorkload(config.WorkloadConfig{
-				Enabled:  true,
+				Enabled:  config.BoolPtr(true),
 				VMCount:  2,
 				CPUCores: 2,
 				Memory:   "2Gi",
@@ -441,7 +441,7 @@ var _ = Describe("TPSWorkload", func() {
 
 		It("should use custom duration from params", func() {
 			w2 := workloads.NewTPSWorkload(config.WorkloadConfig{
-				Enabled:  true,
+				Enabled:  config.BoolPtr(true),
 				VMCount:  2,
 				CPUCores: 2,
 				Memory:   "2Gi",

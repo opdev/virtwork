@@ -24,7 +24,7 @@ var _ = Describe("Registry", func() {
 
 	It("should return chaos-disk workload by name", func() {
 		w, err := reg.Get("chaos-disk", config.WorkloadConfig{
-			Enabled:  true,
+			Enabled:  config.BoolPtr(true),
 			VMCount:  1,
 			CPUCores: 2,
 			Memory:   "2Gi",
@@ -35,7 +35,7 @@ var _ = Describe("Registry", func() {
 
 	It("should return CPU workload by name", func() {
 		w, err := reg.Get("cpu", config.WorkloadConfig{
-			Enabled:  true,
+			Enabled:  config.BoolPtr(true),
 			VMCount:  1,
 			CPUCores: 2,
 			Memory:   "2Gi",
@@ -46,7 +46,7 @@ var _ = Describe("Registry", func() {
 
 	It("should return memory workload by name", func() {
 		w, err := reg.Get("memory", config.WorkloadConfig{
-			Enabled:  true,
+			Enabled:  config.BoolPtr(true),
 			VMCount:  1,
 			CPUCores: 2,
 			Memory:   "4Gi",
@@ -57,7 +57,7 @@ var _ = Describe("Registry", func() {
 
 	It("should return database workload by name", func() {
 		w, err := reg.Get("database", config.WorkloadConfig{
-			Enabled:  true,
+			Enabled:  config.BoolPtr(true),
 			VMCount:  1,
 			CPUCores: 2,
 			Memory:   "4Gi",
@@ -68,7 +68,7 @@ var _ = Describe("Registry", func() {
 
 	It("should return network workload by name", func() {
 		w, err := reg.Get("network", config.WorkloadConfig{
-			Enabled:  true,
+			Enabled:  config.BoolPtr(true),
 			VMCount:  2,
 			CPUCores: 2,
 			Memory:   "2Gi",
@@ -79,7 +79,7 @@ var _ = Describe("Registry", func() {
 
 	It("should return disk workload by name", func() {
 		w, err := reg.Get("disk", config.WorkloadConfig{
-			Enabled:  true,
+			Enabled:  config.BoolPtr(true),
 			VMCount:  1,
 			CPUCores: 2,
 			Memory:   "2Gi",
@@ -90,7 +90,7 @@ var _ = Describe("Registry", func() {
 
 	It("should return chaos-process workload by name", func() {
 		w, err := reg.Get("chaos-process", config.WorkloadConfig{
-			Enabled:  true,
+			Enabled:  config.BoolPtr(true),
 			VMCount:  1,
 			CPUCores: 2,
 			Memory:   "2Gi",
@@ -101,7 +101,7 @@ var _ = Describe("Registry", func() {
 
 	It("should return chaos-network workload by name", func() {
 		w, err := reg.Get("chaos-network", config.WorkloadConfig{
-			Enabled:  true,
+			Enabled:  config.BoolPtr(true),
 			VMCount:  1,
 			CPUCores: 1,
 			Memory:   "1Gi",
@@ -142,7 +142,7 @@ var _ = Describe("Registry", func() {
 
 	It("should return tps workload by name", func() {
 		w, err := reg.Get("tps", config.WorkloadConfig{
-			Enabled:  true,
+			Enabled:  config.BoolPtr(true),
 			VMCount:  2,
 			CPUCores: 2,
 			Memory:   "2Gi",
@@ -153,7 +153,7 @@ var _ = Describe("Registry", func() {
 
 	It("should create workloads with provided config", func() {
 		cfg := config.WorkloadConfig{
-			Enabled:  true,
+			Enabled:  config.BoolPtr(true),
 			VMCount:  1,
 			CPUCores: 4,
 			Memory:   "8Gi",
@@ -168,7 +168,7 @@ var _ = Describe("Registry", func() {
 
 	It("should pass namespace option to network workload", func() {
 		w, err := reg.Get("network", config.WorkloadConfig{
-			Enabled:  true,
+			Enabled:  config.BoolPtr(true),
 			VMCount:  2,
 			CPUCores: 2,
 			Memory:   "2Gi",
@@ -183,7 +183,7 @@ var _ = Describe("Registry", func() {
 
 	It("should pass SSH credentials via options", func() {
 		w, err := reg.Get("cpu", config.WorkloadConfig{
-			Enabled:  true,
+			Enabled:  config.BoolPtr(true),
 			VMCount:  1,
 			CPUCores: 2,
 			Memory:   "2Gi",
@@ -202,7 +202,7 @@ var _ = Describe("Registry", func() {
 
 	It("should pass data disk size via options", func() {
 		w, err := reg.Get("disk", config.WorkloadConfig{
-			Enabled:  true,
+			Enabled:  config.BoolPtr(true),
 			VMCount:  1,
 			CPUCores: 2,
 			Memory:   "2Gi",

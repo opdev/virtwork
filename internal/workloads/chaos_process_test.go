@@ -16,7 +16,7 @@ var _ = Describe("ChaosProcessWorkload", func() {
 
 	BeforeEach(func() {
 		w = workloads.NewChaosProcessWorkload(config.WorkloadConfig{
-			Enabled:  true,
+			Enabled:  config.BoolPtr(true),
 			VMCount:  1,
 			CPUCores: 2,
 			Memory:   "2Gi",
@@ -178,7 +178,7 @@ var _ = Describe("ChaosProcessWorkload", func() {
 
 		It("should wire custom params from WorkloadConfig.Params", func() {
 			custom := workloads.NewChaosProcessWorkload(config.WorkloadConfig{
-				Enabled:  true,
+				Enabled:  config.BoolPtr(true),
 				VMCount:  1,
 				CPUCores: 2,
 				Memory:   "2Gi",
@@ -211,7 +211,7 @@ var _ = Describe("ChaosProcessWorkload", func() {
 
 		It("should use defaults for missing individual params", func() {
 			partial := workloads.NewChaosProcessWorkload(config.WorkloadConfig{
-				Enabled:  true,
+				Enabled:  config.BoolPtr(true),
 				VMCount:  1,
 				CPUCores: 2,
 				Memory:   "2Gi",

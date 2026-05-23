@@ -17,7 +17,7 @@ var _ = Describe("BaseWorkload", func() {
 	BeforeEach(func() {
 		base = workloads.BaseWorkload{
 			Config: config.WorkloadConfig{
-				Enabled:  true,
+				Enabled:  config.BoolPtr(true),
 				VMCount:  1,
 				CPUCores: 4,
 				Memory:   "4Gi",

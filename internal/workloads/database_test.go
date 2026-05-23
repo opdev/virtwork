@@ -16,7 +16,7 @@ var _ = Describe("DatabaseWorkload", func() {
 
 	BeforeEach(func() {
 		w = workloads.NewDatabaseWorkload(config.WorkloadConfig{
-			Enabled:  true,
+			Enabled:  config.BoolPtr(true),
 			VMCount:  1,
 			CPUCores: 2,
 			Memory:   "4Gi",
