@@ -21,6 +21,8 @@ RUN dnf install -y \
     postgresql-server \
     iproute-tc \
     iptables-nft \
+    netperf \
+    python3 \
     && dnf clean all \
     && rm -rf /var/cache/dnf
 
@@ -30,7 +32,9 @@ RUN which stress-ng && \
     which iperf3 && \
     which pgbench && \
     which tc && \
-    which iptables-nft
+    which iptables-nft && \
+    which netserver && \
+    which python3
 
 # Expose metadata for KubeVirt compatibility
 # The containerdisk format expects the disk image to be at /disk/
