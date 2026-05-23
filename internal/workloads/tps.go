@@ -45,7 +45,10 @@ WantedBy=multi-user.target
 `
 
 var ErrUnknownTPSRole = errors.New("unexpected tps role; expected 'server' or 'client'")
-var ErrInvalidFileSize = errors.New("invalid file-size format: must be a positive integer followed by K, M, or G (e.g. \"10M\", \"1G\", \"512K\")")
+
+var ErrInvalidFileSize = errors.New(
+	"invalid file-size format: must be a positive integer followed by K, M, or G (e.g. '10M')",
+)
 
 // TPSWorkload generates cloud-init userdata for a combined TPS benchmark.
 // It creates server/client VM pairs. The server runs netserver and python3

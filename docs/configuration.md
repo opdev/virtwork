@@ -198,7 +198,7 @@ Each workload's `params` block accepts string-valued keys. The current parameter
 
 | Workload | Key | Default | Effect |
 |---|---|---|---|
-| **tps** | `file-size` | `10M` | Size of the HTTP test file (suffix `K`/`M`/`G`) |
+| **tps** | `file-size` | `10M` | Size of the HTTP test file — a positive integer followed by `K`, `M`, or `G` (e.g. `512K`, `10M`, `1G`). Decimal values and binary suffixes like `MiB` are not supported. |
 | **tps** | `iterations` | `30` | Number of test iterations |
 | **tps** | `duration` | `60` | Seconds per iteration |
 | **chaos-disk** | `mount` | `/mnt/data` | Mountpoint of the data disk to fill |
