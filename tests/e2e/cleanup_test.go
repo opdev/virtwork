@@ -41,7 +41,7 @@ var _ = Describe("virtwork cleanup", Label("slow"), func() {
 			"cleanup", "--namespace", namespace)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(exitCode).To(Equal(0))
-		Expect(stdout).To(ContainSubstring("1 VMs deleted"))
+		Expect(stdout).To(ContainSubstring(`"vms_deleted":1`))
 	})
 
 	It("should not delete the namespace by default", func() {
@@ -79,6 +79,6 @@ var _ = Describe("virtwork cleanup", Label("slow"), func() {
 			"cleanup", "--namespace", namespace)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(exitCode2).To(Equal(0))
-		Expect(stdout).To(ContainSubstring("0 VMs deleted"))
+		Expect(stdout).To(ContainSubstring(`"vms_deleted":0`))
 	})
 })

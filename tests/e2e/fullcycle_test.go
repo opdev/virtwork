@@ -52,7 +52,7 @@ var _ = Describe("Full deployment cycle", Label("slow"), func() {
 			"cleanup", "--namespace", namespace)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(exitCode).To(Equal(0))
-		Expect(stdout).To(ContainSubstring("1 VMs deleted"))
+		Expect(stdout).To(ContainSubstring(`"vms_deleted":1`))
 
 		// Step 4: Verify resources are gone (KubeVirt finalizers may delay removal)
 		Eventually(func() int {
@@ -90,6 +90,6 @@ var _ = Describe("Full deployment cycle", Label("slow"), func() {
 			"cleanup", "--namespace", namespace)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(exitCode).To(Equal(0))
-		Expect(stdout).To(ContainSubstring("2 VMs deleted"))
+		Expect(stdout).To(ContainSubstring(`"vms_deleted":2`))
 	})
 })
