@@ -197,7 +197,7 @@ func runE(cmd *cobra.Command, args []string) error {
 	var c client.Client
 	if !cfg.DryRun {
 		var contextName string
-		c, contextName, err = cluster.Connect(cfg.KubeconfigPath)
+		c, contextName, err = cluster.Connect(cluster.ResolveKubeconfigPath(cfg.KubeconfigPath))
 		if err != nil {
 			return fmt.Errorf("connecting to cluster: %w", err)
 		}
@@ -627,7 +627,7 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 	}
 
 	// Connect to cluster early to capture context for audit
-	c, contextName, err := cluster.Connect(cfg.KubeconfigPath)
+	c, contextName, err := cluster.Connect(cluster.ResolveKubeconfigPath(cfg.KubeconfigPath))
 	if err != nil {
 		return fmt.Errorf("connecting to cluster: %w", err)
 	}
