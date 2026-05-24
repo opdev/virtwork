@@ -1,0 +1,20 @@
+# virtwork golden disk image blueprint for osbuild / image-builder
+# Copyright 2026 Red Hat
+# SPDX-License-Identifier: Apache-2.0
+#
+# Add workload packages here. Rebuild with ./build.sh to produce an
+# updated containerdisk OCI image.
+
+packages = [
+  { name = "cloud-init" },
+  { name = "qemu-guest-agent" },
+  { name = "stress-ng" },
+  { name = "fio" },
+  { name = "iperf3" },
+  { name = "postgresql-server" },
+  { name = "iproute-tc" },
+  { name = "iptables-nft" },
+  { name = "kernel-modules-extra" },
+  { name = "netperf" },
+  { name = "python3" },
+]
