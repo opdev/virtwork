@@ -135,7 +135,7 @@ Indexes: `started_at`, `namespace`, `status`, `run_id`.
 | `has_data_disk` | INTEGER NOT NULL | 1 when `DataVolumeTemplates()` is non-empty |
 | `data_disk_size` | TEXT | NULL when `has_data_disk = 0` |
 | `requires_service` | INTEGER NOT NULL | 1 for multi-VM workloads (network, tps) |
-| `status` | TEXT NOT NULL | `pending` → `created` (after VM create succeeds) → `failed` |
+| `status` | TEXT NOT NULL | `pending` → `created` (after all VMs succeed) or `failed` (on VM creation or readiness error) |
 
 Indexes: `audit_id`, `workload_type`.
 

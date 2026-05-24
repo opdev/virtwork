@@ -530,7 +530,16 @@ func runE(cmd *cobra.Command, args []string) error {
 		})
 	}
 	if err := g.Wait(); err != nil {
+		for _, wlID := range auditWorkloadIDs {
+			_ = auditor.UpdateWorkloadStatus(ctx, wlID, "failed")
+		}
 		return fmt.Errorf("creating VMs: %w", err)
+	}
+
+	// Build VM-name → workload-component mapping for readiness tracking
+	vmToComponent := make(map[string]string, len(plans))
+	for _, p := range plans {
+		vmToComponent[p.vmName] = p.component
 	}
 
 	// Wait for readiness
@@ -543,6 +552,7 @@ func runE(cmd *cobra.Command, args []string) error {
 			timeout, constants.DefaultPollInterval)
 
 		failures := 0
+		failedWorkloads := make(map[string]bool)
 		for name, err := range results {
 			if err != nil {
 				logger.Error("vm readiness check failed",
@@ -554,6 +564,9 @@ func runE(cmd *cobra.Command, args []string) error {
 					Message:     fmt.Sprintf("VM %s failed readiness check", name),
 					ErrorDetail: err.Error(),
 				})
+				if comp, ok := vmToComponent[name]; ok {
+					failedWorkloads[comp] = true
+				}
 			} else {
 				_ = auditor.RecordEvent(ctx, execID, audit.EventRecord{
 					EventType: "vm_ready",
@@ -562,6 +575,13 @@ func runE(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if failures > 0 {
+			for comp, wlID := range auditWorkloadIDs {
+				if failedWorkloads[comp] {
+					_ = auditor.UpdateWorkloadStatus(ctx, wlID, "failed")
+				} else {
+					_ = auditor.UpdateWorkloadStatus(ctx, wlID, "created")
+				}
+			}
 			return fmt.Errorf("%d of %d VMs failed; %w", failures, len(vmNames), ErrReadinessCheck)
 		}
 		logger.Info("all VMs ready", slog.Int("vm_count", len(vmNames)))
