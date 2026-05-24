@@ -1,42 +1,19 @@
 # Golden Container Disk Image for virtwork
 # Copyright 2026 Red Hat
 # SPDX-License-Identifier: Apache-2.0
+#
+# Packages the osbuild-produced qcow2 as a KubeVirt containerdisk.
+# The qcow2 is built by build.sh via image-builder before this
+# Containerfile is consumed.
 
-FROM quay.io/containerdisks/fedora:41
+FROM scratch
 
 LABEL io.k8s.display-name="virtwork-disk" \
-      io.k8s.description="Fedora 41 container disk with virtwork workload tools pre-installed" \
+      io.k8s.description="Fedora container disk with virtwork workload tools pre-installed" \
       summary="Container disk for virtwork with CPU, memory, database, network, and disk tools" \
-      description="Pre-built Fedora 41 container disk with stress-ng, fio, iperf3, postgresql-server, and chaos engineering tools for faster VM boot times" \
+      description="Pre-built Fedora container disk with stress-ng, fio, iperf3, postgresql-server, and chaos engineering tools for faster VM boot times" \
       name="virtwork-disk" \
       version="1.0" \
-      maintainer="OpenDev Community"
+      maintainer="Red Hat Ecosystem Engineering"
 
-# Install all workload tools in a single layer to minimize image size
-# Clean DNF cache to reduce final image size
-RUN dnf install -y \
-    stress-ng \
-    fio \
-    iperf3 \
-    postgresql-server \
-    iproute-tc \
-    iptables-nft \
-    kernel-modules-extra \
-    netperf \
-    python3 \
-    && dnf clean all \
-    && rm -rf /var/cache/dnf
-
-# Verify all critical binaries are present
-RUN which stress-ng && \
-    which fio && \
-    which iperf3 && \
-    which pgbench && \
-    which tc && \
-    which iptables-nft && \
-    which netserver && \
-    which python3
-
-# Expose metadata for KubeVirt compatibility
-# The containerdisk format expects the disk image to be at /disk/
-# This is already handled by the base fedora:41 image
+COPY --chown=107:107 *.qcow2 /disk/disk.qcow2

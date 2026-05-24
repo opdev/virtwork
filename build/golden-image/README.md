@@ -1,34 +1,51 @@
 # Golden Container Disk Image
 
-This directory contains the Containerfile and build scripts for the virtwork golden container disk image.
+This directory produces a KubeVirt containerdisk OCI image with all
+virtwork workload tools pre-installed, eliminating package installation
+at VM boot time.
 
-## Overview
+## How It Works
 
-The golden image is based on `quay.io/containerdisks/fedora:41` and includes all tools needed for virtwork workloads pre-installed. This eliminates package installation at VM boot time, reducing startup time by 2-5 minutes.
+```
+blueprint.toml          image-builder          Containerfile
+  (packages)  ──────►  build qcow2  ──────►  FROM scratch
+                        (Fedora 41)           COPY qcow2 → /disk/
+                                                    │
+                                              containerdisk
+                                               OCI image
+```
 
-### Pre-installed Tools
+1. **`blueprint.toml`** — declarative package manifest consumed by osbuild.
+2. **`image-builder build generic-qcow2`** — produces a Fedora qcow2 with all
+   blueprint packages baked in.
+3. **`podman build`** — wraps the qcow2 in a minimal `FROM scratch` OCI
+   image at `/disk/disk.qcow2` (KubeVirt containerdisk format).
+
+## Prerequisites
+
+| Tool | Install | Purpose |
+|------|---------|---------|
+| `image-builder` | `sudo dnf install image-builder` | Builds the qcow2 from the blueprint |
+| `podman` | `sudo dnf install podman` | Packages the qcow2 as an OCI image |
+
+`image-builder` requires root for loopback device access — `build.sh`
+re-executes itself with `sudo` automatically if needed.
+
+## Pre-installed Tools
 
 - **stress-ng** — CPU and memory stress testing (cpu, memory workloads)
 - **fio** — Flexible I/O tester for disk benchmarking (disk workload)
 - **iperf3** — Network performance testing (network workload)
 - **netperf** — TCP_RR transaction performance (tps workload)
-- **python3** — HTTP file server for the tps workload's application-layer transfers
+- **python3** — HTTP file server for the tps workload
 - **postgresql-server** — PostgreSQL database with pgbench (database workload)
-- **procps-ng** — `ps`, `pkill`, `kill` for chaos-process
-- **iproute-tc** — Traffic control (`tc`) used by the chaos-network workload to inject latency and packet loss
-- **kernel-modules-extra** — Provides the `sch_netem` kernel module required by chaos-network; pre-installing means the cloud-init `dnf install` completes instantly (package already present) instead of fetching over the network
-- **iptables-nft** — Firewall rules; reserved for future network partition / blackhole scenarios
-
-Additional tools like `fallocate` and `dd` (used by chaos-disk) are already present in the base Fedora image.
-
-Workloads that need persistent storage (disk, database, chaos-disk) discover their data volume through `/dev/disk/by-id/virtio-<serial>` using the shared `diskSetupScript` helper — they do not depend on any tools beyond the standard userspace utilities already in the base image (`blkid`, `mkfs.xfs`, `mount`, `readlink`).
+- **iproute-tc** — Traffic control for chaos-network latency/loss injection
+- **kernel-modules-extra** — `sch_netem` kernel module for chaos-network
+- **iptables-nft** — Firewall rules for future network partition scenarios
+- **cloud-init** — VM first-boot configuration
+- **qemu-guest-agent** — KubeVirt guest agent communication
 
 ## Building
-
-### Prerequisites
-
-- Podman or Docker installed
-- Network access to pull `quay.io/containerdisks/fedora:41`
 
 ### Build Locally
 
@@ -36,26 +53,12 @@ Workloads that need persistent storage (disk, database, chaos-disk) discover the
 ./build.sh
 ```
 
-This builds the image as `quay.io/opdev/virtwork-disk:latest` (local copy, not pushed to registry).
+Produces `quay.io/opdev/virtwork-disk:latest` (local only, not pushed).
 
 ### Build and Push
 
 ```bash
 PUSH=true ./build.sh
-```
-
-This builds and pushes to `quay.io/opdev/virtwork-disk:latest`. Requires authentication to the registry.
-
-### Build with Custom Registry
-
-```bash
-REGISTRY=my.registry.io ./build.sh
-```
-
-### Build with Custom Tag
-
-```bash
-TAG=1.0.0 ./build.sh
 ```
 
 ### Environment Variables
@@ -65,88 +68,55 @@ TAG=1.0.0 ./build.sh
 | `REGISTRY` | Container registry hostname | `quay.io/opdev` |
 | `IMAGE_NAME` | Image name | `virtwork-disk` |
 | `TAG` | Image tag | `latest` |
+| `DISTRO` | Fedora version for image-builder | `fedora-42` |
+| `IMAGE_TYPE` | osbuild image type | `generic-qcow2` |
 | `PUSH` | Push to registry after building | `false` |
 
-## Testing
+## Adding Packages
 
-After building, verify tools are present:
+Edit `blueprint.toml` and add an entry to the `packages` list:
 
-```bash
-podman run --rm quay.io/opdev/virtwork-disk:latest /bin/bash -c "stress-ng --version"
-podman run --rm quay.io/opdev/virtwork-disk:latest /bin/bash -c "fio --version"
-podman run --rm quay.io/opdev/virtwork-disk:latest /bin/bash -c "iperf3 --version"
-podman run --rm quay.io/opdev/virtwork-disk:latest /bin/bash -c "psql --version"
+```toml
+packages = [
+  # ... existing packages ...
+  { name = "your-new-package" },
+]
 ```
+
+Then rebuild with `./build.sh`. osbuild validates that packages exist in
+the Fedora repos at build time — a typo or missing package fails the
+build immediately.
 
 ## Using the Golden Image
 
 The golden image is **optional**. To use it with virtwork:
 
-### CLI Flag
-
 ```bash
+# CLI flag
 virtwork run --container-disk-image quay.io/opdev/virtwork-disk:latest
-```
 
-### Environment Variable
-
-```bash
+# Environment variable
 export VIRTWORK_CONTAINER_DISK_IMAGE=quay.io/opdev/virtwork-disk:latest
 virtwork run
-```
 
-### Config File
-
-```yaml
-# config.yaml
+# Config file (config.yaml)
 container_disk_image: quay.io/opdev/virtwork-disk:latest
 ```
 
-```bash
-virtwork run --config config.yaml
-```
+## Troubleshooting
 
-## Image Size
-
-The golden image adds approximately **34MB** to the base Fedora 41 container disk image:
-
-- Base Fedora 41 container disk: ~600MB
-- Golden image: ~634MB
-
-## Design Decisions
-
-### Why Keep Package Installation in Cloud-Init?
-
-DNF is **idempotent** — when it tries to install a package that's already present, it completes instantly with "Package X is already installed" messages.
-
-This means:
-- **Golden image users**: Get instant package "installation" (already there) — saves 2-5 minutes
-- **Default Fedora users**: Get normal package installation at boot
-- **Same workload code**: Works for both images without conditional logic
-
-### Why Not Remove Packages from Cloud-Init?
-
-Removing package installation from workload code would require:
-- Changes to all 5 workload implementations
-- Changes to all workload tests
-- Conditional logic to detect which image is in use
-- Maintaining two code paths
-
-The current approach is simpler and maintains backward compatibility.
-
-## Future Enhancements
-
-1. **Multi-architecture support**: Build for arm64 in addition to amd64
-2. **Automated builds**: CI workflow on schedule
-3. **Image scanning**: Add Trivy security scanning
-4. **Semantic versioning**: Pin specific package versions for reproducibility
-5. **Image variants**: Create minimal/full variants for different use cases
+| Problem | Fix |
+|---------|-----|
+| `image-builder: command not found` | `sudo dnf install image-builder` |
+| Permission errors during build | Script auto-escalates to root; ensure `sudo` works |
+| Package not found in blueprint | Check the package name exists in `dnf search <name>` for the target Fedora version |
+| Build runs out of disk space | qcow2 assembly needs ~4 GB in `/tmp`; set `TMPDIR` to a larger partition if needed |
 
 ## Related Docs
 
-- [docs/chaos-workloads.md](../../docs/chaos-workloads.md) — operator guide for the chaos workloads that use `iproute-tc`, `procps-ng`, and `fallocate`
-- [docs/deployment.md](../../docs/deployment.md) — how to set the golden image as the default container disk in your deployment
-- [docs/configuration.md](../../docs/configuration.md) — `--container-disk-image` flag, `VIRTWORK_CONTAINER_DISK_IMAGE` env var, and `container_disk_image` YAML key
+- [docs/chaos-workloads.md](../../docs/chaos-workloads.md) — chaos workloads using `iproute-tc`, `procps-ng`, and `fallocate`
+- [docs/deployment.md](../../docs/deployment.md) — setting the golden image as default container disk
+- [docs/configuration.md](../../docs/configuration.md) — `--container-disk-image` flag, env var, and YAML key
 
 ## License
 

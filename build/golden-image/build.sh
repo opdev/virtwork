@@ -2,6 +2,14 @@
 # Build script for virtwork golden container disk image
 # Copyright 2026 Red Hat
 # SPDX-License-Identifier: Apache-2.0
+#
+# Two-stage build:
+#   1. image-builder produces a Fedora qcow2 with blueprint packages
+#   2. podman packages the qcow2 as a KubeVirt containerdisk OCI image
+#
+# Prerequisites:
+#   - image-builder  (dnf install image-builder)
+#   - podman
 
 set -euo pipefail
 
@@ -9,39 +17,84 @@ REGISTRY="${REGISTRY:-quay.io/opdev}"
 IMAGE_NAME="${IMAGE_NAME:-virtwork-disk}"
 TAG="${TAG:-latest}"
 FULL_IMAGE="${REGISTRY}/${IMAGE_NAME}:${TAG}"
+DISTRO="${DISTRO:-fedora-42}"
+IMAGE_TYPE="${IMAGE_TYPE:-generic-qcow2}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "Building golden container disk image: ${FULL_IMAGE}"
+# --- prerequisite checks ---------------------------------------------------
+
+for cmd in image-builder podman; do
+  if ! command -v "$cmd" &>/dev/null; then
+    echo "ERROR: $cmd is required but not found on PATH" >&2
+    echo "       Install with: sudo dnf install $cmd" >&2
+    exit 1
+  fi
+done
+
+# image-builder may need root for loopback device access
+if [[ $(id -u) -ne 0 ]]; then
+  echo "image-builder requires root privileges for disk image assembly."
+  echo "Re-executing with sudo..."
+  exec sudo \
+    REGISTRY="$REGISTRY" \
+    IMAGE_NAME="$IMAGE_NAME" \
+    TAG="$TAG" \
+    DISTRO="$DISTRO" \
+    IMAGE_TYPE="$IMAGE_TYPE" \
+    PUSH="${PUSH:-false}" \
+    "$0" "$@"
+fi
+
+# --- stage 1: build qcow2 with image-builder --------------------------------
+
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+
+echo "Building golden disk image: ${FULL_IMAGE}"
 echo "======================================================"
+echo "Distro:    ${DISTRO}"
+echo "Type:      ${IMAGE_TYPE}"
+echo "Blueprint: ${SCRIPT_DIR}/blueprint.toml"
+echo "Output:    ${TMPDIR}"
+echo ""
 
-# Build the image
+image-builder build "$IMAGE_TYPE" \
+  --distro "$DISTRO" \
+  --blueprint "${SCRIPT_DIR}/blueprint.toml" \
+  --output-dir "$TMPDIR"
+
+QCOW2="$(find "$TMPDIR" -name '*.qcow2' -print -quit)"
+if [[ -z "$QCOW2" ]]; then
+  echo "ERROR: image-builder produced no qcow2 file" >&2
+  exit 1
+fi
+
+echo ""
+echo "qcow2 produced: $(basename "$QCOW2") ($(du -h "$QCOW2" | cut -f1))"
+
+# --- stage 2: package as containerdisk OCI image ----------------------------
+
+echo ""
+echo "Packaging as containerdisk..."
+
+cp "$QCOW2" "${TMPDIR}/disk.qcow2"
+
 podman build \
   --tag "${FULL_IMAGE}" \
-  --file Containerfile \
-  .
+  --file "${SCRIPT_DIR}/Containerfile" \
+  "$TMPDIR"
 
 echo ""
 echo "Image built successfully: ${FULL_IMAGE}"
-echo ""
 
-# Optional: push to registry
+# --- optional push -----------------------------------------------------------
+
 if [[ "${PUSH:-false}" == "true" ]]; then
+  echo ""
   echo "Pushing image to registry..."
   podman push "${FULL_IMAGE}"
   echo "Image pushed successfully"
-  echo ""
 fi
-
-# Verify the image contains expected tools
-echo "Verifying installed tools..."
-echo "=============================="
-podman run --rm "${FULL_IMAGE}" /bin/bash -c "
-  which stress-ng && echo '✓ stress-ng found' || echo '✗ stress-ng MISSING' &&
-  which fio && echo '✓ fio found' || echo '✗ fio MISSING' &&
-  which iperf3 && echo '✓ iperf3 found' || echo '✗ iperf3 MISSING' &&
-  which pgbench && echo '✓ pgbench found' || echo '✗ pgbench MISSING' &&
-  which tc && echo '✓ tc found' || echo '✗ tc MISSING' &&
-  which iptables-nft && echo '✓ iptables-nft found' || echo '✗ iptables-nft MISSING'
-"
 
 echo ""
 echo "======================================================"
