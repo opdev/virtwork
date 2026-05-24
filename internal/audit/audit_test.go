@@ -562,3 +562,60 @@ var _ = Describe("NoOpAuditor", func() {
 		Expect(a.Close()).To(Succeed())
 	})
 })
+
+var _ = Describe("Workload status transitions", func() {
+	var (
+		auditor *audit.SQLiteAuditor
+		ctx     context.Context
+		execID  int64
+		wlID    int64
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		var err error
+		auditor, err = audit.NewSQLiteAuditor(":memory:")
+		Expect(err).NotTo(HaveOccurred())
+
+		cfg := &config.Config{Namespace: "test-ns"}
+		execID, _, err = auditor.StartExecution(ctx, "run", cfg)
+		Expect(err).NotTo(HaveOccurred())
+
+		wlID, err = auditor.RecordWorkload(ctx, execID, audit.WorkloadRecord{
+			WorkloadType: "cpu", Enabled: true, VMCount: 1, CPUCores: 2, Memory: "2Gi",
+		})
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		Expect(auditor.Close()).To(Succeed())
+	})
+
+	It("defaults to pending on insert", func() {
+		db := auditor.DB()
+		var status string
+		err := db.QueryRow(`SELECT status FROM workload_details WHERE id = ?`, wlID).Scan(&status)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(status).To(Equal("pending"))
+	})
+
+	It("transitions to created on success", func() {
+		Expect(auditor.UpdateWorkloadStatus(ctx, wlID, "created")).To(Succeed())
+
+		db := auditor.DB()
+		var status string
+		err := db.QueryRow(`SELECT status FROM workload_details WHERE id = ?`, wlID).Scan(&status)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(status).To(Equal("created"))
+	})
+
+	It("transitions to failed on orchestration error", func() {
+		Expect(auditor.UpdateWorkloadStatus(ctx, wlID, "failed")).To(Succeed())
+
+		db := auditor.DB()
+		var status string
+		err := db.QueryRow(`SELECT status FROM workload_details WHERE id = ?`, wlID).Scan(&status)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(status).To(Equal("failed"))
+	})
+})
