@@ -31,9 +31,12 @@ var _ = Describe("virtwork cleanup", Label("slow"), func() {
 	})
 
 	AfterEach(func() {
-		// Safety net cleanup
-		_, _, _, _ = testutil.RunVirtwork("cleanup",
+		_, stderr, exitCode, err := testutil.RunVirtwork("cleanup",
 			"--namespace", namespace, "--delete-namespace", "--yes")
+		if err != nil || exitCode != 0 {
+			GinkgoWriter.Printf("AfterEach cleanup failed (ns=%s exit=%d): err=%v stderr=%s\n",
+				namespace, exitCode, err, stderr)
+		}
 	})
 
 	It("should delete all managed resources", func() {

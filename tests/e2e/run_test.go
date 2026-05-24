@@ -20,9 +20,12 @@ var _ = Describe("virtwork run", Label("slow"), func() {
 	})
 
 	AfterEach(func() {
-		// Force cleanup regardless of test outcome
-		_, _, _, _ = testutil.RunVirtwork("cleanup",
-			"--namespace", namespace, "--delete-namespace")
+		_, stderr, exitCode, err := testutil.RunVirtwork("cleanup",
+			"--namespace", namespace, "--delete-namespace", "--yes")
+		if err != nil || exitCode != 0 {
+			GinkgoWriter.Printf("AfterEach cleanup failed (ns=%s exit=%d): err=%v stderr=%s\n",
+				namespace, exitCode, err, stderr)
+		}
 	})
 
 	It("should deploy a single CPU workload with --no-wait", func() {
