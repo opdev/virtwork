@@ -32,12 +32,8 @@ import (
 	"github.com/opdev/virtwork/internal/workloads"
 )
 
-var (
-	// ErrReadinessCheck: readiness check failed
-	ErrReadinessCheck = errors.New("readiness check failed")
-	// Err
-	ErrMultiVMWorkloadNotImplemented = errors.New("MultiVMWorkload not implemented")
-)
+// ErrReadinessCheck: readiness check failed
+var ErrReadinessCheck = errors.New("readiness check failed")
 
 func main() {
 	if err := newRootCmd().Execute(); err != nil {
@@ -302,7 +298,7 @@ func runE(cmd *cobra.Command, args []string) error {
 		})
 		auditWorkloadIDs[name] = wlID
 
-		if _, isMulti := w.(workloads.MultiVMWorkload); !isMulti {
+		if multiVM, isMulti := w.(workloads.MultiVMWorkload); !isMulti {
 			userdata, err := w.CloudInitUserdata()
 			if err != nil {
 				return fmt.Errorf("generating cloud-init for %q: %w", name, err)
@@ -344,16 +340,6 @@ func runE(cmd *cobra.Command, args []string) error {
 			}
 		} else {
 			// Multi-VM workload — use UserdataForRole
-			multiVM, ok := w.(workloads.MultiVMWorkload)
-			if !ok {
-				return fmt.Errorf(
-					"workload %q reports VMCount=%d; %w",
-					name,
-					vmCount,
-					ErrMultiVMWorkloadNotImplemented,
-				)
-			}
-
 			roles := multiVM.Roles()
 			perRole := vmCount / len(roles)
 			for _, role := range roles {
