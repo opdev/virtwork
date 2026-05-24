@@ -27,7 +27,7 @@ var _ = Describe("TPS workload", Label("slow"), func() {
 
 	AfterEach(func() {
 		_, _, _, _ = testutil.RunVirtwork("cleanup",
-			"--namespace", namespace, "--delete-namespace")
+			"--namespace", namespace, "--delete-namespace", "--yes")
 	})
 
 	It("should deploy server and client VMs with a service", func() {
@@ -62,7 +62,7 @@ var _ = Describe("TPS workload", Label("slow"), func() {
 		Expect(exitCode).To(Equal(0))
 
 		stdout, _, exitCode, err := testutil.RunVirtwork(
-			"cleanup", "--namespace", namespace)
+			"cleanup", "--namespace", namespace, "--yes")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(exitCode).To(Equal(0))
 		Expect(stdout).To(ContainSubstring(`"vms_deleted":2`))

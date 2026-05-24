@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -26,6 +27,189 @@ import (
 
 // ErrDeleteResource: error deleting resources
 var ErrDeleteResource = errors.New("resource deletion error")
+
+var _ = Describe("PreviewCleanup", func() {
+	var (
+		ctx       context.Context
+		scheme    = cluster.NewScheme()
+		namespace = "test-ns"
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+	})
+
+	newManagedVM := func(name string, extraLabels ...map[string]string) *kubevirtv1.VirtualMachine {
+		l := map[string]string{
+			constants.LabelManagedBy: constants.ManagedByValue,
+		}
+		for _, el := range extraLabels {
+			maps.Copy(l, el)
+		}
+		return vm.BuildVMSpec(vm.VMSpecOpts{
+			Name:               name,
+			Namespace:          namespace,
+			ContainerDiskImage: "test-image",
+			CloudInitUserdata:  "#cloud-config\n",
+			CPUCores:           1,
+			Memory:             "1Gi",
+			Labels:             l,
+		})
+	}
+
+	newManagedSecret := func(name string, extraLabels ...map[string]string) *corev1.Secret {
+		l := map[string]string{
+			constants.LabelManagedBy: constants.ManagedByValue,
+		}
+		for _, el := range extraLabels {
+			maps.Copy(l, el)
+		}
+		return &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: namespace,
+				Labels:    l,
+			},
+			StringData: map[string]string{
+				"userdata": "#cloud-config\n",
+			},
+		}
+	}
+
+	newManagedService := func(name string, extraLabels ...map[string]string) *corev1.Service {
+		l := map[string]string{
+			constants.LabelManagedBy: constants.ManagedByValue,
+		}
+		for _, el := range extraLabels {
+			maps.Copy(l, el)
+		}
+		return &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: namespace,
+				Labels:    l,
+			},
+			Spec: corev1.ServiceSpec{
+				Ports: []corev1.ServicePort{
+					{Port: 80, Protocol: corev1.ProtocolTCP},
+				},
+			},
+		}
+	}
+
+	It("should return correct counts for mixed resources", func() {
+		vm1 := newManagedVM("vm-1")
+		vm2 := newManagedVM("vm-2")
+		vm3 := newManagedVM("vm-3")
+		svc1 := newManagedService("svc-1")
+		sec1 := newManagedSecret("sec-1")
+		sec2 := newManagedSecret("sec-2")
+		c := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(vm1, vm2, vm3, svc1, sec1, sec2).
+			Build()
+
+		preview, err := cleanup.PreviewCleanup(ctx, c, &config.Config{Namespace: namespace}, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(preview.VMCount).To(Equal(3))
+		Expect(preview.ServiceCount).To(Equal(1))
+		Expect(preview.SecretCount).To(Equal(2))
+		Expect(preview.TotalCount).To(Equal(6))
+	})
+
+	It("should respect run-id filtering", func() {
+		runLabels := map[string]string{constants.LabelRunID: "run-abc"}
+		vm1 := newManagedVM("vm-1", runLabels)
+		vm2 := newManagedVM("vm-2")
+		svc1 := newManagedService("svc-1", runLabels)
+		c := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(vm1, vm2, svc1).
+			Build()
+
+		preview, err := cleanup.PreviewCleanup(ctx, c, &config.Config{Namespace: namespace}, "run-abc")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(preview.VMCount).To(Equal(1))
+		Expect(preview.ServiceCount).To(Equal(1))
+		Expect(preview.SecretCount).To(Equal(0))
+		Expect(preview.TotalCount).To(Equal(2))
+	})
+
+	It("should return zero counts for empty namespace", func() {
+		c := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		preview, err := cleanup.PreviewCleanup(ctx, c, &config.Config{Namespace: namespace}, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(preview.VMCount).To(Equal(0))
+		Expect(preview.ServiceCount).To(Equal(0))
+		Expect(preview.SecretCount).To(Equal(0))
+		Expect(preview.TotalCount).To(Equal(0))
+		Expect(preview.RunIDs).To(BeEmpty())
+	})
+
+	It("should collect run-IDs from resources", func() {
+		vm1 := newManagedVM("vm-1", map[string]string{constants.LabelRunID: "run-aaa"})
+		vm2 := newManagedVM("vm-2", map[string]string{constants.LabelRunID: "run-bbb"})
+		svc1 := newManagedService("svc-1", map[string]string{constants.LabelRunID: "run-aaa"})
+		c := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(vm1, vm2, svc1).
+			Build()
+
+		preview, err := cleanup.PreviewCleanup(ctx, c, &config.Config{Namespace: namespace}, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(preview.RunIDs).To(ConsistOf("run-aaa", "run-bbb"))
+	})
+
+	It("should not count unmanaged resources", func() {
+		managedVM := newManagedVM("managed-vm")
+		unmanagedVM := vm.BuildVMSpec(vm.VMSpecOpts{
+			Name:               "unmanaged-vm",
+			Namespace:          namespace,
+			ContainerDiskImage: "test-image",
+			CloudInitUserdata:  "#cloud-config\n",
+			CPUCores:           1,
+			Memory:             "1Gi",
+			Labels: map[string]string{
+				constants.LabelManagedBy: "other-tool",
+			},
+		})
+		c := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(managedVM, unmanagedVM).
+			Build()
+
+		preview, err := cleanup.PreviewCleanup(ctx, c, &config.Config{Namespace: namespace}, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(preview.VMCount).To(Equal(1))
+		Expect(preview.TotalCount).To(Equal(1))
+	})
+
+	It("should not modify any resources", func() {
+		vm1 := newManagedVM("vm-1")
+		svc1 := newManagedService("svc-1")
+		sec1 := newManagedSecret("sec-1")
+		c := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(vm1, svc1, sec1).
+			Build()
+
+		_, err := cleanup.PreviewCleanup(ctx, c, &config.Config{Namespace: namespace}, "")
+		Expect(err).NotTo(HaveOccurred())
+
+		vmList := &kubevirtv1.VirtualMachineList{}
+		Expect(c.List(ctx, vmList, client.InNamespace(namespace))).To(Succeed())
+		Expect(vmList.Items).To(HaveLen(1))
+
+		svcList := &corev1.ServiceList{}
+		Expect(c.List(ctx, svcList, client.InNamespace(namespace))).To(Succeed())
+		Expect(svcList.Items).To(HaveLen(1))
+
+		secretList := &corev1.SecretList{}
+		Expect(c.List(ctx, secretList, client.InNamespace(namespace))).To(Succeed())
+		Expect(secretList.Items).To(HaveLen(1))
+	})
+})
 
 var _ = Describe("CleanupAll", func() {
 	var (
