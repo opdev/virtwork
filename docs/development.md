@@ -676,6 +676,8 @@ ssh_authorized_keys:
   - ssh-ed25519 AAAA...
 ```
 
+> **Note:** `--ssh-key-file` is a CLI-only convenience; it has no YAML or env-var equivalent. To configure SSH keys via YAML, supply the full public-key strings in the `ssh_authorized_keys` list.
+
 ### How It Works
 
 SSH credentials are a global, cross-cutting concern applied to all VMs:

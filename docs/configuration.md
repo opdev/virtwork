@@ -56,6 +56,8 @@ These apply to both `virtwork run` and `virtwork cleanup`.
 | `--ssh-key-file` | — | _(handled as inline key after reading)_ | _empty_ | Path to a public key file; repeatable |
 | _(env only)_ | `VIRTWORK_SSH_AUTHORIZED_KEYS` | `ssh_authorized_keys` | _empty_ | Comma-separated list of inline keys (env-var form) |
 
+> **Note:** `--ssh-key-file` is a CLI-only convenience that reads a public-key file from disk at runtime and merges its content into the `ssh_authorized_keys` list. There is no YAML or environment-variable equivalent — to configure SSH keys via YAML or `VIRTWORK_SSH_AUTHORIZED_KEYS`, supply the fully-realized public-key strings directly.
+
 ---
 
 ## `virtwork cleanup` Flags
