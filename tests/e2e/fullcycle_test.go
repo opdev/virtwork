@@ -26,8 +26,12 @@ var _ = Describe("Full deployment cycle", Label("slow"), func() {
 	})
 
 	AfterEach(func() {
-		_, _, _, _ = testutil.RunVirtwork("cleanup",
+		_, stderr, exitCode, err := testutil.RunVirtwork("cleanup",
 			"--namespace", namespace, "--delete-namespace", "--yes")
+		if err != nil || exitCode != 0 {
+			GinkgoWriter.Printf("AfterEach cleanup failed (ns=%s exit=%d): err=%v stderr=%s\n",
+				namespace, exitCode, err, stderr)
+		}
 	})
 
 	It("should deploy CPU workload, wait for readiness, and clean up", func() {
