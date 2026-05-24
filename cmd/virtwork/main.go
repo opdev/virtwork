@@ -4,11 +4,14 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -104,6 +107,7 @@ func newCleanupCmd() *cobra.Command {
 	cmd.Flags().Bool("delete-namespace", false, "Also delete the namespace")
 	cmd.Flags().String("run-id", "", "Only delete resources from this specific run (UUID)")
 	cmd.Flags().Bool("dry-run", false, "Print intent without destroying resources")
+	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt and proceed with cleanup")
 	return cmd
 }
 
@@ -654,6 +658,43 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 		Message:   fmt.Sprintf("Started %s: (namespace: %s, run-id filter: %q)", cmdName, cfg.Namespace, targetRunID),
 	})
 
+	// Preview resources before deletion
+	preview, err := cleanup.PreviewCleanup(ctx, c, cfg, targetRunID)
+	if err != nil {
+		return fmt.Errorf("previewing cleanup: %w", err)
+	}
+
+	printCleanupPreview(logger, preview, cfg.Namespace, targetRunID)
+
+	if preview.TotalCount == 0 {
+		logger.Info("nothing to clean up")
+		_ = auditor.CompleteExecution(ctx, execID, "success", "")
+		err = nil
+		return nil
+	}
+
+	if cfg.DryRun {
+		logger.Info("dry-run mode — no resources were deleted")
+		_ = auditor.CompleteExecution(ctx, execID, "success", "")
+		err = nil
+		return nil
+	}
+
+	skipPrompt, _ := cmd.Flags().GetBool("yes")
+	if !skipPrompt && targetRunID == "" {
+		_, _ = fmt.Fprint(cmd.OutOrStdout(), "Proceed with deletion? (yes/NO): ")
+		confirmed, promptErr := PromptForConfirmation(cmd.InOrStdin())
+		if promptErr != nil {
+			return fmt.Errorf("reading confirmation: %w", promptErr)
+		}
+		if !confirmed {
+			logger.Info("cleanup aborted by user")
+			_ = auditor.CompleteExecution(ctx, execID, "aborted", "user declined confirmation")
+			err = nil
+			return nil
+		}
+	}
+
 	result, err := cleanup.CleanupAll(ctx, c, cfg, deleteNS, targetRunID)
 	if err != nil {
 		return fmt.Errorf("cleanup failed: %w", err)
@@ -719,4 +760,37 @@ func printSummary(logger *slog.Logger, vmCount, svcCount, secCount int, cfg *con
 		slog.Int("services_created", svcCount),
 		slog.Int("secrets_created", secCount),
 		slog.String("container_image", cfg.ContainerDiskImage))
+}
+
+func printCleanupPreview(logger *slog.Logger, preview *cleanup.CleanupPreview, namespace, runID string) {
+	attrs := []slog.Attr{
+		slog.String("namespace", namespace),
+		slog.Int("vms", preview.VMCount),
+		slog.Int("services", preview.ServiceCount),
+		slog.Int("secrets", preview.SecretCount),
+		slog.Int("total", preview.TotalCount),
+	}
+	if runID != "" {
+		attrs = append(attrs, slog.String("run_id_filter", runID))
+	}
+	if len(preview.RunIDs) > 0 {
+		attrs = append(attrs, slog.String("run_ids", strings.Join(preview.RunIDs, ", ")))
+	}
+	args := make([]any, len(attrs))
+	for i, a := range attrs {
+		args[i] = a
+	}
+	logger.Info("resources to be deleted", args...)
+}
+
+func PromptForConfirmation(r io.Reader) (bool, error) {
+	scanner := bufio.NewScanner(r)
+	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return false, fmt.Errorf("reading confirmation: %w", err)
+		}
+		return false, nil
+	}
+	answer := strings.TrimSpace(strings.ToLower(scanner.Text()))
+	return answer == "yes", nil
 }

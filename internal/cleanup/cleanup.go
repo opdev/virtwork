@@ -27,6 +27,73 @@ type CleanupResult struct {
 	RunIDs           []string // unique run IDs collected from cleaned-up resources
 }
 
+// CleanupPreview summarises what a cleanup operation would delete, without modifying anything.
+type CleanupPreview struct {
+	VMCount      int
+	ServiceCount int
+	SecretCount  int
+	RunIDs       []string
+	TotalCount   int
+}
+
+// PreviewCleanup lists virtwork-managed resources that would be deleted, without modifying anything.
+// If runID is non-empty, only resources with that specific virtwork/run-id label are counted.
+func PreviewCleanup(
+	ctx context.Context,
+	c client.Client,
+	cfg *config.Config,
+	runID string,
+) (*CleanupPreview, error) {
+	preview := &CleanupPreview{}
+	managedLabels := map[string]string{
+		constants.LabelManagedBy: constants.ManagedByValue,
+	}
+	if runID != "" {
+		managedLabels[constants.LabelRunID] = runID
+	}
+
+	listOpts := []client.ListOption{
+		client.InNamespace(cfg.Namespace),
+		client.MatchingLabels(managedLabels),
+	}
+
+	runIDSet := make(map[string]struct{})
+
+	vmList := &kubevirtv1.VirtualMachineList{}
+	if err := c.List(ctx, vmList, listOpts...); err != nil {
+		return nil, fmt.Errorf("listing VMs in %s: %w", cfg.Namespace, err)
+	}
+	preview.VMCount = len(vmList.Items)
+	for i := range vmList.Items {
+		collectRunID(vmList.Items[i].Labels, runIDSet)
+	}
+
+	svcList := &corev1.ServiceList{}
+	if err := c.List(ctx, svcList, listOpts...); err != nil {
+		return nil, fmt.Errorf("listing services in %s: %w", cfg.Namespace, err)
+	}
+	preview.ServiceCount = len(svcList.Items)
+	for i := range svcList.Items {
+		collectRunID(svcList.Items[i].Labels, runIDSet)
+	}
+
+	secretList := &corev1.SecretList{}
+	if err := c.List(ctx, secretList, listOpts...); err != nil {
+		return nil, fmt.Errorf("listing secrets in %s: %w", cfg.Namespace, err)
+	}
+	preview.SecretCount = len(secretList.Items)
+	for i := range secretList.Items {
+		collectRunID(secretList.Items[i].Labels, runIDSet)
+	}
+
+	for id := range runIDSet {
+		preview.RunIDs = append(preview.RunIDs, id)
+	}
+
+	preview.TotalCount = preview.VMCount + preview.ServiceCount + preview.SecretCount
+	return preview, nil
+}
+
 // CleanupAll deletes all virtwork-managed resources in the given namespace.
 // If runID is non-empty, only resources with that specific virtwork/run-id label are deleted.
 // Individual deletion failures are recorded but do not abort the operation.

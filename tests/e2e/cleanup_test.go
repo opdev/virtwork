@@ -33,12 +33,12 @@ var _ = Describe("virtwork cleanup", Label("slow"), func() {
 	AfterEach(func() {
 		// Safety net cleanup
 		_, _, _, _ = testutil.RunVirtwork("cleanup",
-			"--namespace", namespace, "--delete-namespace")
+			"--namespace", namespace, "--delete-namespace", "--yes")
 	})
 
 	It("should delete all managed resources", func() {
 		stdout, _, exitCode, err := testutil.RunVirtwork(
-			"cleanup", "--namespace", namespace)
+			"cleanup", "--namespace", namespace, "--yes")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(exitCode).To(Equal(0))
 		Expect(stdout).To(ContainSubstring(`"vms_deleted":1`))
@@ -46,7 +46,7 @@ var _ = Describe("virtwork cleanup", Label("slow"), func() {
 
 	It("should not delete the namespace by default", func() {
 		stdout, _, exitCode, err := testutil.RunVirtwork(
-			"cleanup", "--namespace", namespace)
+			"cleanup", "--namespace", namespace, "--yes")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(exitCode).To(Equal(0))
 		Expect(stdout).NotTo(ContainSubstring("namespace deleted"))
@@ -55,7 +55,7 @@ var _ = Describe("virtwork cleanup", Label("slow"), func() {
 	It("should delete namespace when --delete-namespace is set", func() {
 		stdout, _, exitCode, err := testutil.RunVirtwork(
 			"cleanup", "--namespace", namespace,
-			"--delete-namespace")
+			"--delete-namespace", "--yes")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(exitCode).To(Equal(0))
 		Expect(stdout).To(ContainSubstring("namespace"))
@@ -63,7 +63,7 @@ var _ = Describe("virtwork cleanup", Label("slow"), func() {
 
 	It("should be idempotent (cleanup twice succeeds)", func() {
 		_, _, exitCode1, err := testutil.RunVirtwork(
-			"cleanup", "--namespace", namespace)
+			"cleanup", "--namespace", namespace, "--yes")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(exitCode1).To(Equal(0))
 
@@ -76,9 +76,9 @@ var _ = Describe("virtwork cleanup", Label("slow"), func() {
 		}, 120*time.Second, 2*time.Second).Should(Equal(0))
 
 		stdout, _, exitCode2, err := testutil.RunVirtwork(
-			"cleanup", "--namespace", namespace)
+			"cleanup", "--namespace", namespace, "--yes")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(exitCode2).To(Equal(0))
-		Expect(stdout).To(ContainSubstring(`"vms_deleted":0`))
+		Expect(stdout).To(ContainSubstring("nothing to clean up"))
 	})
 })

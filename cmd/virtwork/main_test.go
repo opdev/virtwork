@@ -74,6 +74,9 @@ func newRootCmd() *cobra.Command {
 		},
 	}
 	cleanupCmd.Flags().Bool("delete-namespace", false, "Also delete the namespace")
+	cleanupCmd.Flags().String("run-id", "", "Only delete resources from this specific run (UUID)")
+	cleanupCmd.Flags().Bool("dry-run", false, "Print intent without destroying resources")
+	cleanupCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt and proceed with cleanup")
 
 	rootCmd.AddCommand(runCmd, cleanupCmd)
 	return rootCmd
@@ -274,6 +277,56 @@ var _ = Describe("Cleanup command flags", func() {
 		val, err := cleanupCmd.Flags().GetBool("delete-namespace")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(val).To(BeFalse())
+	})
+
+	It("should accept --yes flag", func() {
+		rootCmd.SetArgs([]string{"cleanup", "--yes"})
+		Expect(rootCmd.Execute()).To(Succeed())
+
+		cleanupCmd, _, _ := rootCmd.Find([]string{"cleanup"})
+		val, err := cleanupCmd.Flags().GetBool("yes")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(val).To(BeTrue())
+	})
+
+	It("should accept -y shorthand", func() {
+		rootCmd.SetArgs([]string{"cleanup", "-y"})
+		Expect(rootCmd.Execute()).To(Succeed())
+
+		cleanupCmd, _, _ := rootCmd.Find([]string{"cleanup"})
+		val, err := cleanupCmd.Flags().GetBool("yes")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(val).To(BeTrue())
+	})
+
+	It("should default --yes to false", func() {
+		rootCmd.SetArgs([]string{"cleanup"})
+		Expect(rootCmd.Execute()).To(Succeed())
+
+		cleanupCmd, _, _ := rootCmd.Find([]string{"cleanup"})
+		val, err := cleanupCmd.Flags().GetBool("yes")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(val).To(BeFalse())
+	})
+
+	It("should accept --run-id flag", func() {
+		rootCmd.SetArgs([]string{"cleanup", "--run-id", "abc-123"})
+		Expect(rootCmd.Execute()).To(Succeed())
+
+		cleanupCmd, _, _ := rootCmd.Find([]string{"cleanup"})
+		val, err := cleanupCmd.Flags().GetString("run-id")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(val).To(Equal("abc-123"))
+	})
+
+	It("should accept --dry-run flag on cleanup", func() {
+		rootCmd.SetArgs([]string{"cleanup", "--dry-run"})
+		Expect(rootCmd.Execute()).To(Succeed())
+
+		cleanupCmd, _, _ := rootCmd.Find([]string{"cleanup"})
+		val, err := cleanupCmd.Flags().GetBool("dry-run")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(val).To(BeTrue())
 	})
 })
 

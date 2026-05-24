@@ -27,7 +27,7 @@ var _ = Describe("Full deployment cycle", Label("slow"), func() {
 
 	AfterEach(func() {
 		_, _, _, _ = testutil.RunVirtwork("cleanup",
-			"--namespace", namespace, "--delete-namespace")
+			"--namespace", namespace, "--delete-namespace", "--yes")
 	})
 
 	It("should deploy CPU workload, wait for readiness, and clean up", func() {
@@ -49,7 +49,7 @@ var _ = Describe("Full deployment cycle", Label("slow"), func() {
 
 		// Step 3: Cleanup
 		stdout, _, exitCode, err = testutil.RunVirtwork(
-			"cleanup", "--namespace", namespace)
+			"cleanup", "--namespace", namespace, "--yes")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(exitCode).To(Equal(0))
 		Expect(stdout).To(ContainSubstring(`"vms_deleted":1`))
@@ -87,7 +87,7 @@ var _ = Describe("Full deployment cycle", Label("slow"), func() {
 
 		// Cleanup
 		stdout, _, exitCode, err := testutil.RunVirtwork(
-			"cleanup", "--namespace", namespace)
+			"cleanup", "--namespace", namespace, "--yes")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(exitCode).To(Equal(0))
 		Expect(stdout).To(ContainSubstring(`"vms_deleted":2`))
