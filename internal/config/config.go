@@ -6,6 +6,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -201,7 +202,7 @@ func resolveSSHKeys(v *viper.Viper, cmd *cobra.Command) ([]string, error) {
 	if cmd.Flags().Changed("ssh-key-file") {
 		paths, _ := cmd.Flags().GetStringSlice("ssh-key-file")
 		for _, p := range paths {
-			data, err := os.ReadFile(p)
+			data, err := os.ReadFile(filepath.Clean(p)) //nolint:gosec // CLI user supplies the path intentionally
 			if err != nil {
 				return nil, fmt.Errorf("reading SSH key file %s: %w", p, err)
 			}
