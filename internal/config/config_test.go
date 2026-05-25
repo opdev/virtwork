@@ -36,6 +36,13 @@ func writeConfigFile(dir, content string) string {
 	return path
 }
 
+func writeKeyFile(dir, name, content string) string {
+	path := filepath.Join(dir, name)
+	err := os.WriteFile(path, []byte(content), 0o600)
+	Expect(err).NotTo(HaveOccurred())
+	return path
+}
+
 var _ = Describe("Config", func() {
 	var cmd *cobra.Command
 
@@ -327,6 +334,72 @@ ssh-authorized-keys:
 			Expect(cfg.SSHAuthorizedKeys).To(HaveLen(2))
 			Expect(cfg.SSHAuthorizedKeys).To(ContainElement("ssh-rsa YAMLKEY1"))
 			Expect(cfg.SSHAuthorizedKeys).To(ContainElement("ssh-ed25519 YAMLKEY2"))
+		})
+
+		It("should read public key from --ssh-key-file", func() {
+			tmpDir, err := os.MkdirTemp("", "virtwork-config-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			defer func() {
+				_ = os.RemoveAll(tmpDir)
+			}()
+
+			keyPath := writeKeyFile(tmpDir, "id_ed25519.pub", "ssh-ed25519 AAAAC3filekey user@host\n")
+			err1 := cmd.Flags().Set("ssh-key-file", keyPath)
+			Expect(err1).NotTo(HaveOccurred())
+
+			cfg, err := config.LoadConfig(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.SSHAuthorizedKeys).To(ContainElement("ssh-ed25519 AAAAC3filekey user@host"))
+		})
+
+		It("should read multiple --ssh-key-file flags", func() {
+			tmpDir, err := os.MkdirTemp("", "virtwork-config-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			defer func() {
+				_ = os.RemoveAll(tmpDir)
+			}()
+
+			keyPath1 := writeKeyFile(tmpDir, "key1.pub", "ssh-rsa AAAA1 user1@host\n")
+			keyPath2 := writeKeyFile(tmpDir, "key2.pub", "ssh-ed25519 AAAA2 user2@host\n")
+			err1 := cmd.Flags().Set("ssh-key-file", keyPath1)
+			Expect(err1).NotTo(HaveOccurred())
+			err2 := cmd.Flags().Set("ssh-key-file", keyPath2)
+			Expect(err2).NotTo(HaveOccurred())
+
+			cfg, err := config.LoadConfig(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.SSHAuthorizedKeys).To(HaveLen(2))
+			Expect(cfg.SSHAuthorizedKeys).To(ContainElement("ssh-rsa AAAA1 user1@host"))
+			Expect(cfg.SSHAuthorizedKeys).To(ContainElement("ssh-ed25519 AAAA2 user2@host"))
+		})
+
+		It("should merge --ssh-key and --ssh-key-file", func() {
+			tmpDir, err := os.MkdirTemp("", "virtwork-config-test-*")
+			Expect(err).NotTo(HaveOccurred())
+			defer func() {
+				_ = os.RemoveAll(tmpDir)
+			}()
+
+			keyPath := writeKeyFile(tmpDir, "id.pub", "ssh-ed25519 FILEkey user@host\n")
+			err1 := cmd.Flags().Set("ssh-key", "ssh-rsa INLINEkey")
+			Expect(err1).NotTo(HaveOccurred())
+			err2 := cmd.Flags().Set("ssh-key-file", keyPath)
+			Expect(err2).NotTo(HaveOccurred())
+
+			cfg, err := config.LoadConfig(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.SSHAuthorizedKeys).To(HaveLen(2))
+			Expect(cfg.SSHAuthorizedKeys).To(ContainElement("ssh-rsa INLINEkey"))
+			Expect(cfg.SSHAuthorizedKeys).To(ContainElement("ssh-ed25519 FILEkey user@host"))
+		})
+
+		It("should return error for nonexistent --ssh-key-file", func() {
+			err1 := cmd.Flags().Set("ssh-key-file", "/nonexistent/key.pub")
+			Expect(err1).NotTo(HaveOccurred())
+
+			_, err := config.LoadConfig(cmd)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("/nonexistent/key.pub"))
 		})
 	})
 
