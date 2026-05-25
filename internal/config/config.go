@@ -87,6 +87,7 @@ func BindFlags(cmd *cobra.Command) {
 	f.String("ssh-user", "", "SSH user for VMs")
 	f.String("ssh-password", "", "SSH password for VMs")
 	f.StringSlice("ssh-key", nil, "SSH authorized key (repeatable)")
+	f.StringSlice("ssh-key-file", nil, "SSH key file path (repeatable)")
 }
 
 // LoadConfig loads configuration from flags, environment variables, config file,
@@ -160,7 +161,11 @@ func LoadConfig(cmd *cobra.Command) (*Config, error) {
 	cfg.AuditDBPath = v.GetString("audit-db")
 
 	// Handle SSH authorized keys: CLI flags, env var (comma-split), or YAML list
-	cfg.SSHAuthorizedKeys = resolveSSHKeys(v, cmd)
+	sshKeys, err := resolveSSHKeys(v, cmd)
+	if err != nil {
+		return nil, err
+	}
+	cfg.SSHAuthorizedKeys = sshKeys
 
 	// Unmarshal workloads map if present in config file
 	workloads := make(map[string]WorkloadConfig)
@@ -184,13 +189,31 @@ func bindFlagIfSet(v *viper.Viper, cmd *cobra.Command, name string) {
 
 // resolveSSHKeys resolves SSH authorized keys from CLI flags, env vars, or config file.
 // Priority: CLI --ssh-key flags > VIRTWORK_SSH_AUTHORIZED_KEYS env var > YAML config.
-func resolveSSHKeys(v *viper.Viper, cmd *cobra.Command) []string {
-	// CLI flags take highest priority
+func resolveSSHKeys(v *viper.Viper, cmd *cobra.Command) ([]string, error) {
+	// CLI flags take highest priority — merge inline keys and file-based keys
+	var cliKeys []string
+
 	if cmd.Flags().Changed("ssh-key") {
 		keys, _ := cmd.Flags().GetStringSlice("ssh-key")
-		if len(keys) > 0 {
-			return keys
+		cliKeys = append(cliKeys, keys...)
+	}
+
+	if cmd.Flags().Changed("ssh-key-file") {
+		paths, _ := cmd.Flags().GetStringSlice("ssh-key-file")
+		for _, p := range paths {
+			data, err := os.ReadFile(p)
+			if err != nil {
+				return nil, fmt.Errorf("reading SSH key file %s: %w", p, err)
+			}
+			key := strings.TrimSpace(string(data))
+			if key != "" {
+				cliKeys = append(cliKeys, key)
+			}
 		}
+	}
+
+	if len(cliKeys) > 0 {
+		return cliKeys, nil
 	}
 
 	// Check env var with comma splitting
@@ -205,10 +228,10 @@ func resolveSSHKeys(v *viper.Viper, cmd *cobra.Command) []string {
 			}
 		}
 		if len(keys) > 0 {
-			return keys
+			return keys, nil
 		}
 	}
 
 	// Fall back to YAML config list
-	return v.GetStringSlice("ssh-authorized-keys")
+	return v.GetStringSlice("ssh-authorized-keys"), nil
 }
