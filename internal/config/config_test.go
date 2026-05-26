@@ -251,6 +251,44 @@ container-disk-image: quay.io/test/image:latest
 			Expect(err).NotTo(HaveOccurred())
 			Expect(cfg.Namespace).To(Equal("file-ns"))
 		})
+
+		It("should apply --disk-size flag to DataDiskSize", func() {
+			err1 := cmd.Flags().Set("disk-size", "50Gi")
+			Expect(err1).NotTo(HaveOccurred())
+
+			cfg, err := config.LoadConfig(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.DataDiskSize).To(Equal("50Gi"))
+		})
+
+		It("should prefer --disk-size flag over env var", func() {
+			_ = os.Setenv("VIRTWORK_DISK_SIZE", "env-100Gi")
+			defer func() {
+				_ = os.Unsetenv("VIRTWORK_DISK_SIZE")
+			}()
+
+			err1 := cmd.Flags().Set("disk-size", "flag-50Gi")
+			Expect(err1).NotTo(HaveOccurred())
+
+			cfg, err := config.LoadConfig(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.DataDiskSize).To(Equal("flag-50Gi"))
+		})
+
+		It("should prefer VIRTWORK_DISK_SIZE env over config file", func() {
+			path := writeConfigFile(tmpDir, `disk-size: file-30Gi`)
+			err1 := cmd.Flags().Set("config", path)
+			Expect(err1).NotTo(HaveOccurred())
+
+			_ = os.Setenv("VIRTWORK_DISK_SIZE", "env-60Gi")
+			defer func() {
+				_ = os.Unsetenv("VIRTWORK_DISK_SIZE")
+			}()
+
+			cfg, err := config.LoadConfig(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.DataDiskSize).To(Equal("env-60Gi"))
+		})
 	})
 
 	Context("SSH config fields", func() {
