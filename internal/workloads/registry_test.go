@@ -209,7 +209,8 @@ var _ = Describe("Registry", func() {
 		}, workloads.WithDataDiskSize("20Gi"))
 		Expect(err).NotTo(HaveOccurred())
 
-		dvts := w.DataVolumeTemplates()
+		dvts, err := w.DataVolumeTemplates()
+		Expect(err).NotTo(HaveOccurred())
 		Expect(dvts).NotTo(BeEmpty())
 	})
 })

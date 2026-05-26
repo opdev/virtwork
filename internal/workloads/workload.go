@@ -41,7 +41,7 @@ type Workload interface {
 
 	// DataVolumeTemplates returns CDI DataVolumeTemplateSpecs for persistent storage.
 	// Returns nil if no data volumes needed.
-	DataVolumeTemplates() []kubevirtv1.DataVolumeTemplateSpec
+	DataVolumeTemplates() ([]kubevirtv1.DataVolumeTemplateSpec, error)
 
 	// RequiresService returns true if this workload needs a K8s Service.
 	RequiresService() bool
@@ -96,8 +96,8 @@ func (b *BaseWorkload) ExtraDisks() []kubevirtv1.Disk {
 }
 
 // DataVolumeTemplates returns nil — no data volumes by default.
-func (b *BaseWorkload) DataVolumeTemplates() []kubevirtv1.DataVolumeTemplateSpec {
-	return nil
+func (b *BaseWorkload) DataVolumeTemplates() ([]kubevirtv1.DataVolumeTemplateSpec, error) {
+	return nil, nil
 }
 
 // RequiresService returns false — no K8s Service by default.

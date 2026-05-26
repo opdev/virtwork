@@ -43,7 +43,9 @@ var _ = Describe("CleanupAll [integration]", func() {
 
 	It("should delete VMs by managed-by label", func() {
 		opts := testutil.DefaultVMOpts("cleanup-vm-0", namespace)
-		Expect(vm.CreateVM(ctx, c, vm.BuildVMSpec(opts))).To(Succeed())
+		vmObj, err := vm.BuildVMSpec(opts)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(vm.CreateVM(ctx, c, vmObj)).To(Succeed())
 
 		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())
@@ -127,7 +129,9 @@ var _ = Describe("CleanupAll [integration]", func() {
 	It("should report accurate counts for mixed resources", func() {
 		// Create a VM, a service, and a secret
 		opts := testutil.DefaultVMOpts("cleanup-mix-vm", namespace)
-		Expect(vm.CreateVM(ctx, c, vm.BuildVMSpec(opts))).To(Succeed())
+		vmObj, err := vm.BuildVMSpec(opts)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(vm.CreateVM(ctx, c, vmObj)).To(Succeed())
 
 		svc := &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
@@ -174,7 +178,9 @@ var _ = Describe("CleanupAll [integration]", func() {
 
 	It("should be idempotent when run twice", func() {
 		opts := testutil.DefaultVMOpts("cleanup-idem-vm", namespace)
-		Expect(vm.CreateVM(ctx, c, vm.BuildVMSpec(opts))).To(Succeed())
+		vmObj, err := vm.BuildVMSpec(opts)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(vm.CreateVM(ctx, c, vmObj)).To(Succeed())
 
 		result1, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())

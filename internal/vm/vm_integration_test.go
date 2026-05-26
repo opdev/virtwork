@@ -38,9 +38,10 @@ var _ = Describe("CreateVM [integration]", func() {
 
 	It("should create a VirtualMachine on the cluster", func() {
 		opts := testutil.DefaultVMOpts("integ-vm-0", namespace)
-		vmObj := vm.BuildVMSpec(opts)
+		vmObj, err := vm.BuildVMSpec(opts)
+		Expect(err).NotTo(HaveOccurred())
 
-		err := vm.CreateVM(ctx, c, vmObj)
+		err = vm.CreateVM(ctx, c, vmObj)
 		Expect(err).NotTo(HaveOccurred())
 
 		// Verify the VM exists
@@ -52,14 +53,17 @@ var _ = Describe("CreateVM [integration]", func() {
 
 	It("should be idempotent on repeated calls", func() {
 		opts := testutil.DefaultVMOpts("integ-vm-idem", namespace)
+		vmObj, err := vm.BuildVMSpec(opts)
+		Expect(err).NotTo(HaveOccurred())
 
-		Expect(vm.CreateVM(ctx, c, vm.BuildVMSpec(opts))).To(Succeed())
-		Expect(vm.CreateVM(ctx, c, vm.BuildVMSpec(opts))).To(Succeed())
+		Expect(vm.CreateVM(ctx, c, vmObj)).To(Succeed())
+		Expect(vm.CreateVM(ctx, c, vmObj)).To(Succeed())
 	})
 
 	It("should set the correct labels on the created VM", func() {
 		opts := testutil.DefaultVMOpts("integ-vm-labels", namespace)
-		vmObj := vm.BuildVMSpec(opts)
+		vmObj, err := vm.BuildVMSpec(opts)
+		Expect(err).NotTo(HaveOccurred())
 
 		Expect(vm.CreateVM(ctx, c, vmObj)).To(Succeed())
 
@@ -90,7 +94,8 @@ var _ = Describe("DeleteVM [integration]", func() {
 
 	It("should delete an existing VM", func() {
 		opts := testutil.DefaultVMOpts("integ-vm-del", namespace)
-		vmObj := vm.BuildVMSpec(opts)
+		vmObj, err := vm.BuildVMSpec(opts)
+		Expect(err).NotTo(HaveOccurred())
 		Expect(vm.CreateVM(ctx, c, vmObj)).To(Succeed())
 
 		err := vm.DeleteVM(ctx, c, "integ-vm-del", namespace)
@@ -131,7 +136,9 @@ var _ = Describe("ListVMs [integration]", func() {
 	It("should list VMs by label selector", func() {
 		for i := 0; i < 3; i++ {
 			opts := testutil.DefaultVMOpts("integ-vm-list-"+string(rune('0'+i)), namespace)
-			Expect(vm.CreateVM(ctx, c, vm.BuildVMSpec(opts))).To(Succeed())
+			vmObj, err := vm.BuildVMSpec(opts)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(vm.CreateVM(ctx, c, vmObj)).To(Succeed())
 		}
 
 		vms, err := vm.ListVMs(ctx, c, namespace, testutil.ManagedLabels())

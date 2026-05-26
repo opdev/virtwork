@@ -364,7 +364,7 @@ var _ = Describe("Run orchestration", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			res := w.VMResources()
-			vmSpec := vm.BuildVMSpec(vm.VMSpecOpts{
+			vmSpec, err := vm.BuildVMSpec(vm.VMSpecOpts{
 				Name:               "virtwork-cpu-0",
 				Namespace:          constants.DefaultNamespace,
 				ContainerDiskImage: constants.DefaultContainerDiskImage,
@@ -377,6 +377,7 @@ var _ = Describe("Run orchestration", func() {
 					constants.LabelComponent: "cpu",
 				},
 			})
+			Expect(err).NotTo(HaveOccurred())
 			Expect(vmSpec).NotTo(BeNil())
 			Expect(vmSpec.Name).To(Equal("virtwork-cpu-0"))
 			Expect(vmSpec.Namespace).To(Equal(constants.DefaultNamespace))
@@ -401,7 +402,7 @@ var _ = Describe("Run orchestration", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			res := w.VMResources()
-			vmSpec := vm.BuildVMSpec(vm.VMSpecOpts{
+			vmSpec, err := vm.BuildVMSpec(vm.VMSpecOpts{
 				Name:               "virtwork-cpu-0",
 				Namespace:          constants.DefaultNamespace,
 				ContainerDiskImage: constants.DefaultContainerDiskImage,
@@ -414,6 +415,7 @@ var _ = Describe("Run orchestration", func() {
 					constants.LabelComponent: "cpu",
 				},
 			})
+			Expect(err).NotTo(HaveOccurred())
 
 			// Verify spec can be marshaled (simulating dry-run output)
 			var buf bytes.Buffer
@@ -464,7 +466,7 @@ var _ = Describe("Run orchestration", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			res := w.VMResources()
-			vmSpec := vm.BuildVMSpec(vm.VMSpecOpts{
+			vmSpec, err := vm.BuildVMSpec(vm.VMSpecOpts{
 				Name:               "virtwork-cpu-0",
 				Namespace:          constants.DefaultNamespace,
 				ContainerDiskImage: constants.DefaultContainerDiskImage,
@@ -477,6 +479,7 @@ var _ = Describe("Run orchestration", func() {
 					constants.LabelComponent: "cpu",
 				},
 			})
+			Expect(err).NotTo(HaveOccurred())
 
 			err = vm.CreateVM(ctx, c, vmSpec)
 			Expect(err).NotTo(HaveOccurred())
@@ -718,7 +721,7 @@ var _ = Describe("CLI end-to-end scenarios", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			res := w.VMResources()
-			vmSpec := vm.BuildVMSpec(vm.VMSpecOpts{
+			vmSpec, err := vm.BuildVMSpec(vm.VMSpecOpts{
 				Name:               "virtwork-cpu-0",
 				Namespace:          constants.DefaultNamespace,
 				ContainerDiskImage: constants.DefaultContainerDiskImage,
@@ -731,6 +734,7 @@ var _ = Describe("CLI end-to-end scenarios", func() {
 					constants.LabelComponent: "cpu",
 				},
 			})
+			Expect(err).NotTo(HaveOccurred())
 
 			var buf bytes.Buffer
 			fmt.Fprintf(&buf, "--- Dry Run ---\n")
@@ -836,7 +840,8 @@ var _ = Describe("DataVolume namespacing for multi-VM deployments", func() {
 			)
 			Expect(err).NotTo(HaveOccurred())
 
-			dvTemplates := w.DataVolumeTemplates()
+			dvTemplates, err := w.DataVolumeTemplates()
+			Expect(err).NotTo(HaveOccurred())
 			Expect(dvTemplates).To(HaveLen(1))
 			Expect(dvTemplates[0].Name).To(Equal("virtwork-disk-data"))
 
@@ -863,7 +868,8 @@ var _ = Describe("DataVolume namespacing for multi-VM deployments", func() {
 			)
 			Expect(err).NotTo(HaveOccurred())
 
-			dvTemplates := w.DataVolumeTemplates()
+			dvTemplates, err := w.DataVolumeTemplates()
+			Expect(err).NotTo(HaveOccurred())
 			Expect(dvTemplates).To(HaveLen(1))
 			Expect(dvTemplates[0].Name).To(Equal("virtwork-database-data"))
 

@@ -121,10 +121,12 @@ func (w *DiskWorkload) CloudInitUserdata() (string, error) {
 }
 
 // DataVolumeTemplates returns a DataVolumeTemplateSpec for the data disk.
-func (w *DiskWorkload) DataVolumeTemplates() []kubevirtv1.DataVolumeTemplateSpec {
-	return []kubevirtv1.DataVolumeTemplateSpec{
-		vm.BuildDataVolumeTemplate("virtwork-disk-data", w.DataDiskSize),
+func (w *DiskWorkload) DataVolumeTemplates() ([]kubevirtv1.DataVolumeTemplateSpec, error) {
+	dvt, err := vm.BuildDataVolumeTemplate("virtwork-disk-data", w.DataDiskSize)
+	if err != nil {
+		return nil, err
 	}
+	return []kubevirtv1.DataVolumeTemplateSpec{dvt}, nil
 }
 
 // ExtraDisks returns the data disk definition.
