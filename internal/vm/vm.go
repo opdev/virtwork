@@ -39,7 +39,7 @@ type VMSpecOpts struct {
 // BuildVMSpec constructs a KubeVirt VirtualMachine from the given options.
 // It configures a containerDisk for the OS image, cloudInitNoCloud for userdata,
 // masquerade networking, and virtio disk bus.
-func BuildVMSpec(opts VMSpecOpts) *kubevirtv1.VirtualMachine {
+func BuildVMSpec(opts VMSpecOpts) (*kubevirtv1.VirtualMachine, error) {
 	runStrategy := kubevirtv1.RunStrategyAlways
 
 	disks := []kubevirtv1.Disk{
@@ -98,6 +98,11 @@ func BuildVMSpec(opts VMSpecOpts) *kubevirtv1.VirtualMachine {
 	}
 	volumes = append(volumes, opts.ExtraVolumes...)
 
+	memQty, err := resource.ParseQuantity(opts.Memory)
+	if err != nil {
+		return nil, fmt.Errorf("parsing memory %q: %w", opts.Memory, err)
+	}
+
 	return &kubevirtv1.VirtualMachine{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: kubevirtv1.SchemeGroupVersion.String(),
@@ -122,7 +127,7 @@ func BuildVMSpec(opts VMSpecOpts) *kubevirtv1.VirtualMachine {
 						},
 						Resources: kubevirtv1.ResourceRequirements{
 							Requests: corev1.ResourceList{
-								corev1.ResourceMemory: resource.MustParse(opts.Memory),
+								corev1.ResourceMemory: memQty,
 							},
 						},
 						Devices: kubevirtv1.Devices{
@@ -150,12 +155,16 @@ func BuildVMSpec(opts VMSpecOpts) *kubevirtv1.VirtualMachine {
 			},
 			DataVolumeTemplates: opts.DataVolumeTemplates,
 		},
-	}
+	}, nil
 }
 
 // BuildDataVolumeTemplate constructs a DataVolumeTemplateSpec for a blank disk
 // with the given name and size.
-func BuildDataVolumeTemplate(name, size string) kubevirtv1.DataVolumeTemplateSpec {
+func BuildDataVolumeTemplate(name, size string) (kubevirtv1.DataVolumeTemplateSpec, error) {
+	sizeQty, err := resource.ParseQuantity(size)
+	if err != nil {
+		return kubevirtv1.DataVolumeTemplateSpec{}, fmt.Errorf("parsing disk size %q: %w", size, err)
+	}
 	return kubevirtv1.DataVolumeTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
@@ -167,12 +176,12 @@ func BuildDataVolumeTemplate(name, size string) kubevirtv1.DataVolumeTemplateSpe
 			Storage: &cdiv1beta1.StorageSpec{
 				Resources: corev1.VolumeResourceRequirements{
 					Requests: corev1.ResourceList{
-						corev1.ResourceStorage: resource.MustParse(size),
+						corev1.ResourceStorage: sizeQty,
 					},
 				},
 			},
 		},
-	}
+	}, nil
 }
 
 // CreateVM creates a VirtualMachine. AlreadyExists errors are treated as
