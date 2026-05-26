@@ -286,13 +286,17 @@ func runE(cmd *cobra.Command, args []string) error {
 		res := w.VMResources()
 
 		// Record workload in audit
+		dvTemplatesForAudit, err := w.DataVolumeTemplates()
+		if err != nil {
+			return fmt.Errorf("building data volume templates for %q: %w", name, err)
+		}
 		wlID, _ := auditor.RecordWorkload(ctx, execID, audit.WorkloadRecord{
 			WorkloadType:    name,
 			Enabled:         true,
 			VMCount:         vmCount,
 			CPUCores:        res.CPUCores,
 			Memory:          res.Memory,
-			HasDataDisk:     len(w.DataVolumeTemplates()) > 0,
+			HasDataDisk:     len(dvTemplatesForAudit) > 0,
 			DataDiskSize:    cfg.DataDiskSize,
 			RequiresService: w.RequiresService(),
 		})
@@ -308,8 +312,12 @@ func runE(cmd *cobra.Command, args []string) error {
 				vmName := fmt.Sprintf("virtwork-%s-%d", name, i)
 
 				// Namespace DataVolume names to avoid collisions across VMs
+				dvts, err := w.DataVolumeTemplates()
+				if err != nil {
+					return fmt.Errorf("building data volume templates for %q vm %s: %w", name, vmName, err)
+				}
 				dvTemplates, extraVols := namespaceDataVolumes(
-					w.DataVolumeTemplates(),
+					dvts,
 					w.ExtraVolumes(),
 					vmName,
 				)
@@ -359,8 +367,12 @@ func runE(cmd *cobra.Command, args []string) error {
 					}
 
 					// Namespace DataVolume names to avoid collisions across VMs
+					dvts, err := w.DataVolumeTemplates()
+					if err != nil {
+						return fmt.Errorf("building data volume templates for %q role %q vm %s: %w", name, role, vmName, err)
+					}
 					dvTemplates, extraVols := namespaceDataVolumes(
-						w.DataVolumeTemplates(),
+						dvts,
 						w.ExtraVolumes(),
 						vmName,
 					)
@@ -496,7 +508,10 @@ func runE(cmd *cobra.Command, args []string) error {
 	for _, plan := range plans {
 		p := plan // capture loop variable
 		g.Go(func() error {
-			vmObj := vm.BuildVMSpec(*p.vmSpec)
+			vmObj, err := vm.BuildVMSpec(*p.vmSpec)
+			if err != nil {
+				return fmt.Errorf("building VM spec for %q: %w", p.vmName, err)
+			}
 			if err := vm.CreateVM(gctx, c, vmObj); err != nil {
 				_ = auditor.RecordEvent(ctx, execID, audit.EventRecord{
 					EventType:   "vm_failed",
@@ -746,7 +761,10 @@ func printDryRun(logger *slog.Logger, plans []vmPlan) error {
 	logger.Info("dry run mode", slog.Int("total_vms", len(plans)))
 
 	for _, p := range plans {
-		vmObj := vm.BuildVMSpec(*p.vmSpec)
+		vmObj, err := vm.BuildVMSpec(*p.vmSpec)
+		if err != nil {
+			return fmt.Errorf("building VM spec for %q: %w", p.vmName, err)
+		}
 		data, err := sigyaml.Marshal(vmObj)
 		if err != nil {
 			return fmt.Errorf("marshaling VM spec for %q: %w", p.vmName, err)

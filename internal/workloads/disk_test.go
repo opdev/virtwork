@@ -58,7 +58,8 @@ var _ = Describe("DiskWorkload", func() {
 	})
 
 	It("should have data volume template", func() {
-		dvts := w.DataVolumeTemplates()
+		dvts, err := w.DataVolumeTemplates()
+		Expect(err).NotTo(HaveOccurred())
 		Expect(dvts).To(HaveLen(1))
 		Expect(dvts[0].Name).To(Equal("virtwork-disk-data"))
 	})

@@ -46,7 +46,7 @@ var _ = Describe("PreviewCleanup", func() {
 		for _, el := range extraLabels {
 			maps.Copy(l, el)
 		}
-		return vm.BuildVMSpec(vm.VMSpecOpts{
+		v, err := vm.BuildVMSpec(vm.VMSpecOpts{
 			Name:               name,
 			Namespace:          namespace,
 			ContainerDiskImage: "test-image",
@@ -55,6 +55,8 @@ var _ = Describe("PreviewCleanup", func() {
 			Memory:             "1Gi",
 			Labels:             l,
 		})
+		Expect(err).NotTo(HaveOccurred())
+		return v
 	}
 
 	newManagedSecret := func(name string, extraLabels ...map[string]string) *corev1.Secret {
@@ -163,7 +165,7 @@ var _ = Describe("PreviewCleanup", func() {
 
 	It("should not count unmanaged resources", func() {
 		managedVM := newManagedVM("managed-vm")
-		unmanagedVM := vm.BuildVMSpec(vm.VMSpecOpts{
+		unmanagedVM, err := vm.BuildVMSpec(vm.VMSpecOpts{
 			Name:               "unmanaged-vm",
 			Namespace:          namespace,
 			ContainerDiskImage: "test-image",
@@ -174,6 +176,7 @@ var _ = Describe("PreviewCleanup", func() {
 				constants.LabelManagedBy: "other-tool",
 			},
 		})
+		Expect(err).NotTo(HaveOccurred())
 		c := fake.NewClientBuilder().
 			WithScheme(scheme).
 			WithObjects(managedVM, unmanagedVM).
@@ -226,7 +229,7 @@ var _ = Describe("CleanupAll", func() {
 	})
 
 	newManagedVM := func(name string) *kubevirtv1.VirtualMachine {
-		return vm.BuildVMSpec(vm.VMSpecOpts{
+		v, err := vm.BuildVMSpec(vm.VMSpecOpts{
 			Name:               name,
 			Namespace:          namespace,
 			ContainerDiskImage: "test-image",
@@ -235,6 +238,8 @@ var _ = Describe("CleanupAll", func() {
 			Memory:             "1Gi",
 			Labels:             labels,
 		})
+		Expect(err).NotTo(HaveOccurred())
+		return v
 	}
 
 	newManagedSecret := func(name string) *corev1.Secret {
@@ -476,7 +481,7 @@ var _ = Describe("CleanupAll", func() {
 	It("should use correct managed-by=virtwork label selector", func() {
 		// Create a managed VM and an unmanaged VM
 		managedVM := newManagedVM("managed-vm")
-		unmanagedVM := vm.BuildVMSpec(vm.VMSpecOpts{
+		unmanagedVM, err := vm.BuildVMSpec(vm.VMSpecOpts{
 			Name:               "unmanaged-vm",
 			Namespace:          namespace,
 			ContainerDiskImage: "test-image",
@@ -487,6 +492,7 @@ var _ = Describe("CleanupAll", func() {
 				constants.LabelManagedBy: "other-tool",
 			},
 		})
+		Expect(err).NotTo(HaveOccurred())
 		// Create a managed service and an unmanaged service
 		managedSvc := newManagedService("managed-svc")
 		unmanagedSvc := &corev1.Service{

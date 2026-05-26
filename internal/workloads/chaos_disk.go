@@ -157,10 +157,12 @@ func (w *ChaosDiskWorkload) CloudInitUserdata() (string, error) {
 }
 
 // DataVolumeTemplates returns a DataVolumeTemplateSpec for the data disk.
-func (w *ChaosDiskWorkload) DataVolumeTemplates() []kubevirtv1.DataVolumeTemplateSpec {
-	return []kubevirtv1.DataVolumeTemplateSpec{
-		vm.BuildDataVolumeTemplate("virtwork-chaos-disk-data", w.DataDiskSize),
+func (w *ChaosDiskWorkload) DataVolumeTemplates() ([]kubevirtv1.DataVolumeTemplateSpec, error) {
+	dvt, err := vm.BuildDataVolumeTemplate("virtwork-chaos-disk-data", w.DataDiskSize)
+	if err != nil {
+		return nil, err
 	}
+	return []kubevirtv1.DataVolumeTemplateSpec{dvt}, nil
 }
 
 // ExtraDisks returns the data disk definition.

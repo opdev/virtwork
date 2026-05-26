@@ -40,7 +40,8 @@ var _ = Describe("WaitForVMReady [integration]", Label("slow"), func() {
 
 	It("should return nil once a VM reaches Running phase", func() {
 		opts := testutil.DefaultVMOpts("wait-vm-0", namespace)
-		vmObj := vm.BuildVMSpec(opts)
+		vmObj, err := vm.BuildVMSpec(opts)
+		Expect(err).NotTo(HaveOccurred())
 		Expect(vm.CreateVM(ctx, c, vmObj)).To(Succeed())
 
 		err := wait.WaitForVMReady(ctx, c, slog.Default(), "wait-vm-0", namespace, 5*time.Minute, 5*time.Second)
@@ -74,7 +75,9 @@ var _ = Describe("WaitForAllVMsReady [integration]", Label("slow"), func() {
 	It("should wait for multiple VMs concurrently", func() {
 		for _, name := range []string{"wait-multi-0", "wait-multi-1"} {
 			opts := testutil.DefaultVMOpts(name, namespace)
-			Expect(vm.CreateVM(ctx, c, vm.BuildVMSpec(opts))).To(Succeed())
+			vmObj, err := vm.BuildVMSpec(opts)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(vm.CreateVM(ctx, c, vmObj)).To(Succeed())
 		}
 
 		results := wait.WaitForAllVMsReady(ctx, c, slog.Default(),

@@ -142,10 +142,12 @@ func (w *DatabaseWorkload) CloudInitUserdata() (string, error) {
 }
 
 // DataVolumeTemplates returns a DataVolumeTemplateSpec for the PostgreSQL data disk.
-func (w *DatabaseWorkload) DataVolumeTemplates() []kubevirtv1.DataVolumeTemplateSpec {
-	return []kubevirtv1.DataVolumeTemplateSpec{
-		vm.BuildDataVolumeTemplate("virtwork-database-data", w.DataDiskSize),
+func (w *DatabaseWorkload) DataVolumeTemplates() ([]kubevirtv1.DataVolumeTemplateSpec, error) {
+	dvt, err := vm.BuildDataVolumeTemplate("virtwork-database-data", w.DataDiskSize)
+	if err != nil {
+		return nil, err
 	}
+	return []kubevirtv1.DataVolumeTemplateSpec{dvt}, nil
 }
 
 // ExtraDisks returns the data disk definition for PostgreSQL storage.
