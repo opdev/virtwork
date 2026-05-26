@@ -34,7 +34,7 @@ func BoolPtr(b bool) *bool {
 type Config struct {
 	Namespace           string                    `mapstructure:"namespace"`
 	ContainerDiskImage  string                    `mapstructure:"container-disk-image"`
-	DataDiskSize        string                    `mapstructure:"data-disk-size"`
+	DataDiskSize        string                    `mapstructure:"disk-size"`
 	CPUCores            int                       `mapstructure:"cpu-cores"`
 	Memory              string                    `mapstructure:"memory"`
 	Workloads           map[string]WorkloadConfig `mapstructure:"workloads"`
@@ -56,7 +56,7 @@ type Config struct {
 func SetDefaults(v *viper.Viper) {
 	v.SetDefault("namespace", constants.DefaultNamespace)
 	v.SetDefault("container-disk-image", constants.DefaultContainerDiskImage)
-	v.SetDefault("data-disk-size", constants.DefaultDiskSize)
+	v.SetDefault("disk-size", constants.DefaultDiskSize)
 	v.SetDefault("cpu-cores", constants.DefaultCPUCores)
 	v.SetDefault("memory", constants.DefaultMemory)
 	v.SetDefault("wait-for-ready", true)
@@ -78,7 +78,7 @@ func BindFlags(cmd *cobra.Command) {
 	f.String("kubeconfig", "", "Path to kubeconfig file")
 	f.String("config", "", "Path to YAML config file")
 	f.String("container-disk-image", "", "Container disk image for VMs")
-	f.String("data-disk-size", "", "Data disk size")
+	f.String("disk-size", "", "Data disk size")
 	f.Int("cpu-cores", 0, "CPU cores per VM")
 	f.String("memory", "", "Memory per VM (e.g., 2Gi)")
 	f.Bool("dry-run", false, "Print specs without creating resources")
@@ -117,7 +117,7 @@ func LoadConfig(cmd *cobra.Command) (*Config, error) {
 	bindFlagIfSet(v, cmd, "namespace")
 	bindFlagIfSet(v, cmd, "kubeconfig")
 	bindFlagIfSet(v, cmd, "container-disk-image")
-	bindFlagIfSet(v, cmd, "data-disk-size")
+	bindFlagIfSet(v, cmd, "disk-size")
 	bindFlagIfSet(v, cmd, "memory")
 	bindFlagIfSet(v, cmd, "ssh-user")
 	bindFlagIfSet(v, cmd, "ssh-password")
@@ -147,7 +147,7 @@ func LoadConfig(cmd *cobra.Command) (*Config, error) {
 	cfg := &Config{}
 	cfg.Namespace = v.GetString("namespace")
 	cfg.ContainerDiskImage = v.GetString("container-disk-image")
-	cfg.DataDiskSize = v.GetString("data-disk-size")
+	cfg.DataDiskSize = v.GetString("disk-size")
 	cfg.CPUCores = v.GetInt("cpu-cores")
 	cfg.Memory = v.GetString("memory")
 	cfg.KubeconfigPath = v.GetString("kubeconfig")
