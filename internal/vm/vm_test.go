@@ -229,7 +229,7 @@ var _ = Describe("BuildDataVolumeTemplate", func() {
 	It("should return error for invalid disk size", func() {
 		_, err := vm.BuildDataVolumeTemplate("data-disk", "not-a-size")
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("parsing disk size"))
+		Expect(err.Error()).To(ContainSubstring("invalid disk size"))
 	})
 })
 
@@ -269,7 +269,7 @@ var _ = Describe("CreateVM", func() {
 			Memory:             "not-a-quantity",
 		})
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("parsing memory"))
+		Expect(err.Error()).To(ContainSubstring("invalid memory"))
 	})
 
 	It("should create VM successfully", func() {
