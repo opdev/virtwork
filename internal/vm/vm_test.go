@@ -42,7 +42,9 @@ var _ = Describe("BuildVMSpec", func() {
 				"app.kubernetes.io/name":       "cpu",
 			},
 		}
-		result = vm.BuildVMSpec(opts)
+		var err error
+		result, err = vm.BuildVMSpec(opts)
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("should set correct API version and kind", func() {
@@ -118,7 +120,9 @@ var _ = Describe("BuildVMSpec", func() {
 
 	It("should use UserDataSecretRef when CloudInitSecretName is set", func() {
 		opts.CloudInitSecretName = "my-vm-cloudinit"
-		result = vm.BuildVMSpec(opts)
+		var err error
+		result, err = vm.BuildVMSpec(opts)
+		Expect(err).NotTo(HaveOccurred())
 
 		volumes := result.Spec.Template.Spec.Volumes
 		var cloudInit *kubevirtv1.Volume
@@ -137,7 +141,9 @@ var _ = Describe("BuildVMSpec", func() {
 
 	It("should use inline UserData when CloudInitSecretName is empty", func() {
 		opts.CloudInitSecretName = ""
-		result = vm.BuildVMSpec(opts)
+		var err error
+		result, err = vm.BuildVMSpec(opts)
+		Expect(err).NotTo(HaveOccurred())
 
 		volumes := result.Spec.Template.Spec.Volumes
 		var cloudInit *kubevirtv1.Volume
@@ -174,7 +180,9 @@ var _ = Describe("BuildVMSpec", func() {
 				},
 			},
 		}
-		result = vm.BuildVMSpec(opts)
+		var err error
+		result, err = vm.BuildVMSpec(opts)
+		Expect(err).NotTo(HaveOccurred())
 
 		disks := result.Spec.Template.Spec.Domain.Devices.Disks
 		Expect(disks).To(HaveLen(3)) // containerdisk + cloudinitdisk + datadisk
@@ -184,9 +192,11 @@ var _ = Describe("BuildVMSpec", func() {
 	})
 
 	It("should include data volume templates when provided", func() {
-		dvt := vm.BuildDataVolumeTemplate("test-data", "10Gi")
+		dvt, err := vm.BuildDataVolumeTemplate("test-data", "10Gi")
+		Expect(err).NotTo(HaveOccurred())
 		opts.DataVolumeTemplates = []kubevirtv1.DataVolumeTemplateSpec{dvt}
-		result = vm.BuildVMSpec(opts)
+		result, err = vm.BuildVMSpec(opts)
+		Expect(err).NotTo(HaveOccurred())
 
 		Expect(result.Spec.DataVolumeTemplates).To(HaveLen(1))
 		Expect(result.Spec.DataVolumeTemplates[0].Name).To(Equal("test-data"))
@@ -195,22 +205,31 @@ var _ = Describe("BuildVMSpec", func() {
 
 var _ = Describe("BuildDataVolumeTemplate", func() {
 	It("should set name", func() {
-		dvt := vm.BuildDataVolumeTemplate("data-disk", "20Gi")
+		dvt, err := vm.BuildDataVolumeTemplate("data-disk", "20Gi")
+		Expect(err).NotTo(HaveOccurred())
 		Expect(dvt.Name).To(Equal("data-disk"))
 	})
 
 	It("should set blank source", func() {
-		dvt := vm.BuildDataVolumeTemplate("data-disk", "20Gi")
+		dvt, err := vm.BuildDataVolumeTemplate("data-disk", "20Gi")
+		Expect(err).NotTo(HaveOccurred())
 		Expect(dvt.Spec.Source).NotTo(BeNil())
 		Expect(dvt.Spec.Source.Blank).NotTo(BeNil())
 	})
 
 	It("should set storage size", func() {
-		dvt := vm.BuildDataVolumeTemplate("data-disk", "20Gi")
+		dvt, err := vm.BuildDataVolumeTemplate("data-disk", "20Gi")
+		Expect(err).NotTo(HaveOccurred())
 		Expect(dvt.Spec.Storage).NotTo(BeNil())
 		storageReq := dvt.Spec.Storage.Resources.Requests[corev1.ResourceStorage]
 		expected := resource.MustParse("20Gi")
 		Expect(storageReq.Equal(expected)).To(BeTrue())
+	})
+
+	It("should return error for invalid disk size", func() {
+		_, err := vm.BuildDataVolumeTemplate("data-disk", "not-a-size")
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("parsing disk size"))
 	})
 })
 
@@ -227,7 +246,7 @@ var _ = Describe("CreateVM", func() {
 	})
 
 	newTestVM := func(name string) *kubevirtv1.VirtualMachine {
-		return vm.BuildVMSpec(vm.VMSpecOpts{
+		v, err := vm.BuildVMSpec(vm.VMSpecOpts{
 			Name:               name,
 			Namespace:          "default",
 			ContainerDiskImage: "test-image",
@@ -236,7 +255,22 @@ var _ = Describe("CreateVM", func() {
 			Memory:             "1Gi",
 			Labels:             map[string]string{"test": "true"},
 		})
+		Expect(err).NotTo(HaveOccurred())
+		return v
 	}
+
+	It("should return error for invalid memory", func() {
+		_, err := vm.BuildVMSpec(vm.VMSpecOpts{
+			Name:               "bad-mem",
+			Namespace:          "default",
+			ContainerDiskImage: "test-image",
+			CloudInitUserdata:  "#cloud-config\n",
+			CPUCores:           1,
+			Memory:             "not-a-quantity",
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("parsing memory"))
+	})
 
 	It("should create VM successfully", func() {
 		c := fake.NewClientBuilder().WithScheme(scheme).Build()
@@ -331,7 +365,7 @@ var _ = Describe("DeleteVM", func() {
 	})
 
 	It("should delete VM successfully", func() {
-		testVM := vm.BuildVMSpec(vm.VMSpecOpts{
+		testVM, err := vm.BuildVMSpec(vm.VMSpecOpts{
 			Name:               "delete-me",
 			Namespace:          "default",
 			ContainerDiskImage: "test-image",
@@ -339,9 +373,10 @@ var _ = Describe("DeleteVM", func() {
 			CPUCores:           1,
 			Memory:             "1Gi",
 		})
+		Expect(err).NotTo(HaveOccurred())
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(testVM).Build()
 
-		err := vm.DeleteVM(ctx, c, "delete-me", "default")
+		err = vm.DeleteVM(ctx, c, "delete-me", "default")
 		Expect(err).NotTo(HaveOccurred())
 
 		got := &kubevirtv1.VirtualMachine{}
@@ -368,7 +403,7 @@ var _ = Describe("ListVMs", func() {
 	})
 
 	It("should list VMs by labels", func() {
-		vm1 := vm.BuildVMSpec(vm.VMSpecOpts{
+		vm1, err := vm.BuildVMSpec(vm.VMSpecOpts{
 			Name:               "vm-1",
 			Namespace:          "default",
 			ContainerDiskImage: "test-image",
@@ -377,7 +412,8 @@ var _ = Describe("ListVMs", func() {
 			Memory:             "1Gi",
 			Labels:             map[string]string{"app.kubernetes.io/managed-by": "virtwork"},
 		})
-		vm2 := vm.BuildVMSpec(vm.VMSpecOpts{
+		Expect(err).NotTo(HaveOccurred())
+		vm2, err := vm.BuildVMSpec(vm.VMSpecOpts{
 			Name:               "vm-2",
 			Namespace:          "default",
 			ContainerDiskImage: "test-image",
@@ -386,6 +422,7 @@ var _ = Describe("ListVMs", func() {
 			Memory:             "1Gi",
 			Labels:             map[string]string{"app.kubernetes.io/managed-by": "other"},
 		})
+		Expect(err).NotTo(HaveOccurred())
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(vm1, vm2).Build()
 
 		vms, err := vm.ListVMs(ctx, c, "default", map[string]string{
