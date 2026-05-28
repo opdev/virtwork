@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	"github.com/opdev/virtwork/internal/config"
+	"github.com/opdev/virtwork/internal/constants"
 )
 
 const iperf3ServerSystemdUnit = `[Unit]
@@ -89,9 +90,9 @@ func (w *NetworkWorkload) ServiceSpec() *corev1.Service {
 			Name:      "virtwork-iperf3-server",
 			Namespace: w.Namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":       "virtwork",
-				"app.kubernetes.io/managed-by": "virtwork",
-				"app.kubernetes.io/component":  "network",
+				constants.LabelAppName:   constants.ManagedByValue,
+				constants.LabelManagedBy: constants.ManagedByValue,
+				constants.LabelComponent: "network",
 			},
 		},
 		Spec: corev1.ServiceSpec{

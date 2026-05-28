@@ -16,6 +16,8 @@ import (
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/opdev/virtwork/internal/constants"
 )
 
 const defaultMaxRetries = 5
@@ -65,18 +67,18 @@ func BuildVMSpec(opts VMSpecOpts) (*kubevirtv1.VirtualMachine, error) {
 
 	disks := []kubevirtv1.Disk{
 		{
-			Name: "containerdisk",
+			Name: constants.DiskNameContainerDisk,
 			DiskDevice: kubevirtv1.DiskDevice{
 				Disk: &kubevirtv1.DiskTarget{
-					Bus: "virtio",
+					Bus: constants.DiskBusVirtio,
 				},
 			},
 		},
 		{
-			Name: "cloudinitdisk",
+			Name: constants.DiskNameCloudInit,
 			DiskDevice: kubevirtv1.DiskDevice{
 				Disk: &kubevirtv1.DiskTarget{
-					Bus: "virtio",
+					Bus: constants.DiskBusVirtio,
 				},
 			},
 		},
@@ -86,7 +88,7 @@ func BuildVMSpec(opts VMSpecOpts) (*kubevirtv1.VirtualMachine, error) {
 	var cloudInitVolume kubevirtv1.Volume
 	if opts.CloudInitSecretName != "" {
 		cloudInitVolume = kubevirtv1.Volume{
-			Name: "cloudinitdisk",
+			Name: constants.DiskNameCloudInit,
 			VolumeSource: kubevirtv1.VolumeSource{
 				CloudInitNoCloud: &kubevirtv1.CloudInitNoCloudSource{
 					UserDataSecretRef: &corev1.LocalObjectReference{
@@ -97,7 +99,7 @@ func BuildVMSpec(opts VMSpecOpts) (*kubevirtv1.VirtualMachine, error) {
 		}
 	} else {
 		cloudInitVolume = kubevirtv1.Volume{
-			Name: "cloudinitdisk",
+			Name: constants.DiskNameCloudInit,
 			VolumeSource: kubevirtv1.VolumeSource{
 				CloudInitNoCloud: &kubevirtv1.CloudInitNoCloudSource{
 					UserData: opts.CloudInitUserdata,
@@ -108,7 +110,7 @@ func BuildVMSpec(opts VMSpecOpts) (*kubevirtv1.VirtualMachine, error) {
 
 	volumes := []kubevirtv1.Volume{
 		{
-			Name: "containerdisk",
+			Name: constants.DiskNameContainerDisk,
 			VolumeSource: kubevirtv1.VolumeSource{
 				ContainerDisk: &kubevirtv1.ContainerDiskSource{
 					Image: opts.ContainerDiskImage,
@@ -155,7 +157,7 @@ func BuildVMSpec(opts VMSpecOpts) (*kubevirtv1.VirtualMachine, error) {
 							Disks: disks,
 							Interfaces: []kubevirtv1.Interface{
 								{
-									Name: "default",
+									Name: constants.NetworkNameDefault,
 									InterfaceBindingMethod: kubevirtv1.InterfaceBindingMethod{
 										Masquerade: &kubevirtv1.InterfaceMasquerade{},
 									},
@@ -165,7 +167,7 @@ func BuildVMSpec(opts VMSpecOpts) (*kubevirtv1.VirtualMachine, error) {
 					},
 					Networks: []kubevirtv1.Network{
 						{
-							Name: "default",
+							Name: constants.NetworkNameDefault,
 							NetworkSource: kubevirtv1.NetworkSource{
 								Pod: &kubevirtv1.PodNetwork{},
 							},
