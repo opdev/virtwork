@@ -5,16 +5,10 @@ package main
 
 import (
 	"bytes"
-	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
-
-func TestVersionSuite(t *testing.T) {
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "Version Suite")
-}
 
 var _ = Describe("Version command", func() {
 	It("should execute without error", func() {
