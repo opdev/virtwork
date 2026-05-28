@@ -71,24 +71,44 @@ func SetDefaults(v *viper.Viper) {
 	v.SetDefault("audit-db", constants.DefaultAuditDBPath)
 }
 
-// BindFlags registers Cobra flags on the given command.
-func BindFlags(cmd *cobra.Command) {
+// BindPersistentFlags registers persistent flags shared across all subcommands.
+func BindPersistentFlags(cmd *cobra.Command) {
+	pf := cmd.PersistentFlags()
+	pf.String("namespace", "", "Kubernetes namespace for VMs")
+	pf.String("kubeconfig", "", "Path to kubeconfig file")
+	pf.String("config", "", "Path to YAML config file")
+	pf.Bool("verbose", false, "Enable verbose output")
+	pf.Bool("audit", true, "Enable audit logging to SQLite")
+	pf.Bool("no-audit", false, "Disable audit logging")
+	pf.String("audit-db", "", "Path to audit database file")
+}
+
+// BindRunFlags registers flags specific to the "run" subcommand.
+// defaultWorkloads sets the default value for the --workloads flag.
+func BindRunFlags(cmd *cobra.Command, defaultWorkloads []string) {
 	f := cmd.Flags()
-	f.String("namespace", "", "Kubernetes namespace for VMs")
-	f.String("kubeconfig", "", "Path to kubeconfig file")
-	f.String("config", "", "Path to YAML config file")
-	f.String("container-disk-image", "", "Container disk image for VMs")
-	f.String("disk-size", "", "Data disk size")
+	f.StringSlice("workloads", defaultWorkloads, "Workloads to deploy (comma-separated)")
+	f.Int("vm-count", 1, "Number of VMs per workload")
 	f.Int("cpu-cores", 0, "CPU cores per VM")
 	f.String("memory", "", "Memory per VM (e.g., 2Gi)")
+	f.String("disk-size", "", "Data disk size")
+	f.String("container-disk-image", "", "Container disk image for VMs")
 	f.Bool("dry-run", false, "Print specs without creating resources")
 	f.Bool("no-wait", false, "Skip waiting for VM readiness")
 	f.Int("timeout", 0, "Readiness timeout in seconds")
-	f.Bool("verbose", false, "Enable verbose output")
 	f.String("ssh-user", "", "SSH user for VMs")
 	f.String("ssh-password", "", "SSH password for VMs")
 	f.StringSlice("ssh-key", nil, "SSH authorized key (repeatable)")
 	f.StringSlice("ssh-key-file", nil, "SSH key file path (repeatable)")
+}
+
+// BindCleanupFlags registers flags specific to the "cleanup" subcommand.
+func BindCleanupFlags(cmd *cobra.Command) {
+	f := cmd.Flags()
+	f.Bool("delete-namespace", false, "Also delete the namespace")
+	f.String("run-id", "", "Only delete resources from this specific run (UUID)")
+	f.Bool("dry-run", false, "Print intent without destroying resources")
+	f.BoolP("yes", "y", false, "Skip confirmation prompt and proceed with cleanup")
 }
 
 // LoadConfig loads configuration from flags, environment variables, config file,
