@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -83,16 +84,18 @@ func DeleteManagedSecrets(
 	}
 
 	deleted := 0
+	var errs []error
 	for i := range secretList.Items {
 		if err := c.Delete(ctx, &secretList.Items[i]); err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
 			}
-			return deleted, fmt.Errorf("deleting secret %s: %w", secretList.Items[i].Name, err)
+			errs = append(errs, fmt.Errorf("deleting secret %s: %w", secretList.Items[i].Name, err))
+			continue
 		}
 		deleted++
 	}
-	return deleted, nil
+	return deleted, errors.Join(errs...)
 }
 
 // DeleteManagedServices lists and deletes services matching the given labels in
@@ -113,14 +116,16 @@ func DeleteManagedServices(
 	}
 
 	deleted := 0
+	var errs []error
 	for i := range svcList.Items {
 		if err := c.Delete(ctx, &svcList.Items[i]); err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
 			}
-			return deleted, fmt.Errorf("deleting service %s: %w", svcList.Items[i].Name, err)
+			errs = append(errs, fmt.Errorf("deleting service %s: %w", svcList.Items[i].Name, err))
+			continue
 		}
 		deleted++
 	}
-	return deleted, nil
+	return deleted, errors.Join(errs...)
 }

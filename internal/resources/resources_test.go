@@ -326,6 +326,53 @@ var _ = Describe("DeleteManagedSecrets", func() {
 		})
 		Expect(err).To(HaveOccurred())
 	})
+
+	It("should continue deleting after a single delete error and return aggregated error", func() {
+		sec1 := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "sec-a",
+				Namespace: "default",
+				Labels:    map[string]string{"app.kubernetes.io/managed-by": "virtwork"},
+			},
+		}
+		sec2 := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "sec-b",
+				Namespace: "default",
+				Labels:    map[string]string{"app.kubernetes.io/managed-by": "virtwork"},
+			},
+		}
+		sec3 := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "sec-c",
+				Namespace: "default",
+				Labels:    map[string]string{"app.kubernetes.io/managed-by": "virtwork"},
+			},
+		}
+		c := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(sec1, sec2, sec3).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Delete: func(ctx context.Context, cl client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
+					if obj.GetName() == "sec-b" {
+						return apierrors.NewForbidden(
+							schema.GroupResource{Group: "", Resource: "secrets"},
+							"sec-b",
+							nil,
+						)
+					}
+					return cl.Delete(ctx, obj, opts...)
+				},
+			}).
+			Build()
+
+		count, err := resources.DeleteManagedSecrets(ctx, c, "default", map[string]string{
+			"app.kubernetes.io/managed-by": "virtwork",
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("sec-b"))
+		Expect(count).To(Equal(2))
+	})
 })
 
 // nolint:dupl
@@ -411,5 +458,52 @@ var _ = Describe("DeleteManagedServices", func() {
 			"app.kubernetes.io/managed-by": "virtwork",
 		})
 		Expect(err).To(HaveOccurred())
+	})
+
+	It("should continue deleting after a single delete error and return aggregated error", func() {
+		svc1 := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "svc-a",
+				Namespace: "default",
+				Labels:    map[string]string{"app.kubernetes.io/managed-by": "virtwork"},
+			},
+		}
+		svc2 := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "svc-b",
+				Namespace: "default",
+				Labels:    map[string]string{"app.kubernetes.io/managed-by": "virtwork"},
+			},
+		}
+		svc3 := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "svc-c",
+				Namespace: "default",
+				Labels:    map[string]string{"app.kubernetes.io/managed-by": "virtwork"},
+			},
+		}
+		c := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(svc1, svc2, svc3).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Delete: func(ctx context.Context, cl client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
+					if obj.GetName() == "svc-b" {
+						return apierrors.NewForbidden(
+							schema.GroupResource{Group: "", Resource: "services"},
+							"svc-b",
+							nil,
+						)
+					}
+					return cl.Delete(ctx, obj, opts...)
+				},
+			}).
+			Build()
+
+		count, err := resources.DeleteManagedServices(ctx, c, "default", map[string]string{
+			"app.kubernetes.io/managed-by": "virtwork",
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("svc-b"))
+		Expect(count).To(Equal(2))
 	})
 })
