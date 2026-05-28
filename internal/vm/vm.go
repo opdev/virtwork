@@ -213,6 +213,7 @@ func BuildDataVolumeTemplate(name, size string) (kubevirtv1.DataVolumeTemplateSp
 // success (idempotent). Transient errors are retried with exponential backoff.
 func CreateVM(ctx context.Context, c client.Client, vm *kubevirtv1.VirtualMachine) error {
 	return retryOnTransient(ctx, func() error {
+		vm.ResourceVersion = ""
 		err := c.Create(ctx, vm)
 		if apierrors.IsAlreadyExists(err) {
 			return nil

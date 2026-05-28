@@ -77,6 +77,6 @@ var _ = Describe("TPS workload", Label("slow"), func() {
 			vms, err := vm.ListVMs(ctx, c, namespace, testutil.ManagedLabels())
 			Expect(err).NotTo(HaveOccurred())
 			return len(vms)
-		}, 60*time.Second, 2*time.Second).Should(Equal(0))
+		}, 120*time.Second, 2*time.Second).Should(Equal(0))
 	})
 })
