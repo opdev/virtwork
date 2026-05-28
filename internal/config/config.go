@@ -4,6 +4,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,8 +12,19 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/opdev/virtwork/internal/constants"
+)
+
+var (
+	ErrInvalidNamespace = errors.New("invalid config: namespace must not be empty")
+	ErrInvalidCpuCores  = errors.New("invalid config: cpu-cores must be at least 1, got")
+	ErrInvalidMemory    = errors.New("invalid config: not a valid value for memory")
+	ErrInvalidDiskSize  = errors.New("invalid config: not a valid value for disk-size")
+	ErrInvalidTimeout   = errors.New(
+		"invalid config: timeout must be at least 1 when wait-for-ready is enabled, got",
+	)
 )
 
 // WorkloadConfig holds per-workload configuration.
@@ -22,6 +34,27 @@ type WorkloadConfig struct {
 	CPUCores int               `mapstructure:"cpu-cores"`
 	Memory   string            `mapstructure:"memory"`
 	Params   map[string]string `mapstructure:"params"`
+}
+
+// Validate checks the assembled Config for semantic errors and returns
+// a clear message naming the invalid field, the value, and what is expected.
+func (c *Config) Validate() error {
+	if strings.TrimSpace(c.Namespace) == "" {
+		return ErrInvalidNamespace
+	}
+	if c.CPUCores < 1 {
+		return fmt.Errorf("%w %d", ErrInvalidCpuCores, c.CPUCores)
+	}
+	if _, err := resource.ParseQuantity(c.Memory); err != nil {
+		return fmt.Errorf("%w (%q): %w", ErrInvalidMemory, c.Memory, err)
+	}
+	if _, err := resource.ParseQuantity(c.DataDiskSize); err != nil {
+		return fmt.Errorf("%w (%q): %w", ErrInvalidDiskSize, c.DataDiskSize, err)
+	}
+	if c.WaitForReady && c.ReadyTimeoutSeconds < 1 {
+		return fmt.Errorf("%w %d", ErrInvalidTimeout, c.ReadyTimeoutSeconds)
+	}
+	return nil
 }
 
 // BoolPtr returns a pointer to the provided bool value.
@@ -196,6 +229,10 @@ func LoadConfig(cmd *cobra.Command) (*Config, error) {
 		}
 	}
 	cfg.Workloads = workloads
+
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 
 	return cfg, nil
 }
