@@ -822,6 +822,25 @@ var _ = Describe("CLI end-to-end scenarios", func() {
 	})
 })
 
+var _ = Describe("Service creation loop error handling", func() {
+	It("should return error from registry for unknown workload", func() {
+		registry := workloads.DefaultRegistry()
+		cfg := config.WorkloadConfig{
+			Enabled:  config.BoolPtr(true),
+			VMCount:  1,
+			CPUCores: constants.DefaultCPUCores,
+			Memory:   constants.DefaultMemory,
+		}
+
+		_, err := registry.Get("nonexistent-workload", cfg,
+			workloads.WithNamespace(constants.DefaultNamespace),
+			workloads.WithSSHCredentials(constants.DefaultSSHUser, "", nil),
+		)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("nonexistent-workload"))
+	})
+})
+
 var _ = Describe("DataVolume namespacing for multi-VM deployments", func() {
 	// nolint: dupl
 	Context("when deploying multiple VMs of disk workload", func() {
