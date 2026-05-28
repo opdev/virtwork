@@ -241,4 +241,43 @@ var _ = Describe("WaitForAllVMsReady", func() {
 		results := wait.WaitForAllVMsReady(ctx, c, logger, []string{}, "default", 5*time.Second, 10*time.Millisecond)
 		Expect(results).To(BeEmpty())
 	})
+
+	It("should recover a goroutine panic and return it as an error", func() {
+		vmi := &kubevirtv1.VirtualMachineInstance{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "good-vm",
+				Namespace: "default",
+			},
+			Status: kubevirtv1.VirtualMachineInstanceStatus{
+				Phase: kubevirtv1.Running,
+			},
+		}
+		c := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(vmi).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Get: func(ctx context.Context, cl client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					if key.Name == "panic-vm" {
+						panic("simulated nil pointer in API response")
+					}
+					return cl.Get(ctx, key, obj, opts...)
+				},
+			}).
+			Build()
+
+		results := wait.WaitForAllVMsReady(
+			ctx,
+			c,
+			logger,
+			[]string{"good-vm", "panic-vm"},
+			"default",
+			500*time.Millisecond,
+			10*time.Millisecond,
+		)
+		Expect(results).To(HaveLen(2))
+		Expect(results["good-vm"]).NotTo(HaveOccurred())
+		Expect(results["panic-vm"]).To(HaveOccurred())
+		Expect(results["panic-vm"].Error()).To(ContainSubstring("panic"))
+		Expect(results["panic-vm"].Error()).To(ContainSubstring("simulated nil pointer"))
+	})
 })
