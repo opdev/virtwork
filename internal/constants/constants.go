@@ -30,6 +30,24 @@ const (
 	DefaultSSHUser            = "virtwork"
 )
 
+// KubeVirt disk, volume, and network names.
+const (
+	DiskNameContainerDisk = "containerdisk"
+	DiskNameCloudInit     = "cloudinitdisk"
+	DiskNameData          = "datadisk"
+	DiskBusVirtio         = "virtio"
+	NetworkNameDefault    = "default"
+)
+
+// Secret data keys.
+const SecretKeyUserdata = "userdata"
+
+// SSH cloud-init user configuration.
+const (
+	SSHSudoRule     = "ALL=(ALL) NOPASSWD:ALL"
+	SSHDefaultShell = "/bin/bash"
+)
+
 // Kubernetes recommended labels.
 const (
 	LabelAppName   = "app.kubernetes.io/name"

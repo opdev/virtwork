@@ -104,6 +104,44 @@ var _ = Describe("Constants", func() {
 		})
 	})
 
+	Context("KubeVirt disk and volume names", func() {
+		It("should have correct container disk name", func() {
+			Expect(constants.DiskNameContainerDisk).To(Equal("containerdisk"))
+		})
+
+		It("should have correct cloud-init disk name", func() {
+			Expect(constants.DiskNameCloudInit).To(Equal("cloudinitdisk"))
+		})
+
+		It("should have correct data disk name", func() {
+			Expect(constants.DiskNameData).To(Equal("datadisk"))
+		})
+
+		It("should have correct virtio bus type", func() {
+			Expect(constants.DiskBusVirtio).To(Equal("virtio"))
+		})
+
+		It("should have correct default network name", func() {
+			Expect(constants.NetworkNameDefault).To(Equal("default"))
+		})
+	})
+
+	Context("Secret keys", func() {
+		It("should have correct userdata secret key", func() {
+			Expect(constants.SecretKeyUserdata).To(Equal("userdata"))
+		})
+	})
+
+	Context("SSH configuration", func() {
+		It("should have correct sudo rule", func() {
+			Expect(constants.SSHSudoRule).To(Equal("ALL=(ALL) NOPASSWD:ALL"))
+		})
+
+		It("should have correct default shell", func() {
+			Expect(constants.SSHDefaultShell).To(Equal("/bin/bash"))
+		})
+	})
+
 	Context("Polling", func() {
 		It("should have correct default ready timeout", func() {
 			Expect(constants.DefaultReadyTimeout).To(Equal(600 * time.Second))
