@@ -32,6 +32,12 @@ import (
 	"github.com/opdev/virtwork/internal/workloads"
 )
 
+var (
+	version = ""
+	commit  = ""
+	date    = ""
+)
+
 // ErrReadinessCheck: readiness check failed
 var ErrReadinessCheck = errors.New("readiness check failed")
 
@@ -53,8 +59,31 @@ realistic CPU, memory, database, network, and disk I/O metrics.`,
 
 	config.BindPersistentFlags(rootCmd)
 
-	rootCmd.AddCommand(newRunCmd(), newCleanupCmd())
+	rootCmd.AddCommand(newRunCmd(), newCleanupCmd(), newVersionCmd())
 	return rootCmd
+}
+
+func newVersionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print the version information",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			v := version
+			if v == "" {
+				v = "(dev)"
+			}
+			c := commit
+			if c == "" {
+				c = "(unknown)"
+			}
+			d := date
+			if d == "" {
+				d = "(unknown)"
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "virtwork version %s\n  commit: %s\n  built:  %s\n", v, c, d)
+			return nil
+		},
+	}
 }
 
 func newRunCmd() *cobra.Command {
