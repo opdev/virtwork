@@ -446,7 +446,7 @@ func runE(cmd *cobra.Command, args []string) error {
 		}
 		w, err := registry.Get(name, wlCfg, registryOpts...)
 		if err != nil {
-			continue
+			return fmt.Errorf("creating workload %q for service check: %w", name, err)
 		}
 		if w.RequiresService() {
 			svc := w.ServiceSpec()
