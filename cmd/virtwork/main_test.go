@@ -37,12 +37,7 @@ func newRootCmd() *cobra.Command {
 		Use:   "virtwork",
 		Short: "Create VMs on OpenShift with continuous workloads",
 	}
-
-	pf := rootCmd.PersistentFlags()
-	pf.String("namespace", "", "Kubernetes namespace for VMs")
-	pf.String("kubeconfig", "", "Path to kubeconfig file")
-	pf.String("config", "", "Path to YAML config file")
-	pf.Bool("verbose", false, "Enable verbose output")
+	config.BindPersistentFlags(rootCmd)
 
 	runCmd := &cobra.Command{
 		Use:   "run",
@@ -51,20 +46,7 @@ func newRootCmd() *cobra.Command {
 			return nil
 		},
 	}
-	rf := runCmd.Flags()
-	rf.StringSlice("workloads", workloads.AllWorkloadNames(), "Workloads to deploy (comma-separated)")
-	rf.Int("vm-count", 1, "Number of VMs per workload")
-	rf.Int("cpu-cores", 0, "CPU cores per VM")
-	rf.String("memory", "", "Memory per VM (e.g., 2Gi)")
-	rf.String("disk-size", "", "Data disk size")
-	rf.String("container-disk-image", "", "Container disk image for VMs")
-	rf.Bool("dry-run", false, "Print specs without creating resources")
-	rf.Bool("no-wait", false, "Skip waiting for VM readiness")
-	rf.Int("timeout", 0, "Readiness timeout in seconds")
-	rf.String("ssh-user", "", "SSH user for VMs")
-	rf.String("ssh-password", "", "SSH password for VMs")
-	rf.StringSlice("ssh-key", nil, "SSH authorized key (repeatable)")
-	rf.StringSlice("ssh-key-file", nil, "SSH key file path (repeatable)")
+	config.BindRunFlags(runCmd, workloads.AllWorkloadNames())
 
 	cleanupCmd := &cobra.Command{
 		Use:   "cleanup",
@@ -73,10 +55,7 @@ func newRootCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cleanupCmd.Flags().Bool("delete-namespace", false, "Also delete the namespace")
-	cleanupCmd.Flags().String("run-id", "", "Only delete resources from this specific run (UUID)")
-	cleanupCmd.Flags().Bool("dry-run", false, "Print intent without destroying resources")
-	cleanupCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt and proceed with cleanup")
+	config.BindCleanupFlags(cleanupCmd)
 
 	rootCmd.AddCommand(runCmd, cleanupCmd)
 	return rootCmd

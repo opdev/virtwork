@@ -13,19 +13,31 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/opdev/virtwork/internal/config"
 	"github.com/opdev/virtwork/internal/constants"
 )
 
 func newTestCommand() *cobra.Command {
+	root := &cobra.Command{Use: "root"}
+	config.BindPersistentFlags(root)
+
 	cmd := &cobra.Command{
 		Use: "test",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return nil
 		},
 	}
-	config.BindFlags(cmd)
+	config.BindRunFlags(cmd, nil)
+	root.AddCommand(cmd)
+
+	// Merge root's persistent flags into cmd (Cobra does this during Execute;
+	// tests call LoadConfig directly so we replicate the merge here).
+	root.PersistentFlags().VisitAll(func(f *pflag.Flag) {
+		cmd.Flags().AddFlag(f)
+	})
+
 	return cmd
 }
 

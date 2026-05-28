@@ -51,14 +51,7 @@ realistic CPU, memory, database, network, and disk I/O metrics.`,
 		SilenceUsage: true,
 	}
 
-	pf := rootCmd.PersistentFlags()
-	pf.String("namespace", "", "Kubernetes namespace for VMs")
-	pf.String("kubeconfig", "", "Path to kubeconfig file")
-	pf.String("config", "", "Path to YAML config file")
-	pf.Bool("verbose", false, "Enable verbose output")
-	pf.Bool("audit", true, "Enable audit logging to SQLite")
-	pf.Bool("no-audit", false, "Disable audit logging")
-	pf.String("audit-db", "", "Path to audit database file")
+	config.BindPersistentFlags(rootCmd)
 
 	rootCmd.AddCommand(newRunCmd(), newCleanupCmd())
 	return rootCmd
@@ -74,20 +67,7 @@ via systemd.`,
 		RunE: runE,
 	}
 
-	f := cmd.Flags()
-	f.StringSlice("workloads", workloads.AllWorkloadNames(), "Workloads to deploy (comma-separated)")
-	f.Int("vm-count", 1, "Number of VMs per workload")
-	f.Int("cpu-cores", 0, "CPU cores per VM")
-	f.String("memory", "", "Memory per VM (e.g., 2Gi)")
-	f.String("disk-size", "", "Data disk size")
-	f.String("container-disk-image", "", "Container disk image for VMs")
-	f.Bool("dry-run", false, "Print specs without creating resources")
-	f.Bool("no-wait", false, "Skip waiting for VM readiness")
-	f.Int("timeout", 0, "Readiness timeout in seconds")
-	f.String("ssh-user", "", "SSH user for VMs")
-	f.String("ssh-password", "", "SSH password for VMs")
-	f.StringSlice("ssh-key", nil, "SSH authorized key (repeatable)")
-	f.StringSlice("ssh-key-file", nil, "SSH key file path (repeatable)")
+	config.BindRunFlags(cmd, workloads.AllWorkloadNames())
 
 	return cmd
 }
@@ -100,10 +80,7 @@ func newCleanupCmd() *cobra.Command {
 		RunE:  cleanupE,
 	}
 
-	cmd.Flags().Bool("delete-namespace", false, "Also delete the namespace")
-	cmd.Flags().String("run-id", "", "Only delete resources from this specific run (UUID)")
-	cmd.Flags().Bool("dry-run", false, "Print intent without destroying resources")
-	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt and proceed with cleanup")
+	config.BindCleanupFlags(cmd)
 	return cmd
 }
 
