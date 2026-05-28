@@ -12,7 +12,11 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/opdev/virtwork/internal/constants"
 )
+
+var ErrCloudInitTooLarge = errors.New("cloud-init userdata exceeds 1 MiB Kubernetes limit")
 
 // EnsureNamespace creates a namespace with the given labels if it does not
 // already exist. AlreadyExists errors are treated as success (idempotent).
@@ -49,6 +53,12 @@ func CreateCloudInitSecret(
 	name, namespace, userdata string,
 	labels map[string]string,
 ) error {
+	if len(userdata) > constants.MaxSecretDataSize {
+		return fmt.Errorf(
+			"%w: %q is %d bytes",
+			ErrCloudInitTooLarge, name, len(userdata),
+		)
+	}
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
