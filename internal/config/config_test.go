@@ -33,7 +33,7 @@ func newTestCommand() *cobra.Command {
 	root.AddCommand(cmd)
 
 	// Merge root's persistent flags into cmd (Cobra does this during Execute;
-	// tests call LoadConfig directly so we replicate the merge here).
+	// tests call LoadConfig directly, so we replicate the merge here).
 	root.PersistentFlags().VisitAll(func(f *pflag.Flag) {
 		cmd.Flags().AddFlag(f)
 	})
@@ -274,32 +274,32 @@ container-disk-image: quay.io/test/image:latest
 		})
 
 		It("should prefer --disk-size flag over env var", func() {
-			_ = os.Setenv("VIRTWORK_DISK_SIZE", "env-100Gi")
+			_ = os.Setenv("VIRTWORK_DISK_SIZE", "100Gi")
 			defer func() {
 				_ = os.Unsetenv("VIRTWORK_DISK_SIZE")
 			}()
 
-			err1 := cmd.Flags().Set("disk-size", "flag-50Gi")
+			err1 := cmd.Flags().Set("disk-size", "50Gi")
 			Expect(err1).NotTo(HaveOccurred())
 
 			cfg, err := config.LoadConfig(cmd)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(cfg.DataDiskSize).To(Equal("flag-50Gi"))
+			Expect(cfg.DataDiskSize).To(Equal("50Gi"))
 		})
 
 		It("should prefer VIRTWORK_DISK_SIZE env over config file", func() {
-			path := writeConfigFile(tmpDir, `disk-size: file-30Gi`)
+			path := writeConfigFile(tmpDir, `disk-size: 30Gi`)
 			err1 := cmd.Flags().Set("config", path)
 			Expect(err1).NotTo(HaveOccurred())
 
-			_ = os.Setenv("VIRTWORK_DISK_SIZE", "env-60Gi")
+			_ = os.Setenv("VIRTWORK_DISK_SIZE", "60Gi")
 			defer func() {
 				_ = os.Unsetenv("VIRTWORK_DISK_SIZE")
 			}()
 
 			cfg, err := config.LoadConfig(cmd)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(cfg.DataDiskSize).To(Equal("env-60Gi"))
+			Expect(cfg.DataDiskSize).To(Equal("60Gi"))
 		})
 	})
 
@@ -514,6 +514,130 @@ workloads:
 			Expect(cfg.Workloads).To(HaveKey("tps"))
 			Expect(cfg.Workloads["tps"].Params).To(HaveKeyWithValue("file-size", "200M"))
 			Expect(cfg.Workloads["tps"].Params).To(HaveKeyWithValue("mode", "file-transfer"))
+		})
+	})
+})
+
+var _ = Describe("Config Validation", func() {
+	var cmd *cobra.Command
+
+	BeforeEach(func() {
+		for _, env := range os.Environ() {
+			if strings.HasPrefix(env, "VIRTWORK_") {
+				_ = os.Unsetenv(strings.Split(env, "=")[0])
+			}
+		}
+		cmd = newTestCommand()
+	})
+
+	Context("namespace", func() {
+		It("should reject an empty namespace", func() {
+			Expect(cmd.Flags().Set("namespace", "")).To(Succeed())
+			_, err := config.LoadConfig(cmd)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("namespace"))
+		})
+
+		It("should accept a non-empty namespace", func() {
+			Expect(cmd.Flags().Set("namespace", "valid-ns")).To(Succeed())
+			cfg, err := config.LoadConfig(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.Namespace).To(Equal("valid-ns"))
+		})
+	})
+
+	//nolint:dupl
+	Context("cpu-cores", func() {
+		It("should reject zero CPU cores", func() {
+			Expect(cmd.Flags().Set("cpu-cores", "0")).To(Succeed())
+			_, err := config.LoadConfig(cmd)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("cpu-cores"))
+		})
+
+		It("should reject negative CPU cores", func() {
+			Expect(cmd.Flags().Set("cpu-cores", "-1")).To(Succeed())
+			_, err := config.LoadConfig(cmd)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("cpu-cores"))
+		})
+
+		It("should accept positive CPU cores", func() {
+			Expect(cmd.Flags().Set("cpu-cores", "4")).To(Succeed())
+			cfg, err := config.LoadConfig(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.CPUCores).To(Equal(4))
+		})
+	})
+
+	//nolint:dupl
+	Context("memory", func() {
+		It("should reject an empty memory value", func() {
+			Expect(cmd.Flags().Set("memory", "")).To(Succeed())
+			_, err := config.LoadConfig(cmd)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("memory"))
+		})
+
+		It("should reject an invalid memory quantity", func() {
+			Expect(cmd.Flags().Set("memory", "not-a-quantity")).To(Succeed())
+			_, err := config.LoadConfig(cmd)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("memory"))
+		})
+
+		It("should accept a valid memory quantity", func() {
+			Expect(cmd.Flags().Set("memory", "4Gi")).To(Succeed())
+			cfg, err := config.LoadConfig(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.Memory).To(Equal("4Gi"))
+		})
+	})
+
+	Context("disk-size", func() {
+		It("should reject an invalid disk-size quantity", func() {
+			Expect(cmd.Flags().Set("disk-size", "bad-size")).To(Succeed())
+			_, err := config.LoadConfig(cmd)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("disk-size"))
+		})
+
+		It("should accept a valid disk-size quantity", func() {
+			Expect(cmd.Flags().Set("disk-size", "20Gi")).To(Succeed())
+			cfg, err := config.LoadConfig(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.DataDiskSize).To(Equal("20Gi"))
+		})
+	})
+
+	Context("timeout", func() {
+		It("should reject zero timeout when wait-for-ready is enabled", func() {
+			Expect(cmd.Flags().Set("timeout", "0")).To(Succeed())
+			_, err := config.LoadConfig(cmd)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("timeout"))
+		})
+
+		It("should reject negative timeout when wait-for-ready is enabled", func() {
+			Expect(cmd.Flags().Set("timeout", "-5")).To(Succeed())
+			_, err := config.LoadConfig(cmd)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("timeout"))
+		})
+
+		It("should accept positive timeout", func() {
+			Expect(cmd.Flags().Set("timeout", "300")).To(Succeed())
+			cfg, err := config.LoadConfig(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.ReadyTimeoutSeconds).To(Equal(300))
+		})
+
+		It("should skip timeout validation when wait-for-ready is disabled", func() {
+			Expect(cmd.Flags().Set("no-wait", "true")).To(Succeed())
+			Expect(cmd.Flags().Set("timeout", "0")).To(Succeed())
+			cfg, err := config.LoadConfig(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.WaitForReady).To(BeFalse())
 		})
 	})
 })
