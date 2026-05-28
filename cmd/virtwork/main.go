@@ -327,6 +327,13 @@ func runE(cmd *cobra.Command, args []string) error {
 			// Multi-VM workload — use UserdataForRole
 			roles := multiVM.Roles()
 			perRole := vmCount / len(roles)
+			if remainder := vmCount % len(roles); remainder != 0 {
+				logger.Warn("VM count not evenly divisible by roles; remainder VMs will not be created",
+					slog.String("workload", name),
+					slog.Int("requested", vmCount),
+					slog.Int("per_role", perRole),
+					slog.Int("dropped", remainder))
+			}
 			for _, role := range roles {
 				userdata, err := multiVM.UserdataForRole(role, cfg.Namespace)
 				if err != nil {
