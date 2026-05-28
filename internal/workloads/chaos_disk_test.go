@@ -16,7 +16,7 @@ var _ = Describe("ChaosDiskWorkload", func() {
 
 	BeforeEach(func() {
 		w = workloads.NewChaosDiskWorkload(config.WorkloadConfig{
-			Enabled:  config.BoolPtr(true),
+			Enabled:  new(true),
 			VMCount:  1,
 			CPUCores: 2,
 			Memory:   "2Gi",
@@ -228,7 +228,7 @@ var _ = Describe("ChaosDiskWorkload", func() {
 
 		It("should wire custom params from WorkloadConfig.Params", func() {
 			custom := workloads.NewChaosDiskWorkload(config.WorkloadConfig{
-				Enabled:  config.BoolPtr(true),
+				Enabled:  new(true),
 				VMCount:  1,
 				CPUCores: 2,
 				Memory:   "2Gi",
@@ -272,7 +272,7 @@ var _ = Describe("ChaosDiskWorkload", func() {
 
 		It("should use defaults for missing individual params", func() {
 			partial := workloads.NewChaosDiskWorkload(config.WorkloadConfig{
-				Enabled:  config.BoolPtr(true),
+				Enabled:  new(true),
 				VMCount:  1,
 				CPUCores: 2,
 				Memory:   "2Gi",

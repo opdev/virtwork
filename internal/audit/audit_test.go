@@ -81,8 +81,8 @@ var _ = Describe("SQLiteAuditor", func() {
 				WaitForReady:        true,
 				ReadyTimeoutSeconds: 300,
 				Workloads: map[string]config.WorkloadConfig{
-					"cpu":      {Enabled: config.BoolPtr(true), VMCount: 2, CPUCores: 4, Memory: "4Gi"},
-					"database": {Enabled: config.BoolPtr(true), VMCount: 1, CPUCores: 2, Memory: "2Gi"},
+					"cpu":      {Enabled: new(true), VMCount: 2, CPUCores: 4, Memory: "4Gi"},
+					"database": {Enabled: new(true), VMCount: 1, CPUCores: 2, Memory: "2Gi"},
 				},
 			}
 		})

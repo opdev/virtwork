@@ -25,10 +25,10 @@ jobs:
         go-version-file: "go.mod"
 
     - name: Run Go tests
-      run: go test -v ./...
+      run: make test
 
     - name: Run Go vet
-      run: go vet -v ./...
+      run: make vet
 
     - name: Build
       run: go build -o bin/virtwork ./cmd/virtwork/...

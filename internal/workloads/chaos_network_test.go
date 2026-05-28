@@ -18,7 +18,7 @@ var _ = Describe("ChaosNetworkWorkload", func() {
 
 	BeforeEach(func() {
 		w = workloads.NewChaosNetworkWorkload(config.WorkloadConfig{
-			Enabled:  config.BoolPtr(true),
+			Enabled:  new(true),
 			VMCount:  1,
 			CPUCores: 1,
 			Memory:   "1Gi",
@@ -155,7 +155,7 @@ var _ = Describe("ChaosNetworkWorkload", func() {
 
 		It("should wire custom params from WorkloadConfig.Params", func() {
 			custom := workloads.NewChaosNetworkWorkload(config.WorkloadConfig{
-				Enabled:  config.BoolPtr(true),
+				Enabled:  new(true),
 				VMCount:  1,
 				CPUCores: 1,
 				Memory:   "1Gi",
@@ -186,7 +186,7 @@ var _ = Describe("ChaosNetworkWorkload", func() {
 
 		It("should use defaults for missing individual params", func() {
 			partial := workloads.NewChaosNetworkWorkload(config.WorkloadConfig{
-				Enabled:  config.BoolPtr(true),
+				Enabled:  new(true),
 				VMCount:  1,
 				CPUCores: 1,
 				Memory:   "1Gi",

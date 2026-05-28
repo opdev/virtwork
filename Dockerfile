@@ -1,7 +1,7 @@
 # Stage 1: Build the virtwork binary
 # Using Debian-based image (glibc) to match UBI runtime.
 # Alpine (musl) would produce a binary incompatible with UBI's glibc.
-FROM golang:1.25-bookworm AS builder
+FROM golang:1.26-bookworm AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
