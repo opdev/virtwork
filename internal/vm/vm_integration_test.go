@@ -98,7 +98,7 @@ var _ = Describe("DeleteVM [integration]", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(vm.CreateVM(ctx, c, vmObj)).To(Succeed())
 
-		err := vm.DeleteVM(ctx, c, "integ-vm-del", namespace)
+		err = vm.DeleteVM(ctx, c, "integ-vm-del", namespace)
 		Expect(err).NotTo(HaveOccurred())
 
 		// KubeVirt finalizers keep the VM in Terminating state briefly.

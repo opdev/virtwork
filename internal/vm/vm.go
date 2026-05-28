@@ -163,7 +163,9 @@ func BuildVMSpec(opts VMSpecOpts) (*kubevirtv1.VirtualMachine, error) {
 func BuildDataVolumeTemplate(name, size string) (kubevirtv1.DataVolumeTemplateSpec, error) {
 	sizeQty, err := resource.ParseQuantity(size)
 	if err != nil {
-		return kubevirtv1.DataVolumeTemplateSpec{}, fmt.Errorf("invalid disk size %q (expected a quantity like 10Gi, 500Mi, or 1Ti): %w", size, err)
+		return kubevirtv1.DataVolumeTemplateSpec{}, fmt.Errorf(
+			"invalid disk size %q (expected a quantity like 10Gi, 500Mi, or 1Ti): %w", size, err,
+		)
 	}
 	return kubevirtv1.DataVolumeTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{

@@ -44,7 +44,7 @@ var _ = Describe("WaitForVMReady [integration]", Label("slow"), func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(vm.CreateVM(ctx, c, vmObj)).To(Succeed())
 
-		err := wait.WaitForVMReady(ctx, c, slog.Default(), "wait-vm-0", namespace, 5*time.Minute, 5*time.Second)
+		err = wait.WaitForVMReady(ctx, c, slog.Default(), "wait-vm-0", namespace, 5*time.Minute, 5*time.Second)
 		Expect(err).NotTo(HaveOccurred())
 	})
 

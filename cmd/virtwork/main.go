@@ -369,7 +369,9 @@ func runE(cmd *cobra.Command, args []string) error {
 					// Namespace DataVolume names to avoid collisions across VMs
 					dvts, err := w.DataVolumeTemplates()
 					if err != nil {
-						return fmt.Errorf("building data volume templates for %q role %q vm %s: %w", name, role, vmName, err)
+						return fmt.Errorf(
+							"building data volume templates for %q role %q vm %s: %w", name, role, vmName, err,
+						)
 					}
 					dvTemplates, extraVols := namespaceDataVolumes(
 						dvts,

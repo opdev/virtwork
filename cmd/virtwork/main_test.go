@@ -823,6 +823,7 @@ var _ = Describe("CLI end-to-end scenarios", func() {
 })
 
 var _ = Describe("DataVolume namespacing for multi-VM deployments", func() {
+	// nolint: dupl
 	Context("when deploying multiple VMs of disk workload", func() {
 		It("should return base DataVolume template name", func() {
 			registry := workloads.DefaultRegistry()
@@ -851,6 +852,7 @@ var _ = Describe("DataVolume namespacing for multi-VM deployments", func() {
 		})
 	})
 
+	// nolint:dupl
 	Context("when deploying multiple VMs of database workload", func() {
 		It("should return base DataVolume template name", func() {
 			registry := workloads.DefaultRegistry()
