@@ -262,7 +262,7 @@ func runE(cmd *cobra.Command, args []string) error {
 		}
 
 		wlCfg := config.WorkloadConfig{
-			Enabled:  config.BoolPtr(true),
+			Enabled:  new(true),
 			VMCount:  vmCountFlag,
 			CPUCores: cfg.CPUCores,
 			Memory:   cfg.Memory,
@@ -452,7 +452,7 @@ func runE(cmd *cobra.Command, args []string) error {
 
 		// Re-fetch workload to check service requirement
 		wlCfg := config.WorkloadConfig{
-			Enabled:  config.BoolPtr(true),
+			Enabled:  new(true),
 			VMCount:  vmCountFlag,
 			CPUCores: cfg.CPUCores,
 			Memory:   cfg.Memory,

@@ -327,7 +327,7 @@ var _ = Describe("Run orchestration", func() {
 		It("should build VM specs without cluster connection", func() {
 			registry := workloads.DefaultRegistry()
 			cfg := config.WorkloadConfig{
-				Enabled:  config.BoolPtr(true),
+				Enabled:  new(true),
 				VMCount:  1,
 				CPUCores: constants.DefaultCPUCores,
 				Memory:   constants.DefaultMemory,
@@ -365,7 +365,7 @@ var _ = Describe("Run orchestration", func() {
 		It("should print specs to stdout in dry-run", func() {
 			registry := workloads.DefaultRegistry()
 			cfg := config.WorkloadConfig{
-				Enabled:  config.BoolPtr(true),
+				Enabled:  new(true),
 				VMCount:  1,
 				CPUCores: constants.DefaultCPUCores,
 				Memory:   constants.DefaultMemory,
@@ -429,7 +429,7 @@ var _ = Describe("Run orchestration", func() {
 
 			registry := workloads.DefaultRegistry()
 			cfg := config.WorkloadConfig{
-				Enabled:  config.BoolPtr(true),
+				Enabled:  new(true),
 				VMCount:  1,
 				CPUCores: constants.DefaultCPUCores,
 				Memory:   constants.DefaultMemory,
@@ -478,7 +478,7 @@ var _ = Describe("Run orchestration", func() {
 
 			registry := workloads.DefaultRegistry()
 			cfg := config.WorkloadConfig{
-				Enabled:  config.BoolPtr(true),
+				Enabled:  new(true),
 				VMCount:  2,
 				CPUCores: constants.DefaultCPUCores,
 				Memory:   constants.DefaultMemory,
@@ -501,7 +501,7 @@ var _ = Describe("Run orchestration", func() {
 		It("should handle multi-VM workloads via type assertion", func() {
 			registry := workloads.DefaultRegistry()
 			cfg := config.WorkloadConfig{
-				Enabled:  config.BoolPtr(true),
+				Enabled:  new(true),
 				VMCount:  2,
 				CPUCores: constants.DefaultCPUCores,
 				Memory:   constants.DefaultMemory,
@@ -560,7 +560,7 @@ var _ = Describe("Workload enabled field", func() {
 			// integration tests that check audit events.
 
 			cfg := config.WorkloadConfig{
-				Enabled:  config.BoolPtr(false),
+				Enabled:  new(false),
 				VMCount:  2,
 				CPUCores: 4,
 				Memory:   "4Gi",
@@ -574,7 +574,7 @@ var _ = Describe("Workload enabled field", func() {
 	Context("when workload is explicitly enabled in YAML", func() {
 		It("should include enabled workloads", func() {
 			cfg := config.WorkloadConfig{
-				Enabled:  config.BoolPtr(true),
+				Enabled:  new(true),
 				VMCount:  2,
 				CPUCores: 4,
 				Memory:   "4Gi",
@@ -598,15 +598,15 @@ var _ = Describe("Workload enabled field", func() {
 		})
 	})
 
-	Context("BoolPtr helper function", func() {
+	Context("validate bool provided by new", func() {
 		It("should create pointer to true", func() {
-			ptr := config.BoolPtr(true)
+			ptr := new(true)
 			Expect(ptr).NotTo(BeNil())
 			Expect(*ptr).To(BeTrue())
 		})
 
 		It("should create pointer to false", func() {
-			ptr := config.BoolPtr(false)
+			ptr := new(false)
 			Expect(ptr).NotTo(BeNil())
 			Expect(*ptr).To(BeFalse())
 		})
@@ -668,7 +668,7 @@ var _ = Describe("CLI end-to-end scenarios", func() {
 
 			registry := workloads.DefaultRegistry()
 			cfg := config.WorkloadConfig{
-				Enabled:  config.BoolPtr(true),
+				Enabled:  new(true),
 				VMCount:  1,
 				CPUCores: constants.DefaultCPUCores,
 				Memory:   constants.DefaultMemory,
@@ -684,7 +684,7 @@ var _ = Describe("CLI end-to-end scenarios", func() {
 		It("should print VM specs to stdout", func() {
 			registry := workloads.DefaultRegistry()
 			cfg := config.WorkloadConfig{
-				Enabled:  config.BoolPtr(true),
+				Enabled:  new(true),
 				VMCount:  1,
 				CPUCores: constants.DefaultCPUCores,
 				Memory:   constants.DefaultMemory,
@@ -736,7 +736,7 @@ var _ = Describe("CLI end-to-end scenarios", func() {
 			totalVMs := 0
 			for _, name := range workloads.AllWorkloadNames() {
 				cfg := config.WorkloadConfig{
-					Enabled:  config.BoolPtr(true),
+					Enabled:  new(true),
 					VMCount:  1,
 					CPUCores: constants.DefaultCPUCores,
 					Memory:   constants.DefaultMemory,
@@ -805,7 +805,7 @@ var _ = Describe("Service creation loop error handling", func() {
 	It("should return error from registry for unknown workload", func() {
 		registry := workloads.DefaultRegistry()
 		cfg := config.WorkloadConfig{
-			Enabled:  config.BoolPtr(true),
+			Enabled:  new(true),
 			VMCount:  1,
 			CPUCores: constants.DefaultCPUCores,
 			Memory:   constants.DefaultMemory,
@@ -826,7 +826,7 @@ var _ = Describe("DataVolume namespacing for multi-VM deployments", func() {
 		It("should return base DataVolume template name", func() {
 			registry := workloads.DefaultRegistry()
 			cfg := config.WorkloadConfig{
-				Enabled:  config.BoolPtr(true),
+				Enabled:  new(true),
 				VMCount:  2,
 				CPUCores: constants.DefaultCPUCores,
 				Memory:   constants.DefaultMemory,
@@ -855,7 +855,7 @@ var _ = Describe("DataVolume namespacing for multi-VM deployments", func() {
 		It("should return base DataVolume template name", func() {
 			registry := workloads.DefaultRegistry()
 			cfg := config.WorkloadConfig{
-				Enabled:  config.BoolPtr(true),
+				Enabled:  new(true),
 				VMCount:  2,
 				CPUCores: constants.DefaultCPUCores,
 				Memory:   constants.DefaultMemory,

@@ -18,7 +18,7 @@ var _ = Describe("TPSWorkload", func() {
 
 	BeforeEach(func() {
 		w = workloads.NewTPSWorkload(config.WorkloadConfig{
-			Enabled:  config.BoolPtr(true),
+			Enabled:  new(true),
 			VMCount:  2,
 			CPUCores: 2,
 			Memory:   "2Gi",
@@ -372,7 +372,7 @@ var _ = Describe("TPSWorkload", func() {
 		DescribeTable("should return error for malformed file-size",
 			func(fileSize string) {
 				w2 := workloads.NewTPSWorkload(config.WorkloadConfig{
-					Enabled:  config.BoolPtr(true),
+					Enabled:  new(true),
 					VMCount:  1,
 					CPUCores: 2,
 					Memory:   "2Gi",
@@ -399,7 +399,7 @@ var _ = Describe("TPSWorkload", func() {
 
 		It("should propagate file-size error through CloudInitUserdata", func() {
 			w2 := workloads.NewTPSWorkload(config.WorkloadConfig{
-				Enabled:  config.BoolPtr(true),
+				Enabled:  new(true),
 				VMCount:  1,
 				CPUCores: 2,
 				Memory:   "2Gi",
@@ -433,7 +433,7 @@ var _ = Describe("TPSWorkload", func() {
 
 		It("should use custom file size from params", func() {
 			w2 := workloads.NewTPSWorkload(config.WorkloadConfig{
-				Enabled:  config.BoolPtr(true),
+				Enabled:  new(true),
 				VMCount:  2,
 				CPUCores: 2,
 				Memory:   "2Gi",
@@ -459,7 +459,7 @@ var _ = Describe("TPSWorkload", func() {
 
 		It("should use custom iterations from params", func() {
 			w2 := workloads.NewTPSWorkload(config.WorkloadConfig{
-				Enabled:  config.BoolPtr(true),
+				Enabled:  new(true),
 				VMCount:  2,
 				CPUCores: 2,
 				Memory:   "2Gi",
@@ -485,7 +485,7 @@ var _ = Describe("TPSWorkload", func() {
 
 		It("should use custom duration from params", func() {
 			w2 := workloads.NewTPSWorkload(config.WorkloadConfig{
-				Enabled:  config.BoolPtr(true),
+				Enabled:  new(true),
 				VMCount:  2,
 				CPUCores: 2,
 				Memory:   "2Gi",

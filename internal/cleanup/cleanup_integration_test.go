@@ -186,12 +186,12 @@ var _ = Describe("CleanupAll [integration]", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result1.VMsDeleted).To(Equal(1))
 
-		// Wait for the VM to be fully removed (KubeVirt finalizers cause
+		// Wait (120s) for the VM to be fully removed (KubeVirt finalizers cause
 		// the object to linger in Terminating state).
 		Eventually(func() int {
 			vms, _ := vm.ListVMs(ctx, c, namespace, testutil.ManagedLabels())
 			return len(vms)
-		}, 60*time.Second, 2*time.Second).Should(Equal(0))
+		}, 120*time.Second, 2*time.Second).Should(Equal(0))
 
 		result2, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
 		Expect(err).NotTo(HaveOccurred())

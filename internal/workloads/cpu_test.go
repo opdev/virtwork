@@ -16,7 +16,7 @@ var _ = Describe("CPUWorkload", func() {
 
 	BeforeEach(func() {
 		w = workloads.NewCPUWorkload(config.WorkloadConfig{
-			Enabled:  config.BoolPtr(true),
+			Enabled:  new(true),
 			VMCount:  1,
 			CPUCores: 2,
 			Memory:   "2Gi",

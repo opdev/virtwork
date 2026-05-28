@@ -16,7 +16,7 @@ var _ = Describe("NetworkWorkload", func() {
 
 	BeforeEach(func() {
 		w = workloads.NewNetworkWorkload(config.WorkloadConfig{
-			Enabled:  config.BoolPtr(true),
+			Enabled:  new(true),
 			VMCount:  2,
 			CPUCores: 2,
 			Memory:   "2Gi",

@@ -57,12 +57,6 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// BoolPtr returns a pointer to the provided bool value.
-// Useful for setting WorkloadConfig.Enabled in tests and code.
-func BoolPtr(b bool) *bool {
-	return &b
-}
-
 // Config holds the complete application configuration.
 type Config struct {
 	Namespace           string                    `mapstructure:"namespace"`

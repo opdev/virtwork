@@ -16,7 +16,7 @@ var _ = Describe("MemoryWorkload", func() {
 
 	BeforeEach(func() {
 		w = workloads.NewMemoryWorkload(config.WorkloadConfig{
-			Enabled:  config.BoolPtr(true),
+			Enabled:  new(true),
 			VMCount:  1,
 			CPUCores: 2,
 			Memory:   "4Gi",
