@@ -16,7 +16,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var ErrVMTimeout = errors.New("timeout waiting for VM")
+var (
+	ErrVMPanic   = errors.New("panic while waiting for VM")
+	ErrVMTimeout = errors.New("timeout waiting for VM")
+)
 
 // WaitForVMReady polls the VMI phase until it reaches Running or the timeout
 // expires. It uses time.Sleep for polling intervals and respects context
@@ -87,6 +90,13 @@ func WaitForAllVMsReady(
 		wg.Add(1)
 		go func(vmName string) {
 			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					mu.Lock()
+					results[vmName] = fmt.Errorf("%w %s/%s: %v", ErrVMPanic, namespace, vmName, r)
+					mu.Unlock()
+				}
+			}()
 			err := WaitForVMReady(ctx, c, logger, vmName, namespace, timeout, interval)
 			mu.Lock()
 			results[vmName] = err
