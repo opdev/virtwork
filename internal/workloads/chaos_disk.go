@@ -9,6 +9,7 @@ import (
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	"github.com/opdev/virtwork/internal/config"
+	"github.com/opdev/virtwork/internal/constants"
 	"github.com/opdev/virtwork/internal/vm"
 )
 
@@ -169,11 +170,11 @@ func (w *ChaosDiskWorkload) DataVolumeTemplates() ([]kubevirtv1.DataVolumeTempla
 func (w *ChaosDiskWorkload) ExtraDisks() []kubevirtv1.Disk {
 	return []kubevirtv1.Disk{
 		{
-			Name:   "datadisk",
+			Name:   constants.DiskNameData,
 			Serial: "virtwork-chdisk",
 			DiskDevice: kubevirtv1.DiskDevice{
 				Disk: &kubevirtv1.DiskTarget{
-					Bus: "virtio",
+					Bus: constants.DiskBusVirtio,
 				},
 			},
 		},
@@ -184,7 +185,7 @@ func (w *ChaosDiskWorkload) ExtraDisks() []kubevirtv1.Disk {
 func (w *ChaosDiskWorkload) ExtraVolumes() []kubevirtv1.Volume {
 	return []kubevirtv1.Volume{
 		{
-			Name: "datadisk",
+			Name: constants.DiskNameData,
 			VolumeSource: kubevirtv1.VolumeSource{
 				DataVolume: &kubevirtv1.DataVolumeSource{
 					Name: "virtwork-chaos-disk-data",

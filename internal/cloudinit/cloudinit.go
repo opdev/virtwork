@@ -9,6 +9,8 @@ import (
 	"maps"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/opdev/virtwork/internal/constants"
 )
 
 var ErrReservedKey = errors.New("reserved key in Extra map")
@@ -53,8 +55,8 @@ func BuildCloudConfig(opts CloudConfigOpts) (string, error) {
 	if opts.SSHUser != "" {
 		user := map[string]interface{}{
 			"name":  opts.SSHUser,
-			"sudo":  "ALL=(ALL) NOPASSWD:ALL",
-			"shell": "/bin/bash",
+			"sudo":  constants.SSHSudoRule,
+			"shell": constants.SSHDefaultShell,
 		}
 
 		if opts.SSHPassword != "" {

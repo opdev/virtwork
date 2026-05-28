@@ -66,7 +66,7 @@ func CreateCloudInitSecret(
 			Labels:    labels,
 		},
 		StringData: map[string]string{
-			"userdata": userdata,
+			constants.SecretKeyUserdata: userdata,
 		},
 	}
 	err := c.Create(ctx, secret)
