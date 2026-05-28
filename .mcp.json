@@ -20,7 +20,9 @@
         "--project",
         "${PWD}"
       ]
-    },
+    }
+  },
+  "_disabled_": {
     "playwright": {
       "command": "pnpx",
       "type": "stdio",
