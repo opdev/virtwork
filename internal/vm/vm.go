@@ -5,6 +5,7 @@ package vm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -20,6 +21,13 @@ import (
 const defaultMaxRetries = 5
 
 var baseRetryBackoff = time.Second
+
+var (
+	ErrInvalidName               = errors.New("invalid name: must not be empty")
+	ErrInvalidNamespace          = errors.New("invalid namespace: must not be empty")
+	ErrInvalidCPUCores           = errors.New("invalid cpuCores: must be a positive integer")
+	ErrInvalidContainerDiskImage = errors.New("invalid containerDiskImage: must not be empty")
+)
 
 // VMSpecOpts contains all parameters needed to construct a VirtualMachine spec.
 type VMSpecOpts struct {
@@ -40,6 +48,19 @@ type VMSpecOpts struct {
 // It configures a containerDisk for the OS image, cloudInitNoCloud for userdata,
 // masquerade networking, and virtio disk bus.
 func BuildVMSpec(opts VMSpecOpts) (*kubevirtv1.VirtualMachine, error) {
+	if opts.Name == "" {
+		return nil, ErrInvalidName
+	}
+	if opts.Namespace == "" {
+		return nil, ErrInvalidNamespace
+	}
+	if opts.CPUCores <= 0 {
+		return nil, fmt.Errorf("%w: got %d", ErrInvalidCPUCores, opts.CPUCores)
+	}
+	if opts.ContainerDiskImage == "" {
+		return nil, ErrInvalidContainerDiskImage
+	}
+
 	runStrategy := kubevirtv1.RunStrategyAlways
 
 	disks := []kubevirtv1.Disk{

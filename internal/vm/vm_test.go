@@ -89,7 +89,9 @@ var _ = Describe("BuildVMSpec", func() {
 		Expect(result.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "virtwork"))
 		Expect(result.Labels).To(HaveKeyWithValue("app.kubernetes.io/name", "cpu"))
 		// Labels should also propagate to the template
-		Expect(result.Spec.Template.ObjectMeta.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "virtwork"))
+		Expect(
+			result.Spec.Template.ObjectMeta.Labels,
+		).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "virtwork"))
 	})
 
 	It("should set CPU and memory resources", func() {
@@ -200,6 +202,36 @@ var _ = Describe("BuildVMSpec", func() {
 
 		Expect(result.Spec.DataVolumeTemplates).To(HaveLen(1))
 		Expect(result.Spec.DataVolumeTemplates[0].Name).To(Equal("test-data"))
+	})
+
+	Context("input validation", func() {
+		DescribeTable(
+			"should reject invalid inputs",
+			func(mutate func(*vm.VMSpecOpts), substr string) {
+				good := vm.VMSpecOpts{
+					Name:               "test-vm",
+					Namespace:          "test-ns",
+					ContainerDiskImage: "quay.io/containerdisks/fedora:41",
+					CloudInitUserdata:  "#cloud-config\n",
+					CPUCores:           2,
+					Memory:             "2Gi",
+					Labels:             map[string]string{"test": "true"},
+				}
+				mutate(&good)
+				_, err := vm.BuildVMSpec(good)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring(substr))
+			},
+			Entry("empty name", func(o *vm.VMSpecOpts) { o.Name = "" }, "name"),
+			Entry("empty namespace", func(o *vm.VMSpecOpts) { o.Namespace = "" }, "namespace"),
+			Entry("zero CPU cores", func(o *vm.VMSpecOpts) { o.CPUCores = 0 }, "cpuCores"),
+			Entry("negative CPU cores", func(o *vm.VMSpecOpts) { o.CPUCores = -1 }, "cpuCores"),
+			Entry(
+				"empty container disk image",
+				func(o *vm.VMSpecOpts) { o.ContainerDiskImage = "" },
+				"containerDiskImage",
+			),
+		)
 	})
 })
 
