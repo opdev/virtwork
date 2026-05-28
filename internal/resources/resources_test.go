@@ -5,6 +5,7 @@ package resources_test
 
 import (
 	"context"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -18,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	"github.com/opdev/virtwork/internal/cluster"
+	"github.com/opdev/virtwork/internal/constants"
 	"github.com/opdev/virtwork/internal/resources"
 )
 
@@ -246,6 +248,26 @@ var _ = Describe("CreateCloudInitSecret", func() {
 			"#cloud-config\n", nil)
 		Expect(err).To(HaveOccurred())
 		Expect(apierrors.IsForbidden(err)).To(BeTrue())
+	})
+
+	It("should reject userdata exceeding the 1 MiB Secret limit", func() {
+		c := fake.NewClientBuilder().WithScheme(scheme).Build()
+		oversized := strings.Repeat("x", constants.MaxSecretDataSize+1)
+
+		err := resources.CreateCloudInitSecret(ctx, c, "too-big", "default",
+			oversized, nil)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("too-big"))
+		Expect(err.Error()).To(ContainSubstring("1 MiB"))
+	})
+
+	It("should accept userdata at exactly the 1 MiB limit", func() {
+		c := fake.NewClientBuilder().WithScheme(scheme).Build()
+		exact := strings.Repeat("x", constants.MaxSecretDataSize)
+
+		err := resources.CreateCloudInitSecret(ctx, c, "exact-fit", "default",
+			exact, nil)
+		Expect(err).NotTo(HaveOccurred())
 	})
 })
 

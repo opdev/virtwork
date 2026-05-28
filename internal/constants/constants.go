@@ -39,6 +39,9 @@ const (
 	LabelRunID     = "virtwork/run-id"
 )
 
+// Kubernetes Secret size limit (1 MiB).
+const MaxSecretDataSize = 1 << 20
+
 // Audit defaults.
 const (
 	DefaultAuditDBPath = "virtwork.db"
