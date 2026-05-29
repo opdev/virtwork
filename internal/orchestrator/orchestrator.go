@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -368,33 +369,42 @@ func (ro *RunOrchestrator) createSecrets(
 ) (int, error) {
 	cfg := ro.config
 
-	secretsCreated := 0
-	for i := range plans {
-		secretName := plans[i].VMName + "-cloudinit"
-		secretLabels := map[string]string{
-			constants.LabelAppName:   plans[i].VMSpec.Labels[constants.LabelAppName],
-			constants.LabelManagedBy: constants.ManagedByValue,
-			constants.LabelComponent: plans[i].Component,
-			constants.LabelRunID:     runID,
-		}
-		if err := resources.CreateCloudInitSecret(ctx, ro.client, secretName,
-			cfg.Namespace, plans[i].VMSpec.CloudInitUserdata, secretLabels); err != nil {
-			return 0, fmt.Errorf("creating cloud-init secret for %q: %w", plans[i].VMName, err)
-		}
-		plans[i].VMSpec.CloudInitSecretName = secretName
-		secretsCreated++
-		ro.logger.Info("secret created",
-			slog.String("secret_name", secretName),
-			slog.String("namespace", cfg.Namespace))
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(10)
 
-		_, _ = ro.auditor.RecordResource(ctx, execID, audit.ResourceRecord{
-			ResourceType: "Secret",
-			ResourceName: secretName,
-			Namespace:    cfg.Namespace,
+	var secretsCreated atomic.Int32
+	for i := range plans {
+		g.Go(func() error {
+			secretName := plans[i].VMName + "-cloudinit"
+			secretLabels := map[string]string{
+				constants.LabelAppName:   plans[i].VMSpec.Labels[constants.LabelAppName],
+				constants.LabelManagedBy: constants.ManagedByValue,
+				constants.LabelComponent: plans[i].Component,
+				constants.LabelRunID:     runID,
+			}
+			if err := resources.CreateCloudInitSecret(gctx, ro.client, secretName,
+				cfg.Namespace, plans[i].VMSpec.CloudInitUserdata, secretLabels); err != nil {
+				return fmt.Errorf("creating cloud-init secret for %q: %w", plans[i].VMName, err)
+			}
+			plans[i].VMSpec.CloudInitSecretName = secretName
+			secretsCreated.Add(1)
+			ro.logger.Info("secret created",
+				slog.String("secret_name", secretName),
+				slog.String("namespace", cfg.Namespace))
+
+			_, _ = ro.auditor.RecordResource(ctx, execID, audit.ResourceRecord{
+				ResourceType: "Secret",
+				ResourceName: secretName,
+				Namespace:    cfg.Namespace,
+			})
+			return nil
 		})
 	}
 
-	return secretsCreated, nil
+	if err := g.Wait(); err != nil {
+		return 0, err
+	}
+	return int(secretsCreated.Load()), nil
 }
 
 func (ro *RunOrchestrator) createVMs(
