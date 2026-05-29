@@ -11,7 +11,9 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -197,7 +199,8 @@ func runE(cmd *cobra.Command, args []string) error {
 		_ = auditor.Close()
 	}()
 
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	// Connect to cluster early (unless dry-run) to capture context for audit
 	var c client.Client
@@ -221,7 +224,8 @@ func runE(cmd *cobra.Command, args []string) error {
 	}
 	defer func() {
 		if err != nil {
-			_ = auditor.CompleteExecution(ctx, execID, "failed", err.Error())
+			status, msg := auditStatus(ctx, err)
+			_ = auditor.CompleteExecution(context.Background(), execID, status, msg)
 		}
 	}()
 
@@ -651,7 +655,8 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 		_ = auditor.Close()
 	}()
 
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	// Get cleanup flags
 	deleteNS, _ := cmd.Flags().GetBool("delete-namespace")
@@ -685,7 +690,8 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 	}
 	defer func() {
 		if err != nil {
-			_ = auditor.CompleteExecution(ctx, execID, "failed", err.Error())
+			status, msg := auditStatus(ctx, err)
+			_ = auditor.CompleteExecution(context.Background(), execID, status, msg)
 		}
 	}()
 
@@ -823,6 +829,9 @@ func printCleanupPreview(logger *slog.Logger, preview *cleanup.CleanupPreview, n
 }
 
 func auditStatus(ctx context.Context, err error) (status, message string) {
+	if ctx.Err() == context.Canceled {
+		return "cancelled", "interrupted by signal"
+	}
 	return "failed", err.Error()
 }
 
