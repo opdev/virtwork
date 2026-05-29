@@ -48,7 +48,7 @@ var _ = Describe("EnsureNamespace", func() {
 		Expect(ns.Name).To(Equal("test-ns"))
 	})
 
-	It("should skip on AlreadyExists", func() {
+	It("should apply labels to pre-existing namespace", func() {
 		existing := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "existing-ns",
@@ -57,9 +57,36 @@ var _ = Describe("EnsureNamespace", func() {
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
 
 		err := resources.EnsureNamespace(ctx, c, "existing-ns", map[string]string{
-			"app.kubernetes.io/managed-by": "virtwork",
+			constants.LabelManagedBy: constants.ManagedByValue,
 		})
 		Expect(err).NotTo(HaveOccurred())
+
+		ns := &corev1.Namespace{}
+		err = c.Get(ctx, client.ObjectKey{Name: "existing-ns"}, ns)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ns.Labels).To(HaveKeyWithValue(constants.LabelManagedBy, constants.ManagedByValue))
+	})
+
+	It("should merge labels without overwriting existing ones", func() {
+		existing := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   "labeled-ns-existing",
+				Labels: map[string]string{"env": "test", "team": "platform"},
+			},
+		}
+		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
+
+		err := resources.EnsureNamespace(ctx, c, "labeled-ns-existing", map[string]string{
+			constants.LabelManagedBy: constants.ManagedByValue,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		ns := &corev1.Namespace{}
+		err = c.Get(ctx, client.ObjectKey{Name: "labeled-ns-existing"}, ns)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ns.Labels).To(HaveKeyWithValue(constants.LabelManagedBy, constants.ManagedByValue))
+		Expect(ns.Labels).To(HaveKeyWithValue("env", "test"))
+		Expect(ns.Labels).To(HaveKeyWithValue("team", "platform"))
 	})
 
 	It("should apply labels", func() {
