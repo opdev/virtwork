@@ -29,7 +29,18 @@ func EnsureNamespace(ctx context.Context, c client.Client, name string, labels m
 	}
 	err := c.Create(ctx, ns)
 	if apierrors.IsAlreadyExists(err) {
-		return nil
+		existing := &corev1.Namespace{}
+		if err := c.Get(ctx, client.ObjectKeyFromObject(ns), existing); err != nil {
+			return fmt.Errorf("fetching existing namespace %s: %w", name, err)
+		}
+		base := existing.DeepCopy()
+		if existing.Labels == nil {
+			existing.Labels = make(map[string]string, len(labels))
+		}
+		for k, v := range labels {
+			existing.Labels[k] = v
+		}
+		return c.Patch(ctx, existing, client.MergeFrom(base))
 	}
 	return err
 }
