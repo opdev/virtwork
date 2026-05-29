@@ -31,7 +31,7 @@ type Auditor interface {
 	RecordCleanupCounts(
 		ctx context.Context,
 		id int64,
-		vmsDeleted, servicesDeleted, secretsDeleted int,
+		vmsDeleted, servicesDeleted, secretsDeleted, dvsDeleted, pvcsDeleted int,
 		namespaceDeleted bool,
 	) error
 
@@ -154,15 +154,17 @@ func (a *SQLiteAuditor) LinkCleanupToRuns(ctx context.Context, cleanupID int64, 
 func (a *SQLiteAuditor) RecordCleanupCounts(
 	ctx context.Context,
 	id int64,
-	vmsDeleted, servicesDeleted, secretsDeleted int,
+	vmsDeleted, servicesDeleted, secretsDeleted, dvsDeleted, pvcsDeleted int,
 	namespaceDeleted bool,
 ) error {
 	_, err := a.db.ExecContext(
 		ctx,
-		`UPDATE audit_log SET vms_deleted = ?, services_deleted = ?, secrets_deleted = ?, namespace_deleted = ? WHERE id = ?`,
+		`UPDATE audit_log SET vms_deleted = ?, services_deleted = ?, secrets_deleted = ?, dvs_deleted = ?, pvcs_deleted = ?, namespace_deleted = ? WHERE id = ?`,
 		vmsDeleted,
 		servicesDeleted,
 		secretsDeleted,
+		dvsDeleted,
+		pvcsDeleted,
 		boolToInt(namespaceDeleted),
 		id,
 	)
@@ -278,7 +280,7 @@ func (NoOpAuditor) CompleteExecution(_ context.Context, _ int64, _ string, _ str
 }
 
 func (NoOpAuditor) LinkCleanupToRuns(_ context.Context, _ int64, _ []string) error { return nil }
-func (NoOpAuditor) RecordCleanupCounts(_ context.Context, _ int64, _, _, _ int, _ bool) error {
+func (NoOpAuditor) RecordCleanupCounts(_ context.Context, _ int64, _, _, _, _, _ int, _ bool) error {
 	return nil
 }
 

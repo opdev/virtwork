@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS audit_log (
 	vms_deleted           INTEGER,
 	services_deleted      INTEGER,
 	secrets_deleted       INTEGER,
+	dvs_deleted           INTEGER,
+	pvcs_deleted          INTEGER,
 	namespace_deleted     INTEGER,
 	started_at            TEXT    NOT NULL,
 	completed_at          TEXT,

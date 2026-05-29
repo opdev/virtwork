@@ -242,19 +242,21 @@ var _ = Describe("SQLiteAuditor", func() {
 			cleanupID, _, err := auditor.StartExecution(ctx, "cleanup", cfg)
 			Expect(err).NotTo(HaveOccurred())
 
-			Expect(auditor.RecordCleanupCounts(ctx, cleanupID, 5, 2, 10, true)).To(Succeed())
+			Expect(auditor.RecordCleanupCounts(ctx, cleanupID, 5, 2, 10, 3, 4, true)).To(Succeed())
 
 			db := auditor.DB()
-			var vms, svcs, secrets int
+			var vms, svcs, secrets, dvs, pvcs int
 			var nsDeleted int
 			err = db.QueryRow(
-				`SELECT vms_deleted, services_deleted, secrets_deleted, namespace_deleted FROM audit_log WHERE id = ?`,
+				`SELECT vms_deleted, services_deleted, secrets_deleted, dvs_deleted, pvcs_deleted, namespace_deleted FROM audit_log WHERE id = ?`,
 				cleanupID,
-			).Scan(&vms, &svcs, &secrets, &nsDeleted)
+			).Scan(&vms, &svcs, &secrets, &dvs, &pvcs, &nsDeleted)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(vms).To(Equal(5))
 			Expect(svcs).To(Equal(2))
 			Expect(secrets).To(Equal(10))
+			Expect(dvs).To(Equal(3))
+			Expect(pvcs).To(Equal(4))
 			Expect(nsDeleted).To(Equal(1))
 		})
 	})
@@ -540,7 +542,7 @@ var _ = Describe("NoOpAuditor", func() {
 
 		Expect(a.CompleteExecution(ctx, 0, "success", "")).To(Succeed())
 		Expect(a.LinkCleanupToRuns(ctx, 0, []string{"abc"})).To(Succeed())
-		Expect(a.RecordCleanupCounts(ctx, 0, 1, 2, 3, true)).To(Succeed())
+		Expect(a.RecordCleanupCounts(ctx, 0, 1, 2, 3, 0, 0, true)).To(Succeed())
 
 		wlID, err := a.RecordWorkload(ctx, 0, audit.WorkloadRecord{})
 		Expect(err).NotTo(HaveOccurred())
