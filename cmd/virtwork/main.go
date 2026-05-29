@@ -248,7 +248,8 @@ func runE(cmd *cobra.Command, args []string) error {
 	// Build workload instances
 	var plans []vmPlan
 	var vmNames []string
-	auditWorkloadIDs := make(map[string]int64) // workload name -> audit workload ID
+	auditWorkloadIDs := make(map[string]int64)               // workload name -> audit workload ID
+	workloadInstances := make(map[string]workloads.Workload) // workload name -> configured instance
 
 	for _, name := range workloadNames {
 		// Check if workload is explicitly disabled in YAML config
@@ -291,6 +292,7 @@ func runE(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("creating workload %q: %w", name, err)
 		}
+		workloadInstances[name] = w
 
 		vmCount := w.VMCount()
 		res := w.VMResources()
@@ -446,25 +448,7 @@ func runE(cmd *cobra.Command, args []string) error {
 
 	// Create services before VMs (DNS must resolve for client VMs)
 	servicesCreated := 0
-	for _, name := range workloadNames {
-		// Skip if workload is explicitly disabled
-		if fileCfg, ok := cfg.Workloads[name]; ok {
-			if fileCfg.Enabled != nil && !*fileCfg.Enabled {
-				continue
-			}
-		}
-
-		// Re-fetch workload to check service requirement
-		wlCfg := config.WorkloadConfig{
-			Enabled:  new(true),
-			VMCount:  vmCountFlag,
-			CPUCores: cfg.CPUCores,
-			Memory:   cfg.Memory,
-		}
-		w, err := registry.Get(name, wlCfg, registryOpts...)
-		if err != nil {
-			return fmt.Errorf("creating workload %q for service check: %w", name, err)
-		}
+	for name, w := range workloadInstances {
 		if w.RequiresService() {
 			svc := w.ServiceSpec()
 			if svc != nil {
