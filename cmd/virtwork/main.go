@@ -749,7 +749,8 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 
 	// Record cleanup counts
 	_ = auditor.RecordCleanupCounts(ctx, execID,
-		result.VMsDeleted, result.ServicesDeleted, result.SecretsDeleted, result.NamespaceDeleted)
+		result.VMsDeleted, result.ServicesDeleted, result.SecretsDeleted,
+		result.DVsDeleted, result.PVCsDeleted, result.NamespaceDeleted)
 
 	_ = auditor.RecordEvent(ctx, execID, audit.EventRecord{
 		EventType: "cleanup_completed",
