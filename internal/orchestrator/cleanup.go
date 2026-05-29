@@ -4,12 +4,15 @@
 package orchestrator
 
 import (
+	"context"
+	"fmt"
 	"io"
 	"log/slog"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/opdev/virtwork/internal/audit"
+	"github.com/opdev/virtwork/internal/cleanup"
 	"github.com/opdev/virtwork/internal/config"
 )
 
@@ -39,4 +42,53 @@ func NewCleanupOrchestrator(
 		auditor: auditor,
 		writer:  writer,
 	}
+}
+
+// Preview returns what would be deleted without modifying any resources.
+func (co *CleanupOrchestrator) Preview(
+	ctx context.Context,
+	execID int64,
+	runID string,
+) (*cleanup.CleanupPreview, error) {
+	preview, err := cleanup.PreviewCleanup(ctx, co.client, co.config, runID)
+	if err != nil {
+		return nil, fmt.Errorf("previewing cleanup: %w", err)
+	}
+	return preview, nil
+}
+
+// Execute performs the cleanup, deleting managed resources and recording
+// audit data.
+func (co *CleanupOrchestrator) Execute(
+	ctx context.Context,
+	execID int64,
+	deleteNamespace bool,
+	runID string,
+) (*cleanup.CleanupResult, error) {
+	_ = co.auditor.RecordEvent(ctx, execID, audit.EventRecord{
+		EventType: "cleanup_started",
+		Message:   fmt.Sprintf("Starting cleanup (namespace: %s, run-id filter: %q)", co.config.Namespace, runID),
+	})
+
+	result, err := cleanup.CleanupAll(ctx, co.client, co.config, deleteNamespace, runID)
+	if err != nil {
+		return nil, fmt.Errorf("cleanup failed: %w", err)
+	}
+
+	if len(result.RunIDs) > 0 {
+		_ = co.auditor.LinkCleanupToRuns(ctx, execID, result.RunIDs)
+	}
+
+	_ = co.auditor.RecordCleanupCounts(ctx, execID,
+		result.VMsDeleted, result.ServicesDeleted, result.SecretsDeleted,
+		result.DVsDeleted, result.PVCsDeleted, result.NamespaceDeleted)
+
+	_ = co.auditor.RecordEvent(ctx, execID, audit.EventRecord{
+		EventType: "cleanup_completed",
+		Message: fmt.Sprintf("Deleted %d VMs, %d services, %d secrets, %d DVs, %d PVCs",
+			result.VMsDeleted, result.ServicesDeleted, result.SecretsDeleted,
+			result.DVsDeleted, result.PVCsDeleted),
+	})
+
+	return result, nil
 }
