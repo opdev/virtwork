@@ -22,6 +22,8 @@ type CleanupResult struct {
 	VMsDeleted       int
 	ServicesDeleted  int
 	SecretsDeleted   int
+	DVsDeleted       int
+	PVCsDeleted      int
 	NamespaceDeleted bool
 	Errors           []error
 	RunIDs           []string // unique run IDs collected from cleaned-up resources
@@ -32,6 +34,8 @@ type CleanupPreview struct {
 	VMCount      int
 	ServiceCount int
 	SecretCount  int
+	DVCount      int
+	PVCCount     int
 	RunIDs       []string
 	TotalCount   int
 }

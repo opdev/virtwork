@@ -14,6 +14,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
@@ -186,6 +188,103 @@ var _ = Describe("PreviewCleanup", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(preview.VMCount).To(Equal(1))
 		Expect(preview.TotalCount).To(Equal(1))
+	})
+
+	newManagedDV := func(name string, extraLabels ...map[string]string) *cdiv1beta1.DataVolume {
+		l := map[string]string{
+			constants.LabelManagedBy: constants.ManagedByValue,
+		}
+		for _, el := range extraLabels {
+			maps.Copy(l, el)
+		}
+		return &cdiv1beta1.DataVolume{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: namespace,
+				Labels:    l,
+			},
+			Spec: cdiv1beta1.DataVolumeSpec{
+				Source: &cdiv1beta1.DataVolumeSource{Blank: &cdiv1beta1.DataVolumeBlankImage{}},
+				Storage: &cdiv1beta1.StorageSpec{
+					Resources: corev1.VolumeResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceStorage: resource.MustParse("10Gi"),
+						},
+					},
+				},
+			},
+		}
+	}
+
+	newManagedPVC := func(name string, extraLabels ...map[string]string) *corev1.PersistentVolumeClaim {
+		l := map[string]string{
+			constants.LabelManagedBy: constants.ManagedByValue,
+		}
+		for _, el := range extraLabels {
+			maps.Copy(l, el)
+		}
+		return &corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: namespace,
+				Labels:    l,
+			},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{
+						corev1.ResourceStorage: resource.MustParse("10Gi"),
+					},
+				},
+			},
+		}
+	}
+
+	It("should count DataVolumes and PVCs in preview", func() {
+		vm1 := newManagedVM("vm-1")
+		dv1 := newManagedDV("dv-1")
+		dv2 := newManagedDV("dv-2")
+		pvc1 := newManagedPVC("pvc-1")
+		c := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(vm1, dv1, dv2, pvc1).
+			Build()
+
+		preview, err := cleanup.PreviewCleanup(ctx, c, &config.Config{Namespace: namespace}, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(preview.VMCount).To(Equal(1))
+		Expect(preview.DVCount).To(Equal(2))
+		Expect(preview.PVCCount).To(Equal(1))
+		Expect(preview.TotalCount).To(Equal(4))
+	})
+
+	It("should respect run-id filtering for DVs and PVCs", func() {
+		runLabels := map[string]string{constants.LabelRunID: "run-xyz"}
+		dv1 := newManagedDV("dv-1", runLabels)
+		dv2 := newManagedDV("dv-2")
+		pvc1 := newManagedPVC("pvc-1", runLabels)
+		pvc2 := newManagedPVC("pvc-2")
+		c := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(dv1, dv2, pvc1, pvc2).
+			Build()
+
+		preview, err := cleanup.PreviewCleanup(ctx, c, &config.Config{Namespace: namespace}, "run-xyz")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(preview.DVCount).To(Equal(1))
+		Expect(preview.PVCCount).To(Equal(1))
+	})
+
+	It("should collect run-IDs from DVs and PVCs", func() {
+		dv1 := newManagedDV("dv-1", map[string]string{constants.LabelRunID: "run-dv1"})
+		pvc1 := newManagedPVC("pvc-1", map[string]string{constants.LabelRunID: "run-pvc1"})
+		c := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(dv1, pvc1).
+			Build()
+
+		preview, err := cleanup.PreviewCleanup(ctx, c, &config.Config{Namespace: namespace}, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(preview.RunIDs).To(ContainElements("run-dv1", "run-pvc1"))
 	})
 
 	It("should not modify any resources", func() {
@@ -446,6 +545,127 @@ var _ = Describe("CleanupAll", func() {
 		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, true, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(result.NamespaceDeleted).To(BeFalse())
+		Expect(result.Errors).To(HaveLen(1))
+	})
+
+	newManagedDV := func(name string) *cdiv1beta1.DataVolume {
+		return &cdiv1beta1.DataVolume{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: namespace,
+				Labels:    labels,
+			},
+			Spec: cdiv1beta1.DataVolumeSpec{
+				Source: &cdiv1beta1.DataVolumeSource{Blank: &cdiv1beta1.DataVolumeBlankImage{}},
+				Storage: &cdiv1beta1.StorageSpec{
+					Resources: corev1.VolumeResourceRequirements{
+						Requests: corev1.ResourceList{
+							corev1.ResourceStorage: resource.MustParse("10Gi"),
+						},
+					},
+				},
+			},
+		}
+	}
+
+	newManagedPVC := func(name string) *corev1.PersistentVolumeClaim {
+		return &corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: namespace,
+				Labels:    labels,
+			},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{
+						corev1.ResourceStorage: resource.MustParse("10Gi"),
+					},
+				},
+			},
+		}
+	}
+
+	It("should delete DataVolumes by managed-by label", func() {
+		dv1 := newManagedDV("dv-1")
+		dv2 := newManagedDV("dv-2")
+		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(dv1, dv2).Build()
+
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.DVsDeleted).To(Equal(2))
+		Expect(result.Errors).To(BeEmpty())
+
+		dvList := &cdiv1beta1.DataVolumeList{}
+		Expect(c.List(ctx, dvList, client.InNamespace(namespace))).To(Succeed())
+		Expect(dvList.Items).To(BeEmpty())
+	})
+
+	It("should delete PVCs by managed-by label", func() {
+		pvc1 := newManagedPVC("pvc-1")
+		pvc2 := newManagedPVC("pvc-2")
+		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(pvc1, pvc2).Build()
+
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.PVCsDeleted).To(Equal(2))
+		Expect(result.Errors).To(BeEmpty())
+
+		pvcList := &corev1.PersistentVolumeClaimList{}
+		Expect(c.List(ctx, pvcList, client.InNamespace(namespace))).To(Succeed())
+		Expect(pvcList.Items).To(BeEmpty())
+	})
+
+	// nolint:dupl
+	It("should tolerate individual DV deletion errors", func() {
+		dv1 := newManagedDV("dv-1")
+		dv2 := newManagedDV("dv-2")
+		callCount := 0
+		c := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(dv1, dv2).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Delete: func(ctx context.Context, cl client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
+					if _, ok := obj.(*cdiv1beta1.DataVolume); ok {
+						callCount++
+						if callCount == 1 {
+							return fmt.Errorf("DV deletion; %w", ErrDeleteResource)
+						}
+					}
+					return cl.Delete(ctx, obj, opts...)
+				},
+			}).
+			Build()
+
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.DVsDeleted).To(Equal(1))
+		Expect(result.Errors).To(HaveLen(1))
+	})
+
+	// nolint:dupl
+	It("should tolerate individual PVC deletion errors", func() {
+		pvc1 := newManagedPVC("pvc-1")
+		pvc2 := newManagedPVC("pvc-2")
+		callCount := 0
+		c := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(pvc1, pvc2).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Delete: func(ctx context.Context, cl client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
+					if _, ok := obj.(*corev1.PersistentVolumeClaim); ok {
+						callCount++
+						if callCount == 1 {
+							return fmt.Errorf("PVC deletion; %w", ErrDeleteResource)
+						}
+					}
+					return cl.Delete(ctx, obj, opts...)
+				},
+			}).
+			Build()
+
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.PVCsDeleted).To(Equal(1))
 		Expect(result.Errors).To(HaveLen(1))
 	})
 
