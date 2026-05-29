@@ -822,6 +822,10 @@ func printCleanupPreview(logger *slog.Logger, preview *cleanup.CleanupPreview, n
 	logger.Info("resources to be deleted", args...)
 }
 
+func auditStatus(ctx context.Context, err error) (status, message string) {
+	return "failed", err.Error()
+}
+
 func PromptForConfirmation(r io.Reader) (bool, error) {
 	scanner := bufio.NewScanner(r)
 	if !scanner.Scan() {
