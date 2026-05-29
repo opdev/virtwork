@@ -754,8 +754,9 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 
 	_ = auditor.RecordEvent(ctx, execID, audit.EventRecord{
 		EventType: "cleanup_completed",
-		Message: fmt.Sprintf("Deleted %d VMs, %d services, %d secrets",
-			result.VMsDeleted, result.ServicesDeleted, result.SecretsDeleted),
+		Message: fmt.Sprintf("Deleted %d VMs, %d services, %d secrets, %d DVs, %d PVCs",
+			result.VMsDeleted, result.ServicesDeleted, result.SecretsDeleted,
+			result.DVsDeleted, result.PVCsDeleted),
 	})
 
 	// Complete audit
@@ -767,6 +768,8 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 		slog.Int("vms_deleted", result.VMsDeleted),
 		slog.Int("services_deleted", result.ServicesDeleted),
 		slog.Int("secrets_deleted", result.SecretsDeleted),
+		slog.Int("dvs_deleted", result.DVsDeleted),
+		slog.Int("pvcs_deleted", result.PVCsDeleted),
 		slog.Bool("namespace_deleted", result.NamespaceDeleted))
 
 	if len(result.Errors) > 0 {
@@ -814,6 +817,8 @@ func printCleanupPreview(logger *slog.Logger, preview *cleanup.CleanupPreview, n
 		slog.Int("vms", preview.VMCount),
 		slog.Int("services", preview.ServiceCount),
 		slog.Int("secrets", preview.SecretCount),
+		slog.Int("dvs", preview.DVCount),
+		slog.Int("pvcs", preview.PVCCount),
 		slog.Int("total", preview.TotalCount),
 	}
 	if runID != "" {
