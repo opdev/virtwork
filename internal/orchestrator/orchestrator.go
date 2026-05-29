@@ -216,7 +216,12 @@ func (ro *RunOrchestrator) planVMs(
 
 				dvts, err := w.DataVolumeTemplates()
 				if err != nil {
-					return nil, nil, nil, nil, fmt.Errorf("building data volume templates for %q vm %s: %w", name, vmName, err)
+					return nil, nil, nil, nil, fmt.Errorf(
+						"building data volume templates for %q vm %s: %w",
+						name,
+						vmName,
+						err,
+					)
 				}
 				dvTemplates, extraVols := NamespaceDataVolumes(dvts, w.ExtraVolumes(), vmName)
 
