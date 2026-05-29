@@ -248,6 +248,25 @@ var _ = Describe("RunOrchestrator", func() {
 					Expect(err).NotTo(HaveOccurred())
 				}
 			})
+
+			It("should create multiple secrets concurrently", func() {
+				logger := logging.NewLogger(buf, false)
+				ro := orchestrator.NewRunOrchestrator(logger, c, cfg, auditor, buf)
+
+				result, err := ro.Run(ctx, 0, "test-run-id", []string{"cpu"}, 5)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.SecretCount).To(Equal(5))
+
+				for i := range 5 {
+					secret := &corev1.Secret{}
+					err := c.Get(ctx, client.ObjectKey{
+						Name:      fmt.Sprintf("virtwork-cpu-%d-cloudinit", i),
+						Namespace: constants.DefaultNamespace,
+					}, secret)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(secret.Labels[constants.LabelRunID]).To(Equal("test-run-id"))
+				}
+			})
 		})
 
 		Context("workloads with DataVolumes", func() {
