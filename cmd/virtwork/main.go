@@ -14,23 +14,16 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/sync/errgroup"
-	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	sigyaml "sigs.k8s.io/yaml"
 
 	"github.com/opdev/virtwork/internal/audit"
 	"github.com/opdev/virtwork/internal/cleanup"
 	"github.com/opdev/virtwork/internal/cluster"
 	"github.com/opdev/virtwork/internal/config"
-	"github.com/opdev/virtwork/internal/constants"
 	"github.com/opdev/virtwork/internal/logging"
-	"github.com/opdev/virtwork/internal/resources"
-	"github.com/opdev/virtwork/internal/vm"
-	"github.com/opdev/virtwork/internal/wait"
+	"github.com/opdev/virtwork/internal/orchestrator"
 	"github.com/opdev/virtwork/internal/workloads"
 )
 
@@ -39,9 +32,6 @@ var (
 	commit  = ""
 	date    = ""
 )
-
-// ErrReadinessCheck: readiness check failed
-var ErrReadinessCheck = errors.New("readiness check failed")
 
 func main() {
 	if err := newRootCmd().Execute(); err != nil {
@@ -115,7 +105,6 @@ func newCleanupCmd() *cobra.Command {
 	return cmd
 }
 
-// initAuditor creates the appropriate Auditor based on configuration flags.
 func initAuditor(cmd *cobra.Command, cfg *config.Config) (audit.Auditor, error) {
 	noAudit, _ := cmd.Flags().GetBool("no-audit")
 	if noAudit || !cfg.AuditEnabled {
@@ -130,67 +119,15 @@ func initAuditor(cmd *cobra.Command, cfg *config.Config) (audit.Auditor, error) 
 	return audit.NewSQLiteAuditor(dbPath)
 }
 
-// vmPlan describes a single VM to be created during orchestration.
-type vmPlan struct {
-	workload  workloads.Workload
-	vmSpec    *vm.VMSpecOpts
-	vmName    string
-	component string
-	role      string
-}
-
-// namespaceDataVolumes appends the VM name to DataVolume template names and
-// updates corresponding volume references to prevent name collisions when
-// deploying multiple VMs of the same workload type.
-func namespaceDataVolumes(
-	baseTemplates []kubevirtv1.DataVolumeTemplateSpec,
-	baseVolumes []kubevirtv1.Volume,
-	vmName string,
-) ([]kubevirtv1.DataVolumeTemplateSpec, []kubevirtv1.Volume) {
-	if len(baseTemplates) == 0 {
-		return baseTemplates, baseVolumes
-	}
-
-	// Build a map of original DataVolume names to namespaced names
-	nameMap := make(map[string]string, len(baseTemplates))
-	templates := make([]kubevirtv1.DataVolumeTemplateSpec, len(baseTemplates))
-	for i, tmpl := range baseTemplates {
-		oldName := tmpl.Name
-		newName := fmt.Sprintf("%s-%s", oldName, vmName)
-		nameMap[oldName] = newName
-
-		templates[i] = tmpl
-		templates[i].Name = newName
-	}
-
-	// Update volume references to use the namespaced names
-	volumes := make([]kubevirtv1.Volume, len(baseVolumes))
-	for i, vol := range baseVolumes {
-		volumes[i] = vol
-		if vol.DataVolume != nil {
-			if newName, ok := nameMap[vol.DataVolume.Name]; ok {
-				volumes[i].DataVolume = &kubevirtv1.DataVolumeSource{
-					Name: newName,
-				}
-			}
-		}
-	}
-
-	return templates, volumes
-}
-
-// runE is the main orchestration flow for the "run" subcommand.
 func runE(cmd *cobra.Command, args []string) error {
 	cfg, err := config.LoadConfig(cmd)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	// Initialize logger
 	verbose, _ := cmd.Flags().GetBool("verbose")
 	logger := logging.NewLogger(cmd.OutOrStdout(), verbose)
 
-	// Initialize auditor
 	auditor, err := initAuditor(cmd, cfg)
 	if err != nil {
 		return fmt.Errorf("initializing auditor: %w", err)
@@ -202,7 +139,6 @@ func runE(cmd *cobra.Command, args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Connect to cluster early (unless dry-run) to capture context for audit
 	var c client.Client
 	if !cfg.DryRun {
 		var contextName string
@@ -213,7 +149,6 @@ func runE(cmd *cobra.Command, args []string) error {
 		cfg.ClusterContext = contextName
 	}
 
-	// Start audit execution
 	cmdName := "run"
 	if cfg.DryRun {
 		cmdName = "dry-run"
@@ -234,403 +169,31 @@ func runE(cmd *cobra.Command, args []string) error {
 		Message:   fmt.Sprintf("Starting %s with run-id %s", cmdName, runID),
 	})
 
-	// Determine which workloads to deploy
 	workloadNames, _ := cmd.Flags().GetStringSlice("workloads")
 	vmCountFlag, _ := cmd.Flags().GetInt("vm-count")
 
-	registry := workloads.DefaultRegistry()
-	registryOpts := []workloads.Option{
-		workloads.WithNamespace(cfg.Namespace),
-		workloads.WithSSHCredentials(cfg.SSHUser, cfg.SSHPassword, cfg.SSHAuthorizedKeys),
-		workloads.WithDataDiskSize(cfg.DataDiskSize),
+	ro := orchestrator.NewRunOrchestrator(logger, c, cfg, auditor, cmd.OutOrStdout())
+	result, err := ro.Run(ctx, execID, runID, workloadNames, vmCountFlag)
+	if err != nil {
+		return err
 	}
 
-	// Build workload instances
-	var plans []vmPlan
-	var vmNames []string
-	auditWorkloadIDs := make(map[string]int64)               // workload name -> audit workload ID
-	workloadInstances := make(map[string]workloads.Workload) // workload name -> configured instance
-
-	for _, name := range workloadNames {
-		// Check if workload is explicitly disabled in YAML config
-		if fileCfg, ok := cfg.Workloads[name]; ok {
-			if fileCfg.Enabled != nil && !*fileCfg.Enabled {
-				_ = auditor.RecordEvent(ctx, execID, audit.EventRecord{
-					EventType: "workload_skipped",
-					Message:   fmt.Sprintf("Workload %q disabled via config (enabled: false)", name),
-				})
-				logger.Info("workload skipped",
-					slog.String("workload", name),
-					slog.String("reason", "disabled in config"))
-				continue
-			}
-		}
-
-		wlCfg := config.WorkloadConfig{
-			Enabled:  new(true),
-			VMCount:  vmCountFlag,
-			CPUCores: cfg.CPUCores,
-			Memory:   cfg.Memory,
-		}
-		// Override with per-workload config from YAML if present
-		if fileCfg, ok := cfg.Workloads[name]; ok {
-			if fileCfg.CPUCores > 0 {
-				wlCfg.CPUCores = fileCfg.CPUCores
-			}
-			if fileCfg.Memory != "" {
-				wlCfg.Memory = fileCfg.Memory
-			}
-			if fileCfg.VMCount > 0 {
-				wlCfg.VMCount = fileCfg.VMCount
-			}
-			if len(fileCfg.Params) > 0 {
-				wlCfg.Params = fileCfg.Params
-			}
-		}
-
-		w, err := registry.Get(name, wlCfg, registryOpts...)
-		if err != nil {
-			return fmt.Errorf("creating workload %q: %w", name, err)
-		}
-		workloadInstances[name] = w
-
-		vmCount := w.VMCount()
-		res := w.VMResources()
-
-		// Record workload in audit
-		dvTemplatesForAudit, err := w.DataVolumeTemplates()
-		if err != nil {
-			return fmt.Errorf("building data volume templates for %q: %w", name, err)
-		}
-		wlID, _ := auditor.RecordWorkload(ctx, execID, audit.WorkloadRecord{
-			WorkloadType:    name,
-			Enabled:         true,
-			VMCount:         vmCount,
-			CPUCores:        res.CPUCores,
-			Memory:          res.Memory,
-			HasDataDisk:     len(dvTemplatesForAudit) > 0,
-			DataDiskSize:    cfg.DataDiskSize,
-			RequiresService: w.RequiresService(),
-		})
-		auditWorkloadIDs[name] = wlID
-
-		if multiVM, isMulti := w.(workloads.MultiVMWorkload); !isMulti {
-			userdata, err := w.CloudInitUserdata()
-			if err != nil {
-				return fmt.Errorf("generating cloud-init for %q: %w", name, err)
-			}
-
-			for i := range vmCount {
-				vmName := fmt.Sprintf("virtwork-%s-%d", name, i)
-
-				// Namespace DataVolume names to avoid collisions across VMs
-				dvts, err := w.DataVolumeTemplates()
-				if err != nil {
-					return fmt.Errorf("building data volume templates for %q vm %s: %w", name, vmName, err)
-				}
-				dvTemplates, extraVols := namespaceDataVolumes(
-					dvts,
-					w.ExtraVolumes(),
-					vmName,
-				)
-
-				plans = append(plans, vmPlan{
-					workload:  w,
-					component: name,
-					vmName:    vmName,
-					vmSpec: &vm.VMSpecOpts{
-						Name:               vmName,
-						Namespace:          cfg.Namespace,
-						ContainerDiskImage: cfg.ContainerDiskImage,
-						CloudInitUserdata:  userdata,
-						CPUCores:           res.CPUCores,
-						Memory:             res.Memory,
-						Labels: map[string]string{
-							constants.LabelAppName:   fmt.Sprintf("virtwork-%s", name),
-							constants.LabelManagedBy: constants.ManagedByValue,
-							constants.LabelComponent: name,
-							constants.LabelRunID:     runID,
-						},
-						ExtraDisks:          w.ExtraDisks(),
-						ExtraVolumes:        extraVols,
-						DataVolumeTemplates: dvTemplates,
-					},
-				})
-				vmNames = append(vmNames, vmName)
-			}
-		} else {
-			// Multi-VM workload — use UserdataForRole
-			roles := multiVM.Roles()
-			perRole := vmCount / len(roles)
-			if remainder := vmCount % len(roles); remainder != 0 {
-				logger.Warn("VM count not evenly divisible by roles; remainder VMs will not be created",
-					slog.String("workload", name),
-					slog.Int("requested", vmCount),
-					slog.Int("per_role", perRole),
-					slog.Int("dropped", remainder))
-			}
-			for _, role := range roles {
-				userdata, err := multiVM.UserdataForRole(role, cfg.Namespace)
-				if err != nil {
-					return fmt.Errorf("generating cloud-init for %q role %q: %w", name, role, err)
-				}
-
-				for i := range perRole {
-					vmName := fmt.Sprintf("virtwork-%s-%s-%d", name, role, i)
-					labels := map[string]string{
-						constants.LabelAppName:   fmt.Sprintf("virtwork-%s", name),
-						constants.LabelManagedBy: constants.ManagedByValue,
-						constants.LabelComponent: name,
-						constants.LabelRunID:     runID,
-						"virtwork/role":          role,
-					}
-
-					// Namespace DataVolume names to avoid collisions across VMs
-					dvts, err := w.DataVolumeTemplates()
-					if err != nil {
-						return fmt.Errorf(
-							"building data volume templates for %q role %q vm %s: %w", name, role, vmName, err,
-						)
-					}
-					dvTemplates, extraVols := namespaceDataVolumes(
-						dvts,
-						w.ExtraVolumes(),
-						vmName,
-					)
-
-					plans = append(plans, vmPlan{
-						workload:  w,
-						component: name,
-						vmName:    vmName,
-						role:      role,
-						vmSpec: &vm.VMSpecOpts{
-							Name:                vmName,
-							Namespace:           cfg.Namespace,
-							ContainerDiskImage:  cfg.ContainerDiskImage,
-							CloudInitUserdata:   userdata,
-							CPUCores:            res.CPUCores,
-							Memory:              res.Memory,
-							Labels:              labels,
-							ExtraDisks:          w.ExtraDisks(),
-							ExtraVolumes:        extraVols,
-							DataVolumeTemplates: dvTemplates,
-						},
-					})
-					vmNames = append(vmNames, vmName)
-				}
-			}
-		}
-	}
-
-	// Update audit with total counts
-	_ = auditor.RecordEvent(ctx, execID, audit.EventRecord{
-		EventType: "execution_started",
-		Message:   fmt.Sprintf("Planned %d VMs across %d workloads", len(plans), len(workloadNames)),
-	})
-
-	// Dry-run: print specs and return
-	if cfg.DryRun {
-		if err := printDryRun(logger, plans); err != nil {
-			return err
-		}
-		_ = auditor.CompleteExecution(ctx, execID, "success", "")
-		err = nil // clear for defer
-		return nil
-	}
-
-	// Ensure namespace exists
-	if err := resources.EnsureNamespace(ctx, c, cfg.Namespace, map[string]string{
-		constants.LabelManagedBy: constants.ManagedByValue,
-	}); err != nil {
-		return fmt.Errorf("ensuring namespace %q: %w", cfg.Namespace, err)
-	}
-	logger.Info("namespace ensured", slog.String("namespace", cfg.Namespace))
-
-	// Create services before VMs (DNS must resolve for client VMs)
-	servicesCreated := 0
-	for name, w := range workloadInstances {
-		if w.RequiresService() {
-			svc := w.ServiceSpec()
-			if svc != nil {
-				// Add run-id label to service
-				if svc.Labels == nil {
-					svc.Labels = make(map[string]string)
-				}
-				svc.Labels[constants.LabelRunID] = runID
-
-				if err := resources.CreateService(ctx, c, svc); err != nil {
-					return fmt.Errorf("creating service for %q: %w", name, err)
-				}
-				servicesCreated++
-				logger.Info("service created",
-					slog.String("service_name", svc.Name),
-					slog.String("namespace", svc.Namespace))
-
-				_, _ = auditor.RecordResource(ctx, execID, audit.ResourceRecord{
-					ResourceType: "Service",
-					ResourceName: svc.Name,
-					Namespace:    svc.Namespace,
-				})
-				_ = auditor.RecordEvent(ctx, execID, audit.EventRecord{
-					EventType: "service_created",
-					Message:   fmt.Sprintf("Service %s created", svc.Name),
-				})
-			}
-		}
-	}
-
-	// Create cloud-init secrets before VMs
-	secretsCreated := 0
-	for i := range plans {
-		secretName := plans[i].vmName + "-cloudinit"
-		secretLabels := map[string]string{
-			constants.LabelAppName:   plans[i].vmSpec.Labels[constants.LabelAppName],
-			constants.LabelManagedBy: constants.ManagedByValue,
-			constants.LabelComponent: plans[i].component,
-			constants.LabelRunID:     runID,
-		}
-		if err := resources.CreateCloudInitSecret(ctx, c, secretName,
-			cfg.Namespace, plans[i].vmSpec.CloudInitUserdata, secretLabels); err != nil {
-			return fmt.Errorf("creating cloud-init secret for %q: %w", plans[i].vmName, err)
-		}
-		plans[i].vmSpec.CloudInitSecretName = secretName
-		secretsCreated++
-		logger.Info("secret created",
-			slog.String("secret_name", secretName),
-			slog.String("namespace", cfg.Namespace))
-
-		_, _ = auditor.RecordResource(ctx, execID, audit.ResourceRecord{
-			ResourceType: "Secret",
-			ResourceName: secretName,
-			Namespace:    cfg.Namespace,
-		})
-	}
-
-	// Create VMs concurrently via errgroup
-	g, gctx := errgroup.WithContext(ctx)
-	for _, plan := range plans {
-		p := plan // capture loop variable
-		g.Go(func() error {
-			vmObj, err := vm.BuildVMSpec(*p.vmSpec)
-			if err != nil {
-				return fmt.Errorf("building VM spec for %q: %w", p.vmName, err)
-			}
-			if err := vm.CreateVM(gctx, c, vmObj); err != nil {
-				_ = auditor.RecordEvent(ctx, execID, audit.EventRecord{
-					EventType:   "vm_failed",
-					Message:     fmt.Sprintf("Failed to create VM %s", p.vmName),
-					ErrorDetail: err.Error(),
-				})
-				return fmt.Errorf("creating VM %q: %w", p.vmName, err)
-			}
-			logger.Info("vm created",
-				slog.String("vm_name", p.vmName),
-				slog.String("namespace", cfg.Namespace),
-				slog.String("workload", p.component))
-
-			wlID := auditWorkloadIDs[p.component]
-			_, _ = auditor.RecordVM(ctx, execID, wlID, audit.VMRecord{
-				VMName:             p.vmName,
-				Namespace:          cfg.Namespace,
-				Component:          p.component,
-				Role:               p.role,
-				CPUCores:           p.vmSpec.CPUCores,
-				Memory:             p.vmSpec.Memory,
-				ContainerDiskImage: p.vmSpec.ContainerDiskImage,
-				HasDataDisk:        len(p.vmSpec.DataVolumeTemplates) > 0,
-				DataDiskSize:       cfg.DataDiskSize,
-			})
-			_ = auditor.RecordEvent(ctx, execID, audit.EventRecord{
-				EventType: "vm_created",
-				Message:   fmt.Sprintf("VM %s created", p.vmName),
-			})
-			return nil
-		})
-	}
-	if err := g.Wait(); err != nil {
-		for _, wlID := range auditWorkloadIDs {
-			_ = auditor.UpdateWorkloadStatus(ctx, wlID, "failed")
-		}
-		return fmt.Errorf("creating VMs: %w", err)
-	}
-
-	// Build VM-name → workload-component mapping for readiness tracking
-	vmToComponent := make(map[string]string, len(plans))
-	for _, p := range plans {
-		vmToComponent[p.vmName] = p.component
-	}
-
-	// Wait for readiness
-	if cfg.WaitForReady {
-		timeout := time.Duration(cfg.ReadyTimeoutSeconds) * time.Second
-		logger.Info("waiting for VMs to become ready",
-			slog.Int("vm_count", len(vmNames)),
-			slog.Duration("timeout", timeout))
-		results := wait.WaitForAllVMsReady(ctx, c, logger, vmNames, cfg.Namespace,
-			timeout, constants.DefaultPollInterval)
-
-		failures := 0
-		failedWorkloads := make(map[string]bool)
-		for name, err := range results {
-			if err != nil {
-				logger.Error("vm readiness check failed",
-					slog.String("vm_name", name),
-					slog.String("error", err.Error()))
-				failures++
-				_ = auditor.RecordEvent(ctx, execID, audit.EventRecord{
-					EventType:   "vm_timeout",
-					Message:     fmt.Sprintf("VM %s failed readiness check", name),
-					ErrorDetail: err.Error(),
-				})
-				if comp, ok := vmToComponent[name]; ok {
-					failedWorkloads[comp] = true
-				}
-			} else {
-				_ = auditor.RecordEvent(ctx, execID, audit.EventRecord{
-					EventType: "vm_ready",
-					Message:   fmt.Sprintf("VM %s is ready", name),
-				})
-			}
-		}
-		if failures > 0 {
-			for comp, wlID := range auditWorkloadIDs {
-				if failedWorkloads[comp] {
-					_ = auditor.UpdateWorkloadStatus(ctx, wlID, "failed")
-				} else {
-					_ = auditor.UpdateWorkloadStatus(ctx, wlID, "created")
-				}
-			}
-			return fmt.Errorf("%d of %d VMs failed; %w", failures, len(vmNames), ErrReadinessCheck)
-		}
-		logger.Info("all VMs ready", slog.Int("vm_count", len(vmNames)))
-	}
-
-	// Mark all workloads as created
-	for _, wlID := range auditWorkloadIDs {
-		_ = auditor.UpdateWorkloadStatus(ctx, wlID, "created")
-	}
-
-	// Complete audit
 	_ = auditor.CompleteExecution(ctx, execID, "success", "")
-	err = nil // clear for defer
+	err = nil
 
-	// Print summary
-	printSummary(logger, len(plans), servicesCreated, secretsCreated, cfg, runID)
+	printSummary(logger, result, cfg)
 	return nil
 }
 
-// cleanupE is the cleanup flow for the "cleanup" subcommand.
 func cleanupE(cmd *cobra.Command, args []string) error {
 	cfg, err := config.LoadConfig(cmd)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	// Initialize logger
 	verbose, _ := cmd.Flags().GetBool("verbose")
 	logger := logging.NewLogger(cmd.OutOrStdout(), verbose)
 
-	// Initialize auditor
 	auditor, err := initAuditor(cmd, cfg)
 	if err != nil {
 		return fmt.Errorf("initializing auditor: %w", err)
@@ -642,11 +205,9 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Get cleanup flags
 	deleteNS, _ := cmd.Flags().GetBool("delete-namespace")
 	targetRunID, _ := cmd.Flags().GetString("run-id")
 
-	// Set cleanup mode for audit
 	if cfg.DryRun {
 		cfg.CleanupMode = "dry-run"
 	} else if targetRunID != "" {
@@ -655,14 +216,12 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 		cfg.CleanupMode = "all"
 	}
 
-	// Connect to cluster early to capture context for audit
 	c, contextName, err := cluster.Connect(cluster.ResolveKubeconfigPath(cfg.KubeconfigPath))
 	if err != nil {
 		return fmt.Errorf("connecting to cluster: %w", err)
 	}
 	cfg.ClusterContext = contextName
 
-	// Start audit execution
 	cmdName := "cleanup"
 	if cfg.DryRun {
 		cmdName = "cleanup --dry-run"
@@ -679,13 +238,9 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	_ = auditor.RecordEvent(ctx, execID, audit.EventRecord{
-		EventType: "cleanup_started",
-		Message:   fmt.Sprintf("Started %s: (namespace: %s, run-id filter: %q)", cmdName, cfg.Namespace, targetRunID),
-	})
+	co := orchestrator.NewCleanupOrchestrator(logger, c, cfg, auditor, cmd.OutOrStdout())
 
-	// Preview resources before deletion
-	preview, err := cleanup.PreviewCleanup(ctx, c, cfg, targetRunID)
+	preview, err := co.Preview(ctx, execID, targetRunID)
 	if err != nil {
 		return fmt.Errorf("previewing cleanup: %w", err)
 	}
@@ -721,31 +276,13 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	result, err := cleanup.CleanupAll(ctx, c, cfg, deleteNS, targetRunID)
+	result, err := co.Execute(ctx, execID, deleteNS, targetRunID)
 	if err != nil {
 		return fmt.Errorf("cleanup failed: %w", err)
 	}
 
-	// Link cleanup to discovered run IDs
-	if len(result.RunIDs) > 0 {
-		_ = auditor.LinkCleanupToRuns(ctx, execID, result.RunIDs)
-	}
-
-	// Record cleanup counts
-	_ = auditor.RecordCleanupCounts(ctx, execID,
-		result.VMsDeleted, result.ServicesDeleted, result.SecretsDeleted,
-		result.DVsDeleted, result.PVCsDeleted, result.NamespaceDeleted)
-
-	_ = auditor.RecordEvent(ctx, execID, audit.EventRecord{
-		EventType: "cleanup_completed",
-		Message: fmt.Sprintf("Deleted %d VMs, %d services, %d secrets, %d DVs, %d PVCs",
-			result.VMsDeleted, result.ServicesDeleted, result.SecretsDeleted,
-			result.DVsDeleted, result.PVCsDeleted),
-	})
-
-	// Complete audit
 	_ = auditor.CompleteExecution(ctx, execID, "success", "")
-	err = nil // clear for defer
+	err = nil
 
 	logger.Info("cleanup complete",
 		slog.Bool("dry_run", cfg.DryRun),
@@ -765,33 +302,13 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// printDryRun outputs VM specs in YAML without connecting to a cluster.
-func printDryRun(logger *slog.Logger, plans []vmPlan) error {
-	logger.Info("dry run mode", slog.Int("total_vms", len(plans)))
-
-	for _, p := range plans {
-		vmObj, err := vm.BuildVMSpec(*p.vmSpec)
-		if err != nil {
-			return fmt.Errorf("building VM spec for %q: %w", p.vmName, err)
-		}
-		data, err := sigyaml.Marshal(vmObj)
-		if err != nil {
-			return fmt.Errorf("marshaling VM spec for %q: %w", p.vmName, err)
-		}
-		// Output YAML to stdout for dry-run inspection
-		_, _ = fmt.Printf("# VM: %s (workload: %s)\n%s\n%s\n", p.vmName, p.component, string(data), "---")
-	}
-	return nil
-}
-
-// printSummary outputs a deployment summary.
-func printSummary(logger *slog.Logger, vmCount, svcCount, secCount int, cfg *config.Config, runID string) {
+func printSummary(logger *slog.Logger, result *orchestrator.RunResult, cfg *config.Config) {
 	logger.Info("deployment summary",
-		slog.String("run_id", runID),
+		slog.String("run_id", result.RunID),
 		slog.String("namespace", cfg.Namespace),
-		slog.Int("vms_created", vmCount),
-		slog.Int("services_created", svcCount),
-		slog.Int("secrets_created", secCount),
+		slog.Int("vms_created", result.VMCount),
+		slog.Int("services_created", result.ServiceCount),
+		slog.Int("secrets_created", result.SecretCount),
 		slog.String("container_image", cfg.ContainerDiskImage))
 }
 
