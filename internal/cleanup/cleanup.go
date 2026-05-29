@@ -11,6 +11,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/opdev/virtwork/internal/config"
@@ -90,11 +91,29 @@ func PreviewCleanup(
 		collectRunID(secretList.Items[i].Labels, runIDSet)
 	}
 
+	dvList := &cdiv1beta1.DataVolumeList{}
+	if err := c.List(ctx, dvList, listOpts...); err != nil {
+		return nil, fmt.Errorf("listing DataVolumes in %s: %w", cfg.Namespace, err)
+	}
+	preview.DVCount = len(dvList.Items)
+	for i := range dvList.Items {
+		collectRunID(dvList.Items[i].Labels, runIDSet)
+	}
+
+	pvcList := &corev1.PersistentVolumeClaimList{}
+	if err := c.List(ctx, pvcList, listOpts...); err != nil {
+		return nil, fmt.Errorf("listing PVCs in %s: %w", cfg.Namespace, err)
+	}
+	preview.PVCCount = len(pvcList.Items)
+	for i := range pvcList.Items {
+		collectRunID(pvcList.Items[i].Labels, runIDSet)
+	}
+
 	for id := range runIDSet {
 		preview.RunIDs = append(preview.RunIDs, id)
 	}
 
-	preview.TotalCount = preview.VMCount + preview.ServiceCount + preview.SecretCount
+	preview.TotalCount = preview.VMCount + preview.ServiceCount + preview.SecretCount + preview.DVCount + preview.PVCCount
 	return preview, nil
 }
 
@@ -179,6 +198,38 @@ func CleanupAll(
 			continue
 		}
 		result.SecretsDeleted++
+	}
+
+	// Delete DataVolumes by label (before PVCs — DV controller may GC owned PVCs)
+	dvList := &cdiv1beta1.DataVolumeList{}
+	if err := c.List(ctx, dvList, listOpts...); err != nil {
+		return result, fmt.Errorf("listing DataVolumes in %s: %w", cfg.Namespace, err)
+	}
+	for i := range dvList.Items {
+		collectRunID(dvList.Items[i].Labels, runIDSet)
+		if err := c.Delete(ctx, &dvList.Items[i], opts...); err != nil {
+			if !apierrors.IsNotFound(err) {
+				result.Errors = append(result.Errors, fmt.Errorf("deleting DataVolume %s: %w", dvList.Items[i].Name, err))
+			}
+			continue
+		}
+		result.DVsDeleted++
+	}
+
+	// Delete PVCs by label
+	pvcList := &corev1.PersistentVolumeClaimList{}
+	if err := c.List(ctx, pvcList, listOpts...); err != nil {
+		return result, fmt.Errorf("listing PVCs in %s: %w", cfg.Namespace, err)
+	}
+	for i := range pvcList.Items {
+		collectRunID(pvcList.Items[i].Labels, runIDSet)
+		if err := c.Delete(ctx, &pvcList.Items[i], opts...); err != nil {
+			if !apierrors.IsNotFound(err) {
+				result.Errors = append(result.Errors, fmt.Errorf("deleting PVC %s: %w", pvcList.Items[i].Name, err))
+			}
+			continue
+		}
+		result.PVCsDeleted++
 	}
 
 	// Collect unique run IDs
