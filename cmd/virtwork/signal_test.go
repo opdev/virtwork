@@ -5,15 +5,20 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"testing"
+)
+
+var (
+	ErrContextCanceled   = errors.New("context canceled")
+	ErrConnectionRefused = errors.New("connection refused")
 )
 
 func TestAuditStatus_cancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	status, msg := auditStatus(ctx, fmt.Errorf("context canceled"))
+	status, msg := auditStatus(ctx, ErrContextCanceled)
 	if status != "cancelled" {
 		t.Errorf("expected status %q, got %q", "cancelled", status)
 	}
@@ -25,7 +30,7 @@ func TestAuditStatus_cancelled(t *testing.T) {
 func TestAuditStatus_failed(t *testing.T) {
 	ctx := context.Background()
 
-	status, msg := auditStatus(ctx, fmt.Errorf("connection refused"))
+	status, msg := auditStatus(ctx, ErrConnectionRefused)
 	if status != "failed" {
 		t.Errorf("expected status %q, got %q", "failed", status)
 	}
