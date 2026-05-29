@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -30,16 +31,14 @@ func EnsureNamespace(ctx context.Context, c client.Client, name string, labels m
 	err := c.Create(ctx, ns)
 	if apierrors.IsAlreadyExists(err) {
 		existing := &corev1.Namespace{}
-		if err := c.Get(ctx, client.ObjectKeyFromObject(ns), existing); err != nil {
+		if err = c.Get(ctx, client.ObjectKeyFromObject(ns), existing); err != nil {
 			return fmt.Errorf("fetching existing namespace %s: %w", name, err)
 		}
 		base := existing.DeepCopy()
 		if existing.Labels == nil {
 			existing.Labels = make(map[string]string, len(labels))
 		}
-		for k, v := range labels {
-			existing.Labels[k] = v
-		}
+		maps.Copy(existing.Labels, labels)
 		return c.Patch(ctx, existing, client.MergeFrom(base))
 	}
 	return err

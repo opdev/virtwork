@@ -209,7 +209,9 @@ func CleanupAll(
 		collectRunID(dvList.Items[i].Labels, runIDSet)
 		if err := c.Delete(ctx, &dvList.Items[i], opts...); err != nil {
 			if !apierrors.IsNotFound(err) {
-				result.Errors = append(result.Errors, fmt.Errorf("deleting DataVolume %s: %w", dvList.Items[i].Name, err))
+				result.Errors = append(result.Errors, fmt.Errorf(
+					"deleting DataVolume %s: %w", dvList.Items[i].Name, err),
+				)
 			}
 			continue
 		}

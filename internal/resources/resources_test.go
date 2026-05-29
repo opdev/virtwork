@@ -37,7 +37,7 @@ var _ = Describe("EnsureNamespace", func() {
 		c := fake.NewClientBuilder().WithScheme(scheme).Build()
 
 		err := resources.EnsureNamespace(ctx, c, "test-ns", map[string]string{
-			"app.kubernetes.io/managed-by": "virtwork",
+			constants.LabelManagedBy: constants.ManagedByValue,
 		})
 		Expect(err).NotTo(HaveOccurred())
 
@@ -153,7 +153,7 @@ var _ = Describe("CreateService", func() {
 					{
 						Name:       "iperf3",
 						Port:       5201,
-						TargetPort: intstr.FromInt(5201),
+						TargetPort: intstr.FromInt32(5201),
 						Protocol:   corev1.ProtocolTCP,
 					},
 				},
