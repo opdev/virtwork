@@ -278,44 +278,48 @@ func (ro *RunOrchestrator) planVMs(
 				vmNames = append(vmNames, vmName)
 			}
 		} else {
-			roles := multiVM.Roles()
-			perRole := vmCount / len(roles)
-			if remainder := vmCount % len(roles); remainder != 0 {
-				ro.logger.Warn("VM count not evenly divisible by roles; remainder VMs will not be created",
-					slog.String("workload", name),
-					slog.Int("requested", vmCount),
-					slog.Int("per_role", perRole),
-					slog.Int("dropped", remainder))
-			}
-			for _, role := range roles {
-				userdata, err := multiVM.UserdataForRole(role, cfg.Namespace)
+			for _, rs := range multiVM.RoleDistribution() {
+				userdata, err := multiVM.UserdataForRole(rs.Role, cfg.Namespace)
 				if err != nil {
-					return nil, nil, nil, nil, fmt.Errorf("generating cloud-init for %q role %q: %w", name, role, err)
+					return nil, nil, nil, nil, fmt.Errorf(
+						"generating cloud-init for %q role %q: %w",
+						name,
+						rs.Role,
+						err,
+					)
 				}
 
-				for i := range perRole {
-					vmName := fmt.Sprintf("virtwork-%s-%s-%d", name, role, i)
+				for i := range rs.VMCount {
+					vmName := fmt.Sprintf("virtwork-%s-%s-%d", name, rs.Role, i)
 					labels := map[string]string{
 						constants.LabelAppName:   fmt.Sprintf("virtwork-%s", name),
 						constants.LabelManagedBy: constants.ManagedByValue,
 						constants.LabelComponent: name,
 						constants.LabelRunID:     runID,
-						"virtwork/role":          role,
+						"virtwork/role":          rs.Role,
 					}
 
 					dvts, err := w.DataVolumeTemplates()
 					if err != nil {
 						return nil, nil, nil, nil, fmt.Errorf(
-							"building data volume templates for %q role %q vm %s: %w", name, role, vmName, err,
+							"building data volume templates for %q role %q vm %s: %w",
+							name,
+							rs.Role,
+							vmName,
+							err,
 						)
 					}
-					dvTemplates, extraVols := NamespaceDataVolumes(dvts, w.ExtraVolumes(), vmName)
+					dvTemplates, extraVols := NamespaceDataVolumes(
+						dvts,
+						w.ExtraVolumes(),
+						vmName,
+					)
 
 					plans = append(plans, VMPlan{
 						WorkloadName: name,
 						Component:    name,
 						VMName:       vmName,
-						Role:         role,
+						Role:         rs.Role,
 						VMSpec: &VMSpecInput{
 							Name:                vmName,
 							Namespace:           cfg.Namespace,
