@@ -72,7 +72,7 @@ var _ = Describe("initAuditor", func() {
 	It("returns error for invalid db path", func() {
 		cfg := &config.Config{
 			AuditEnabled: true,
-			AuditDBPath:  "/nonexistent/deeply/nested/path/audit.db",
+			AuditDBPath:  "/dev/null/impossible/audit.db",
 		}
 		_, err := initAuditor(cmd, cfg)
 		Expect(err).To(HaveOccurred())
