@@ -6,7 +6,10 @@ package main
 import (
 	"strings"
 	"testing"
+	"testing/iotest"
 )
+
+var errFakeRead = iotest.ErrTimeout
 
 func TestPromptForConfirmation(t *testing.T) {
 	tests := []struct {
@@ -20,6 +23,7 @@ func TestPromptForConfirmation(t *testing.T) {
 		{"arbitrary text rejects", "maybe\n", false},
 		{"YES case-insensitive", "YES\n", true},
 		{"whitespace trimmed", "  yes  \n", true},
+		{"EOF returns false", "", false},
 	}
 
 	for _, tt := range tests {
@@ -33,5 +37,16 @@ func TestPromptForConfirmation(t *testing.T) {
 				t.Errorf("got %v, want %v", confirmed, tt.expected)
 			}
 		})
+	}
+}
+
+func TestPromptForConfirmation_ReadError(t *testing.T) {
+	reader := iotest.ErrReader(errFakeRead)
+	confirmed, err := PromptForConfirmation(reader)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if confirmed {
+		t.Error("expected false on read error")
 	}
 }

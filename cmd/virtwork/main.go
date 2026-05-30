@@ -31,6 +31,8 @@ var (
 	version = ""
 	commit  = ""
 	date    = ""
+
+	clusterConnect = cluster.Connect
 )
 
 func main() {
@@ -72,7 +74,13 @@ func newVersionCmd() *cobra.Command {
 			if d == "" {
 				d = "(unknown)"
 			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "virtwork version %s\n  commit: %s\n  built:  %s\n", v, c, d)
+			_, _ = fmt.Fprintf(
+				cmd.OutOrStdout(),
+				"virtwork version %s\n  commit: %s\n  built:  %s\n",
+				v,
+				c,
+				d,
+			)
 			return nil
 		},
 	}
@@ -130,6 +138,7 @@ func runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// nolint:dupl
 	verbose, _ := cmd.Flags().GetBool("verbose")
 	logger := logging.NewLogger(cmd.OutOrStdout(), verbose)
 
@@ -139,7 +148,11 @@ func runE(cmd *cobra.Command, args []string) error {
 	}
 	defer func() {
 		if closeErr := auditor.Close(); closeErr != nil {
-			logger.Warn("audit record failed", slog.String("op", "Close"), slog.String("error", closeErr.Error()))
+			logger.Warn(
+				"audit record failed",
+				slog.String("op", "Close"),
+				slog.String("error", closeErr.Error()),
+			)
 		}
 	}()
 
@@ -149,7 +162,7 @@ func runE(cmd *cobra.Command, args []string) error {
 	var c client.Client
 	if !cfg.DryRun {
 		var contextName string
-		c, contextName, err = cluster.Connect(cluster.ResolveKubeconfigPath(cfg.KubeconfigPath))
+		c, contextName, err = clusterConnect(cluster.ResolveKubeconfigPath(cfg.KubeconfigPath))
 		if err != nil {
 			return fmt.Errorf("connecting to cluster: %w", err)
 		}
@@ -181,7 +194,11 @@ func runE(cmd *cobra.Command, args []string) error {
 		EventType: "execution_started",
 		Message:   fmt.Sprintf("Starting %s with run-id %s", cmdName, runID),
 	}); auditErr != nil {
-		logger.Warn("audit record failed", slog.String("op", "RecordEvent"), slog.String("error", auditErr.Error()))
+		logger.Warn(
+			"audit record failed",
+			slog.String("op", "RecordEvent"),
+			slog.String("error", auditErr.Error()),
+		)
 	}
 
 	vmCountFlag, _ := cmd.Flags().GetInt("vm-count")
@@ -211,6 +228,7 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	// nolint:dupl
 	verbose, _ := cmd.Flags().GetBool("verbose")
 	logger := logging.NewLogger(cmd.OutOrStdout(), verbose)
 
@@ -220,7 +238,11 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 	}
 	defer func() {
 		if closeErr := auditor.Close(); closeErr != nil {
-			logger.Warn("audit record failed", slog.String("op", "Close"), slog.String("error", closeErr.Error()))
+			logger.Warn(
+				"audit record failed",
+				slog.String("op", "Close"),
+				slog.String("error", closeErr.Error()),
+			)
 		}
 	}()
 
@@ -238,7 +260,7 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 		cfg.CleanupMode = "all"
 	}
 
-	c, contextName, err := cluster.Connect(cluster.ResolveKubeconfigPath(cfg.KubeconfigPath))
+	c, contextName, err := clusterConnect(cluster.ResolveKubeconfigPath(cfg.KubeconfigPath))
 	if err != nil {
 		return fmt.Errorf("connecting to cluster: %w", err)
 	}
