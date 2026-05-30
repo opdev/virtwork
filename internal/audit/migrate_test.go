@@ -52,8 +52,8 @@ var _ = Describe("Schema migration", func() {
 	Describe("pre-migration database", func() {
 		It("upgrades to version 1 without error", func() {
 			db, err := sql.Open(
-				"sqlite3",
-				"file::memory:?mode=memory&cache=shared&_foreign_keys=on",
+				"sqlite",
+				"file::memory:?mode=memory&cache=shared&_pragma=foreign_keys(on)",
 			)
 			Expect(err).NotTo(HaveOccurred())
 
