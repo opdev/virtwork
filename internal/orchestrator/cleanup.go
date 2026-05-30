@@ -65,10 +65,12 @@ func (co *CleanupOrchestrator) Execute(
 	deleteNamespace bool,
 	runID string,
 ) (*cleanup.CleanupResult, error) {
-	_ = co.auditor.RecordEvent(ctx, execID, audit.EventRecord{
+	if err := co.auditor.RecordEvent(ctx, execID, audit.EventRecord{
 		EventType: "cleanup_started",
 		Message:   fmt.Sprintf("Starting cleanup (namespace: %s, run-id filter: %q)", co.config.Namespace, runID),
-	})
+	}); err != nil {
+		co.logger.Warn("audit record failed", slog.String("op", "RecordEvent"), slog.String("error", err.Error()))
+	}
 
 	result, err := cleanup.CleanupAll(ctx, co.client, co.config, deleteNamespace, runID)
 	if err != nil {
@@ -76,19 +78,25 @@ func (co *CleanupOrchestrator) Execute(
 	}
 
 	if len(result.RunIDs) > 0 {
-		_ = co.auditor.LinkCleanupToRuns(ctx, execID, result.RunIDs)
+		if auditErr := co.auditor.LinkCleanupToRuns(ctx, execID, result.RunIDs); auditErr != nil {
+			co.logger.Warn("audit record failed", slog.String("op", "LinkCleanupToRuns"), slog.String("error", auditErr.Error()))
+		}
 	}
 
-	_ = co.auditor.RecordCleanupCounts(ctx, execID,
+	if auditErr := co.auditor.RecordCleanupCounts(ctx, execID,
 		result.VMsDeleted, result.ServicesDeleted, result.SecretsDeleted,
-		result.DVsDeleted, result.PVCsDeleted, result.NamespaceDeleted)
+		result.DVsDeleted, result.PVCsDeleted, result.NamespaceDeleted); auditErr != nil {
+		co.logger.Warn("audit record failed", slog.String("op", "RecordCleanupCounts"), slog.String("error", auditErr.Error()))
+	}
 
-	_ = co.auditor.RecordEvent(ctx, execID, audit.EventRecord{
+	if auditErr := co.auditor.RecordEvent(ctx, execID, audit.EventRecord{
 		EventType: "cleanup_completed",
 		Message: fmt.Sprintf("Deleted %d VMs, %d services, %d secrets, %d DVs, %d PVCs",
 			result.VMsDeleted, result.ServicesDeleted, result.SecretsDeleted,
 			result.DVsDeleted, result.PVCsDeleted),
-	})
+	}); auditErr != nil {
+		co.logger.Warn("audit record failed", slog.String("op", "RecordEvent"), slog.String("error", auditErr.Error()))
+	}
 
 	return result, nil
 }
