@@ -163,7 +163,11 @@ func runE(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			status, msg := auditStatus(ctx, err)
 			if auditErr := auditor.CompleteExecution(ctx, execID, status, msg); auditErr != nil {
-				logger.Warn("audit record failed", slog.String("op", "CompleteExecution"), slog.String("error", auditErr.Error()))
+				logger.Warn(
+					"audit record failed",
+					slog.String("op", "CompleteExecution"),
+					slog.String("error", auditErr.Error()),
+				)
 			}
 		}
 	}()
@@ -185,7 +189,11 @@ func runE(cmd *cobra.Command, args []string) error {
 	}
 
 	if auditErr := auditor.CompleteExecution(ctx, execID, "success", ""); auditErr != nil {
-		logger.Warn("audit record failed", slog.String("op", "CompleteExecution"), slog.String("error", auditErr.Error()))
+		logger.Warn(
+			"audit record failed",
+			slog.String("op", "CompleteExecution"),
+			slog.String("error", auditErr.Error()),
+		)
 	}
 	err = nil
 
@@ -245,7 +253,11 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			status, msg := auditStatus(ctx, err)
 			if auditErr := auditor.CompleteExecution(ctx, execID, status, msg); auditErr != nil {
-				logger.Warn("audit record failed", slog.String("op", "CompleteExecution"), slog.String("error", auditErr.Error()))
+				logger.Warn(
+					"audit record failed",
+					slog.String("op", "CompleteExecution"),
+					slog.String("error", auditErr.Error()),
+				)
 			}
 		}
 	}()
@@ -262,7 +274,11 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 	if preview.TotalCount == 0 {
 		logger.Info("nothing to clean up")
 		if auditErr := auditor.CompleteExecution(ctx, execID, "success", ""); auditErr != nil {
-			logger.Warn("audit record failed", slog.String("op", "CompleteExecution"), slog.String("error", auditErr.Error()))
+			logger.Warn(
+				"audit record failed",
+				slog.String("op", "CompleteExecution"),
+				slog.String("error", auditErr.Error()),
+			)
 		}
 		err = nil
 		return nil
@@ -271,7 +287,11 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 	if cfg.DryRun {
 		logger.Info("dry-run mode — no resources were deleted")
 		if auditErr := auditor.CompleteExecution(ctx, execID, "success", ""); auditErr != nil {
-			logger.Warn("audit record failed", slog.String("op", "CompleteExecution"), slog.String("error", auditErr.Error()))
+			logger.Warn(
+				"audit record failed",
+				slog.String("op", "CompleteExecution"),
+				slog.String("error", auditErr.Error()),
+			)
 		}
 		err = nil
 		return nil
@@ -286,8 +306,17 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 		}
 		if !confirmed {
 			logger.Info("cleanup aborted by user")
-			if auditErr := auditor.CompleteExecution(ctx, execID, "aborted", "user declined confirmation"); auditErr != nil {
-				logger.Warn("audit record failed", slog.String("op", "CompleteExecution"), slog.String("error", auditErr.Error()))
+			if auditErr := auditor.CompleteExecution(
+				ctx,
+				execID,
+				"aborted",
+				"user declined confirmation",
+			); auditErr != nil {
+				logger.Warn(
+					"audit record failed",
+					slog.String("op", "CompleteExecution"),
+					slog.String("error", auditErr.Error()),
+				)
 			}
 			err = nil
 			return nil
@@ -300,7 +329,11 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 	}
 
 	if auditErr := auditor.CompleteExecution(ctx, execID, "success", ""); auditErr != nil {
-		logger.Warn("audit record failed", slog.String("op", "CompleteExecution"), slog.String("error", auditErr.Error()))
+		logger.Warn(
+			"audit record failed",
+			slog.String("op", "CompleteExecution"),
+			slog.String("error", auditErr.Error()),
+		)
 	}
 	err = nil
 
