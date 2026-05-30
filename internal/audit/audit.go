@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 
 	"github.com/opdev/virtwork/internal/config"
 )
@@ -74,11 +74,11 @@ func NewSQLiteAuditor(dbPath string) (*SQLiteAuditor, error) {
 		}
 	}
 
-	dsn := dbPath + "?_journal_mode=WAL&_foreign_keys=on"
+	dsn := dbPath + "?_pragma=journal_mode(WAL)&_pragma=foreign_keys(on)"
 	if dbPath == ":memory:" {
-		dsn = "file::memory:?mode=memory&cache=shared&_foreign_keys=on"
+		dsn = "file::memory:?mode=memory&cache=shared&_pragma=foreign_keys(on)"
 	}
-	db, err := sql.Open("sqlite3", dsn)
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("opening audit db: %w", err)
 	}
