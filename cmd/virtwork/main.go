@@ -125,6 +125,11 @@ func runE(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	workloadNames, _ := cmd.Flags().GetStringSlice("workloads")
+	if err := workloads.ValidateWorkloadNames(workloadNames); err != nil {
+		return err
+	}
+
 	verbose, _ := cmd.Flags().GetBool("verbose")
 	logger := logging.NewLogger(cmd.OutOrStdout(), verbose)
 
@@ -179,7 +184,6 @@ func runE(cmd *cobra.Command, args []string) error {
 		logger.Warn("audit record failed", slog.String("op", "RecordEvent"), slog.String("error", auditErr.Error()))
 	}
 
-	workloadNames, _ := cmd.Flags().GetStringSlice("workloads")
 	vmCountFlag, _ := cmd.Flags().GetInt("vm-count")
 
 	ro := orchestrator.NewRunOrchestrator(logger, c, cfg, auditor, cmd.OutOrStdout())

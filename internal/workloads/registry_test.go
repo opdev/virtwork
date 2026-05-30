@@ -4,6 +4,8 @@
 package workloads_test
 
 import (
+	"errors"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -219,5 +221,63 @@ var _ = Describe("AllWorkloadNames", func() {
 	It("should derive names from DefaultRegistry", func() {
 		// Verify that AllWorkloadNames() always matches DefaultRegistry().List()
 		Expect(workloads.AllWorkloadNames()).To(Equal(workloads.DefaultRegistry().List()))
+	})
+})
+
+var _ = Describe("ValidateWorkloadNames", func() {
+	It("should accept all valid workload names", func() {
+		err := workloads.ValidateWorkloadNames(workloads.AllWorkloadNames())
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("should accept a subset of valid names", func() {
+		err := workloads.ValidateWorkloadNames([]string{"cpu", "memory", "disk"})
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("should return error for a single invalid name", func() {
+		err := workloads.ValidateWorkloadNames([]string{"cppu"})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("cppu"))
+		Expect(err.Error()).To(ContainSubstring("available:"))
+	})
+
+	It("should return error listing all invalid names", func() {
+		err := workloads.ValidateWorkloadNames([]string{"cpu", "memorry", "diks"})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("memorry"))
+		Expect(err.Error()).To(ContainSubstring("diks"))
+		Expect(err.Error()).NotTo(ContainSubstring(`"cpu"`))
+	})
+
+	It("should suggest similar names for typos", func() {
+		err := workloads.ValidateWorkloadNames([]string{"cppu"})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("did you mean"))
+		Expect(err.Error()).To(ContainSubstring("cpu"))
+	})
+
+	It("should suggest similar names for close misspellings", func() {
+		err := workloads.ValidateWorkloadNames([]string{"memori"})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("did you mean"))
+		Expect(err.Error()).To(ContainSubstring("memory"))
+	})
+
+	It("should not suggest when nothing is close", func() {
+		err := workloads.ValidateWorkloadNames([]string{"zzzzzzz"})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).NotTo(ContainSubstring("did you mean"))
+	})
+
+	It("should return error for empty list", func() {
+		err := workloads.ValidateWorkloadNames([]string{})
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("should wrap ErrWorkloadUnknown", func() {
+		err := workloads.ValidateWorkloadNames([]string{"bogus"})
+		Expect(err).To(HaveOccurred())
+		Expect(errors.Is(err, workloads.ErrWorkloadUnknown)).To(BeTrue())
 	})
 })

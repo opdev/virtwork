@@ -92,6 +92,80 @@ func DefaultRegistry() Registry {
 	}
 }
 
+// ValidateWorkloadNames checks that all names are valid workload names from the
+// default registry. Returns an error listing invalid names with "did you mean?"
+// suggestions for close matches.
+func ValidateWorkloadNames(names []string) error {
+	if len(names) == 0 {
+		return fmt.Errorf("no workloads specified; available: %s; %w",
+			strings.Join(AllWorkloadNames(), ", "), ErrWorkloadUnknown)
+	}
+
+	valid := DefaultRegistry()
+	var invalid []string
+	for _, name := range names {
+		if _, ok := valid[name]; !ok {
+			suggestion := closestMatch(name, valid.List())
+			if suggestion != "" {
+				invalid = append(invalid, fmt.Sprintf("%q (did you mean %q?)", name, suggestion))
+			} else {
+				invalid = append(invalid, fmt.Sprintf("%q", name))
+			}
+		}
+	}
+	if len(invalid) > 0 {
+		return fmt.Errorf(
+			"unknown workload(s): %s; available: %s; %w",
+			strings.Join(invalid, ", "),
+			strings.Join(valid.List(), ", "),
+			ErrWorkloadUnknown,
+		)
+	}
+	return nil
+}
+
+func closestMatch(input string, candidates []string) string {
+	best := ""
+	bestDist := len(input)/2 + 1
+	for _, c := range candidates {
+		d := levenshtein(input, c)
+		if d < bestDist {
+			bestDist = d
+			best = c
+		}
+	}
+	return best
+}
+
+func levenshtein(a, b string) int {
+	la, lb := len(a), len(b)
+	if la == 0 {
+		return lb
+	}
+	if lb == 0 {
+		return la
+	}
+
+	prev := make([]int, lb+1)
+	curr := make([]int, lb+1)
+	for j := range prev {
+		prev[j] = j
+	}
+
+	for i := 1; i <= la; i++ {
+		curr[0] = i
+		for j := 1; j <= lb; j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			curr[j] = min(curr[j-1]+1, min(prev[j]+1, prev[j-1]+cost))
+		}
+		prev, curr = curr, prev
+	}
+	return prev[lb]
+}
+
 // Get retrieves a workload by name, constructing it with the given config and options.
 // Returns an error listing available names if the workload is not found.
 func (r Registry) Get(name string, cfg config.WorkloadConfig, opts ...Option) (Workload, error) {
