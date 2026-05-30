@@ -66,11 +66,7 @@ dockers_v2:
 
 
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
+  use: github-native
 
 release:
   footer: >-
