@@ -369,7 +369,11 @@ func printSummary(logger *slog.Logger, result *orchestrator.RunResult, cfg *conf
 		slog.String("container_image", cfg.ContainerDiskImage))
 }
 
-func printCleanupPreview(logger *slog.Logger, preview *cleanup.CleanupPreview, namespace, runID string) {
+func printCleanupPreview(
+	logger *slog.Logger,
+	preview *cleanup.CleanupPreview,
+	namespace, runID string,
+) {
 	attrs := []slog.Attr{
 		slog.String("namespace", namespace),
 		slog.Int("vms", preview.VMCount),

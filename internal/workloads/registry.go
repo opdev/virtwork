@@ -63,13 +63,29 @@ func AllWorkloadNames() []string {
 func DefaultRegistry() Registry {
 	return Registry{
 		"chaos-process": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-			return NewChaosProcessWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+			return NewChaosProcessWorkload(
+				cfg,
+				opts.SSHUser,
+				opts.SSHPassword,
+				opts.SSHAuthorizedKeys,
+			)
 		},
 		"chaos-network": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-			return NewChaosNetworkWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+			return NewChaosNetworkWorkload(
+				cfg,
+				opts.SSHUser,
+				opts.SSHPassword,
+				opts.SSHAuthorizedKeys,
+			)
 		},
 		"chaos-disk": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-			return NewChaosDiskWorkload(cfg, opts.DataDiskSize, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+			return NewChaosDiskWorkload(
+				cfg,
+				opts.DataDiskSize,
+				opts.SSHUser,
+				opts.SSHPassword,
+				opts.SSHAuthorizedKeys,
+			)
 		},
 		"cpu": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
 			return NewCPUWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
@@ -78,16 +94,40 @@ func DefaultRegistry() Registry {
 			return NewMemoryWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
 		},
 		"disk": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-			return NewDiskWorkload(cfg, opts.DataDiskSize, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+			return NewDiskWorkload(
+				cfg,
+				opts.DataDiskSize,
+				opts.SSHUser,
+				opts.SSHPassword,
+				opts.SSHAuthorizedKeys,
+			)
 		},
 		"database": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-			return NewDatabaseWorkload(cfg, opts.DataDiskSize, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+			return NewDatabaseWorkload(
+				cfg,
+				opts.DataDiskSize,
+				opts.SSHUser,
+				opts.SSHPassword,
+				opts.SSHAuthorizedKeys,
+			)
 		},
 		"network": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-			return NewNetworkWorkload(cfg, opts.Namespace, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+			return NewNetworkWorkload(
+				cfg,
+				opts.Namespace,
+				opts.SSHUser,
+				opts.SSHPassword,
+				opts.SSHAuthorizedKeys,
+			)
 		},
 		"tps": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-			return NewTPSWorkload(cfg, opts.Namespace, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+			return NewTPSWorkload(
+				cfg,
+				opts.Namespace,
+				opts.SSHUser,
+				opts.SSHPassword,
+				opts.SSHAuthorizedKeys,
+			)
 		},
 	}
 }
