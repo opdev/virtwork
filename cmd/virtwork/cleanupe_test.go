@@ -59,7 +59,7 @@ var _ = Describe("cleanupE", func() {
 			rootCmd := newRootCmd()
 			rootCmd.SetArgs([]string{
 				"cleanup",
-				"--audit-db", "/nonexistent/deeply/nested/path/db.sqlite",
+				"--audit-db", "/dev/null/impossible/db.sqlite",
 			})
 			err := rootCmd.Execute()
 			Expect(err).To(HaveOccurred())

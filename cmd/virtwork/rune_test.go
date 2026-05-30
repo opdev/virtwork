@@ -55,7 +55,7 @@ var _ = Describe("runE", func() {
 				"run",
 				"--dry-run",
 				"--workloads", "cpu",
-				"--audit-db", "/nonexistent/deeply/nested/path/db.sqlite",
+				"--audit-db", "/dev/null/impossible/db.sqlite",
 			})
 			err := rootCmd.Execute()
 			Expect(err).To(HaveOccurred())

@@ -48,7 +48,8 @@ func newRootCmd() *cobra.Command {
 		Long: `Virtwork creates virtual machines on OpenShift clusters (with OpenShift
 Virtualization installed) and runs continuous workloads inside them to produce
 realistic CPU, memory, database, network, and disk I/O metrics.`,
-		SilenceUsage: true,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 
 	config.BindPersistentFlags(rootCmd)
