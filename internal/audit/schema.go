@@ -3,11 +3,11 @@
 
 package audit
 
-// schemaSQL contains the DDL for the audit database.
+// SchemaSQL contains the DDL for the audit database (v1 baseline schema).
 // All timestamps are stored as ISO 8601 TEXT for SQLite compatibility
 // while remaining PostgreSQL-compatible (TEXT maps to TEXT/TIMESTAMP,
 // linked_run_ids maps to JSONB).
-const schemaSQL = `
+const SchemaSQL = `
 CREATE TABLE IF NOT EXISTS audit_log (
 	id                    INTEGER PRIMARY KEY AUTOINCREMENT,
 	run_id                TEXT    NOT NULL UNIQUE,
