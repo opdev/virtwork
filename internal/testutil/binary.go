@@ -27,7 +27,7 @@ var (
 //  1. VIRTWORK_BINARY environment variable (if set)
 //  2. Build from source (on first call, cached thereafter)
 //
-// The binary is built with CGO_ENABLED=1 (required by go-sqlite3) and placed
+// The binary is built and placed
 // in a temporary directory. The build finds the module root automatically by
 // walking up from this file's location.
 //
@@ -72,7 +72,7 @@ func buildBinary() (string, error) {
 	//nolint:gosec
 	cmd := exec.Command("go", "build", "-o", outputPath, "./cmd/virtwork")
 	cmd.Dir = moduleRoot
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=1")
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
