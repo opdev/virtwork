@@ -1,12 +1,5 @@
 # Stage 1: Build the virtwork binary
-# Using Debian-based image (glibc) to match UBI runtime.
-# Alpine (musl) would produce a binary incompatible with UBI's glibc.
-FROM golang:1.26-bookworm AS builder
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libsqlite3-dev \
-    && rm -rf /var/lib/apt/lists/*
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /build
 
@@ -16,8 +9,7 @@ RUN go mod download
 
 COPY . .
 
-# CGO_ENABLED=1 is required for github.com/mattn/go-sqlite3
-RUN CGO_ENABLED=1 go build -o virtwork ./cmd/virtwork
+RUN CGO_ENABLED=0 go build -o virtwork ./cmd/virtwork
 
 # Stage 2: Runtime image
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
@@ -28,10 +20,6 @@ LABEL io.k8s.display-name="virtwork" \
       summary="virtwork workload generator for OpenShift Virtualization" \
       description="CLI tool that creates VMs on OpenShift clusters with KubeVirt and runs continuous CPU, memory, database, network, and disk I/O workloads" \
       name="virtwork"
-
-# sqlite-libs provides the runtime shared library for the CGO-compiled go-sqlite3
-RUN microdnf install -y sqlite-libs && \
-    microdnf clean all
 
 # Create data directory for audit database.
 # OpenShift runs containers with an arbitrary UID but always GID 0.

@@ -9,10 +9,6 @@ LABEL io.k8s.display-name="virtwork" \
       description="CLI tool that creates VMs on OpenShift clusters with KubeVirt and runs continuous CPU, memory, database, network, and disk I/O workloads" \
       name="virtwork"
 
-# sqlite-libs provides the runtime shared library for the CGO-compiled go-sqlite3
-RUN microdnf install -y sqlite-libs && \
-    microdnf clean all
-
 # Create data directory for audit database.
 # OpenShift runs containers with an arbitrary UID but always GID 0.
 # Setting group ownership to 0 and mode 775 ensures writability.
