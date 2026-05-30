@@ -82,17 +82,23 @@ func (w *TPSWorkload) Name() string {
 	return "tps"
 }
 
-// VMCount returns the total VM count — one server and one client per
-// configured vm-count.
-func (w *TPSWorkload) VMCount() int {
-	count := w.Config.VMCount
-	count = max(1, count)
-	return count * 2
+// RoleDistribution returns per-role VM counts — one server and one client
+// per configured vm-count.
+func (w *TPSWorkload) RoleDistribution() []RoleSpec {
+	perRole := max(1, w.Config.VMCount)
+	return []RoleSpec{
+		{Role: "server", VMCount: perRole},
+		{Role: "client", VMCount: perRole},
+	}
 }
 
-// Roles returns the supported VM roles for this multi-VM workload.
-func (w *TPSWorkload) Roles() []string {
-	return []string{"server", "client"}
+// VMCount returns the total VM count across all roles.
+func (w *TPSWorkload) VMCount() int {
+	total := 0
+	for _, rs := range w.RoleDistribution() {
+		total += rs.VMCount
+	}
+	return total
 }
 
 // RequiresService returns true — the client needs a ClusterIP Service to reach

@@ -37,6 +37,22 @@ var _ = Describe("TPSWorkload", func() {
 		Expect(w.RequiresService()).To(BeTrue())
 	})
 
+	It("should return per-role VM counts via RoleDistribution", func() {
+		dist := w.RoleDistribution()
+		Expect(dist).To(HaveLen(2))
+		Expect(dist[0]).To(Equal(workloads.RoleSpec{Role: "server", VMCount: 2}))
+		Expect(dist[1]).To(Equal(workloads.RoleSpec{Role: "client", VMCount: 2}))
+	})
+
+	It("should have VMCount equal to sum of RoleDistribution counts", func() {
+		dist := w.RoleDistribution()
+		total := 0
+		for _, rs := range dist {
+			total += rs.VMCount
+		}
+		Expect(w.VMCount()).To(Equal(total))
+	})
+
 	It("should produce server userdata with netserver and HTTP server", func() {
 		result, err := w.UserdataForRole("server", "virtwork")
 		Expect(err).NotTo(HaveOccurred())

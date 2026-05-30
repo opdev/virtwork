@@ -53,12 +53,18 @@ type Workload interface {
 	VMCount() int
 }
 
+// RoleSpec declares the number of VMs for a single role within a multi-VM workload.
+type RoleSpec struct {
+	Role    string
+	VMCount int
+}
+
 // MultiVMWorkload extends Workload for workloads that need per-role userdata.
-// The orchestration layer checks VMCount() > 1 and type-asserts to this
-// interface to call UserdataForRole() for each VM role.
+// The orchestration layer type-asserts to this interface and iterates
+// RoleDistribution() to create the correct number of VMs per role.
 type MultiVMWorkload interface {
 	Workload
-	Roles() []string
+	RoleDistribution() []RoleSpec
 	UserdataForRole(role string, namespace string) (string, error)
 }
 
