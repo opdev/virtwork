@@ -10,13 +10,14 @@ before:
     - go generate ./...
 
 builds:
-  - id: linux-amd64
-    env:
+  - env:
       - CGO_ENABLED=0
     goos:
       - linux
+      - darwin
     goarch:
       - amd64
+      - arm64
     flags:
       - -trimpath
     ldflags:
@@ -38,9 +39,9 @@ archives:
       - goos: windows
         formats: [zip]
 
-dockers:
+dockers_v2:
   - images:
-    - "quay.io/opdev/virtwork"
+      - "quay.io/opdev/virtwork"
 
     tags:
       - latest
@@ -55,16 +56,13 @@ dockers:
       org.opencontainers.image.description: "CLI tool that creates VMs on OpenShift clusters with KubeVirt and runs continuous CPU, memory, database, network, and disk I/O workloads"
 
     annotations:
-      project: "{{ .ProjectName }}" 
+      project: "{{ .ProjectName }}"
 
     platforms:
       - linux/amd64
 
     extra_files:
       - entrypoint.sh
-
-    ids:
-      - linux-amd64
 
 
 changelog:
