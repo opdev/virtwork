@@ -79,14 +79,22 @@ func (co *CleanupOrchestrator) Execute(
 
 	if len(result.RunIDs) > 0 {
 		if auditErr := co.auditor.LinkCleanupToRuns(ctx, execID, result.RunIDs); auditErr != nil {
-			co.logger.Warn("audit record failed", slog.String("op", "LinkCleanupToRuns"), slog.String("error", auditErr.Error()))
+			co.logger.Warn(
+				"audit record failed",
+				slog.String("op", "LinkCleanupToRuns"),
+				slog.String("error", auditErr.Error()),
+			)
 		}
 	}
 
 	if auditErr := co.auditor.RecordCleanupCounts(ctx, execID,
 		result.VMsDeleted, result.ServicesDeleted, result.SecretsDeleted,
 		result.DVsDeleted, result.PVCsDeleted, result.NamespaceDeleted); auditErr != nil {
-		co.logger.Warn("audit record failed", slog.String("op", "RecordCleanupCounts"), slog.String("error", auditErr.Error()))
+		co.logger.Warn(
+			"audit record failed",
+			slog.String("op", "RecordCleanupCounts"),
+			slog.String("error", auditErr.Error()),
+		)
 	}
 
 	if auditErr := co.auditor.RecordEvent(ctx, execID, audit.EventRecord{

@@ -112,7 +112,11 @@ func (ro *RunOrchestrator) Run(
 	if err := ro.createVMs(ctx, execID, cfg, plans, auditWorkloadIDs); err != nil {
 		for _, wlID := range auditWorkloadIDs {
 			if auditErr := ro.auditor.UpdateWorkloadStatus(ctx, wlID, "failed"); auditErr != nil {
-				ro.logger.Warn("audit record failed", slog.String("op", "UpdateWorkloadStatus"), slog.String("error", auditErr.Error()))
+				ro.logger.Warn(
+					"audit record failed",
+					slog.String("op", "UpdateWorkloadStatus"),
+					slog.String("error", auditErr.Error()),
+				)
 			}
 		}
 		return nil, fmt.Errorf("creating VMs: %w", err)
@@ -124,7 +128,11 @@ func (ro *RunOrchestrator) Run(
 
 	for _, wlID := range auditWorkloadIDs {
 		if err := ro.auditor.UpdateWorkloadStatus(ctx, wlID, "created"); err != nil {
-			ro.logger.Warn("audit record failed", slog.String("op", "UpdateWorkloadStatus"), slog.String("error", err.Error()))
+			ro.logger.Warn(
+				"audit record failed",
+				slog.String("op", "UpdateWorkloadStatus"),
+				slog.String("error", err.Error()),
+			)
 		}
 	}
 
@@ -159,7 +167,11 @@ func (ro *RunOrchestrator) planVMs(
 					EventType: "workload_skipped",
 					Message:   fmt.Sprintf("Workload %q disabled via config (enabled: false)", name),
 				}); err != nil {
-					ro.logger.Warn("audit record failed", slog.String("op", "RecordEvent"), slog.String("error", err.Error()))
+					ro.logger.Warn(
+						"audit record failed",
+						slog.String("op", "RecordEvent"),
+						slog.String("error", err.Error()),
+					)
 				}
 				ro.logger.Info("workload skipped",
 					slog.String("workload", name),
@@ -213,7 +225,11 @@ func (ro *RunOrchestrator) planVMs(
 			RequiresService: w.RequiresService(),
 		})
 		if auditErr != nil {
-			ro.logger.Warn("audit record failed", slog.String("op", "RecordWorkload"), slog.String("error", auditErr.Error()))
+			ro.logger.Warn(
+				"audit record failed",
+				slog.String("op", "RecordWorkload"),
+				slog.String("error", auditErr.Error()),
+			)
 		}
 		auditWorkloadIDs[name] = wlID
 
@@ -361,13 +377,21 @@ func (ro *RunOrchestrator) createResources(
 					ResourceName: svc.Name,
 					Namespace:    svc.Namespace,
 				}); auditErr != nil {
-					ro.logger.Warn("audit record failed", slog.String("op", "RecordResource"), slog.String("error", auditErr.Error()))
+					ro.logger.Warn(
+						"audit record failed",
+						slog.String("op", "RecordResource"),
+						slog.String("error", auditErr.Error()),
+					)
 				}
 				if auditErr := ro.auditor.RecordEvent(ctx, execID, audit.EventRecord{
 					EventType: "service_created",
 					Message:   fmt.Sprintf("Service %s created", svc.Name),
 				}); auditErr != nil {
-					ro.logger.Warn("audit record failed", slog.String("op", "RecordEvent"), slog.String("error", auditErr.Error()))
+					ro.logger.Warn(
+						"audit record failed",
+						slog.String("op", "RecordEvent"),
+						slog.String("error", auditErr.Error()),
+					)
 				}
 			}
 		}
@@ -412,7 +436,11 @@ func (ro *RunOrchestrator) createSecrets(
 				ResourceName: secretName,
 				Namespace:    cfg.Namespace,
 			}); auditErr != nil {
-				ro.logger.Warn("audit record failed", slog.String("op", "RecordResource"), slog.String("error", auditErr.Error()))
+				ro.logger.Warn(
+					"audit record failed",
+					slog.String("op", "RecordResource"),
+					slog.String("error", auditErr.Error()),
+				)
 			}
 			return nil
 		})
@@ -457,7 +485,11 @@ func (ro *RunOrchestrator) createVMs(
 					Message:     fmt.Sprintf("Failed to create VM %s", p.VMName),
 					ErrorDetail: err.Error(),
 				}); auditErr != nil {
-					ro.logger.Warn("audit record failed", slog.String("op", "RecordEvent"), slog.String("error", auditErr.Error()))
+					ro.logger.Warn(
+						"audit record failed",
+						slog.String("op", "RecordEvent"),
+						slog.String("error", auditErr.Error()),
+					)
 				}
 				return fmt.Errorf("creating VM %q: %w", p.VMName, err)
 			}
@@ -478,13 +510,21 @@ func (ro *RunOrchestrator) createVMs(
 				HasDataDisk:        len(p.VMSpec.DataVolumeTemplates) > 0,
 				DataDiskSize:       cfg.DataDiskSize,
 			}); auditErr != nil {
-				ro.logger.Warn("audit record failed", slog.String("op", "RecordVM"), slog.String("error", auditErr.Error()))
+				ro.logger.Warn(
+					"audit record failed",
+					slog.String("op", "RecordVM"),
+					slog.String("error", auditErr.Error()),
+				)
 			}
 			if auditErr := ro.auditor.RecordEvent(ctx, execID, audit.EventRecord{
 				EventType: "vm_created",
 				Message:   fmt.Sprintf("VM %s created", p.VMName),
 			}); auditErr != nil {
-				ro.logger.Warn("audit record failed", slog.String("op", "RecordEvent"), slog.String("error", auditErr.Error()))
+				ro.logger.Warn(
+					"audit record failed",
+					slog.String("op", "RecordEvent"),
+					slog.String("error", auditErr.Error()),
+				)
 			}
 			return nil
 		})
@@ -528,7 +568,11 @@ func (ro *RunOrchestrator) waitForReadiness(
 				Message:     fmt.Sprintf("VM %s failed readiness check", name),
 				ErrorDetail: err.Error(),
 			}); auditErr != nil {
-				ro.logger.Warn("audit record failed", slog.String("op", "RecordEvent"), slog.String("error", auditErr.Error()))
+				ro.logger.Warn(
+					"audit record failed",
+					slog.String("op", "RecordEvent"),
+					slog.String("error", auditErr.Error()),
+				)
 			}
 			if comp, ok := vmToComponent[name]; ok {
 				failedWorkloads[comp] = true
@@ -538,7 +582,11 @@ func (ro *RunOrchestrator) waitForReadiness(
 				EventType: "vm_ready",
 				Message:   fmt.Sprintf("VM %s is ready", name),
 			}); auditErr != nil {
-				ro.logger.Warn("audit record failed", slog.String("op", "RecordEvent"), slog.String("error", auditErr.Error()))
+				ro.logger.Warn(
+					"audit record failed",
+					slog.String("op", "RecordEvent"),
+					slog.String("error", auditErr.Error()),
+				)
 			}
 		}
 	}
@@ -546,11 +594,19 @@ func (ro *RunOrchestrator) waitForReadiness(
 		for comp, wlID := range auditWorkloadIDs {
 			if failedWorkloads[comp] {
 				if auditErr := ro.auditor.UpdateWorkloadStatus(ctx, wlID, "failed"); auditErr != nil {
-					ro.logger.Warn("audit record failed", slog.String("op", "UpdateWorkloadStatus"), slog.String("error", auditErr.Error()))
+					ro.logger.Warn(
+						"audit record failed",
+						slog.String("op", "UpdateWorkloadStatus"),
+						slog.String("error", auditErr.Error()),
+					)
 				}
 			} else {
 				if auditErr := ro.auditor.UpdateWorkloadStatus(ctx, wlID, "created"); auditErr != nil {
-					ro.logger.Warn("audit record failed", slog.String("op", "UpdateWorkloadStatus"), slog.String("error", auditErr.Error()))
+					ro.logger.Warn(
+						"audit record failed",
+						slog.String("op", "UpdateWorkloadStatus"),
+						slog.String("error", auditErr.Error()),
+					)
 				}
 			}
 		}
