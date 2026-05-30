@@ -48,8 +48,7 @@ func newRootCmd() *cobra.Command {
 		Long: `Virtwork creates virtual machines on OpenShift clusters (with OpenShift
 Virtualization installed) and runs continuous workloads inside them to produce
 realistic CPU, memory, database, network, and disk I/O metrics.`,
-		SilenceUsage:  true,
-		SilenceErrors: true,
+		SilenceUsage: true,
 	}
 
 	config.BindPersistentFlags(rootCmd)
@@ -139,7 +138,7 @@ func runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// nolint:dupl
+	//nolint:dupl
 	verbose, _ := cmd.Flags().GetBool("verbose")
 	logger := logging.NewLogger(cmd.OutOrStdout(), verbose)
 
@@ -229,7 +228,7 @@ func cleanupE(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	// nolint:dupl
+	//nolint:dupl
 	verbose, _ := cmd.Flags().GetBool("verbose")
 	logger := logging.NewLogger(cmd.OutOrStdout(), verbose)
 
