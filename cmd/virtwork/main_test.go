@@ -229,6 +229,26 @@ var _ = Describe("Run command flags", func() {
 		Expect(val).To(HaveLen(1))
 		Expect(val[0]).To(Equal("/home/user/.ssh/id_rsa.pub"))
 	})
+
+	It("should accept vm-concurrency flag", func() {
+		rootCmd.SetArgs([]string{"run", "--vm-concurrency", "5"})
+		Expect(rootCmd.Execute()).To(Succeed())
+
+		runCmd, _, _ := rootCmd.Find([]string{"run"})
+		val, err := runCmd.Flags().GetInt("vm-concurrency")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(val).To(Equal(5))
+	})
+
+	It("should default vm-concurrency to 10", func() {
+		rootCmd.SetArgs([]string{"run"})
+		Expect(rootCmd.Execute()).To(Succeed())
+
+		runCmd, _, _ := rootCmd.Find([]string{"run"})
+		val, err := runCmd.Flags().GetInt("vm-concurrency")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(val).To(Equal(10))
+	})
 })
 
 var _ = Describe("Cleanup command flags", func() {
