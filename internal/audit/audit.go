@@ -83,9 +83,9 @@ func NewSQLiteAuditor(dbPath string) (*SQLiteAuditor, error) {
 		return nil, fmt.Errorf("opening audit db: %w", err)
 	}
 
-	if _, err := db.Exec(schemaSQL); err != nil {
+	if err := migrateDB(db); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("applying audit schema: %w", err)
+		return nil, fmt.Errorf("migrating audit schema: %w", err)
 	}
 
 	return &SQLiteAuditor{db: db}, nil
