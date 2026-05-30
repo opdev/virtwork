@@ -460,6 +460,9 @@ func (ro *RunOrchestrator) createVMs(
 	auditWorkloadIDs map[string]int64,
 ) error {
 	g, gctx := errgroup.WithContext(ctx)
+	if cfg.VMConcurrency > 0 {
+		g.SetLimit(cfg.VMConcurrency)
+	}
 	for _, plan := range plans {
 		p := plan
 		g.Go(func() error {

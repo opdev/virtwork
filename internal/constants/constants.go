@@ -70,3 +70,6 @@ const (
 	DefaultReadyTimeout = 600 * time.Second
 	DefaultPollInterval = 15 * time.Second
 )
+
+// Concurrency defaults for VM creation.
+const DefaultVMConcurrency = 10

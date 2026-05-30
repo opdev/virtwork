@@ -77,6 +77,7 @@ type Config struct {
 	SSHAuthorizedKeys   []string                  `mapstructure:"ssh-authorized-keys"`
 	AuditEnabled        bool                      `mapstructure:"audit"`
 	AuditDBPath         string                    `mapstructure:"audit-db"`
+	VMConcurrency       int                       `mapstructure:"vm-concurrency"`
 }
 
 // SetDefaults registers Viper defaults.
@@ -96,6 +97,7 @@ func SetDefaults(v *viper.Viper) {
 	v.SetDefault("cleanup-mode", "")
 	v.SetDefault("audit", true)
 	v.SetDefault("audit-db", constants.DefaultAuditDBPath)
+	v.SetDefault("vm-concurrency", constants.DefaultVMConcurrency)
 }
 
 // BindPersistentFlags registers persistent flags shared across all subcommands.
@@ -127,6 +129,7 @@ func BindRunFlags(cmd *cobra.Command, defaultWorkloads []string) {
 	f.String("ssh-password", "", "SSH password for VMs")
 	f.StringSlice("ssh-key", nil, "SSH authorized key (repeatable)")
 	f.StringSlice("ssh-key-file", nil, "SSH key file path (repeatable)")
+	f.Int("vm-concurrency", constants.DefaultVMConcurrency, "Max concurrent VM creation operations")
 }
 
 // BindCleanupFlags registers flags specific to the "cleanup" subcommand.
@@ -189,6 +192,10 @@ func LoadConfig(cmd *cobra.Command) (*Config, error) {
 		val, _ := cmd.Flags().GetBool("no-wait")
 		v.Set("wait-for-ready", !val)
 	}
+	if cmd.Flags().Changed("vm-concurrency") {
+		val, _ := cmd.Flags().GetInt("vm-concurrency")
+		v.Set("vm-concurrency", val)
+	}
 
 	// Build the Config struct
 	cfg := &Config{}
@@ -207,6 +214,7 @@ func LoadConfig(cmd *cobra.Command) (*Config, error) {
 	cfg.SSHPassword = v.GetString("ssh-password")
 	cfg.AuditEnabled = v.GetBool("audit")
 	cfg.AuditDBPath = v.GetString("audit-db")
+	cfg.VMConcurrency = v.GetInt("vm-concurrency")
 
 	// Handle SSH authorized keys: CLI flags, env var (comma-split), or YAML list
 	sshKeys, err := resolveSSHKeys(v, cmd)
