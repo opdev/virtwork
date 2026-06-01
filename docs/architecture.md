@@ -15,15 +15,15 @@ The codebase is organized into five dependency layers. Each layer depends only o
 ```mermaid
 graph TD
     subgraph "Layer 4 — Orchestration"
-        CMD["cmd/virtwork/main.go\nCobra commands + orchestration"]
+        CMD["cmd/virtwork/main.go\nCobra commands + dependency wiring"]
+        ORCH["internal/orchestrator\nRunOrchestrator + helpers"]
         CLEANUP["internal/cleanup/cleanup.go\nlabel-based teardown\n(VMs, Services, Secrets)"]
-        AUDIT["internal/audit/audit.go\nSQLite audit tracking"]
     end
 
     subgraph "Layer 3 — Workload Definitions"
         REGISTRY["internal/workloads/registry.go\nregistry + lookup"]
         IFACE["internal/workloads/workload.go\nWorkload interface"]
-        MULTI["internal/workloads/workload.go\nMultiVMWorkload interface\n(Roles, UserdataForRole)"]
+        MULTI["internal/workloads/workload.go\nMultiVMWorkload interface\n(RoleDistribution, UserdataForRole)"]
         CPU["internal/workloads/cpu.go\nstress-ng CPU"]
         MEM["internal/workloads/memory.go\nstress-ng VM memory"]
         DISK["internal/workloads/disk.go\nfio profiles"]
@@ -46,6 +46,7 @@ graph TD
         CONFIG["internal/config/config.go\nViper config"]
         CLOUDINIT["internal/cloudinit/cloudinit.go\ncloud-config YAML builder"]
         LOGGING["internal/logging/logging.go\nstructured slog logger"]
+        AUDIT["internal/audit/audit.go\nSQLite audit tracking"]
     end
 
     subgraph "Layer 0 — Definitions"
@@ -54,13 +55,15 @@ graph TD
 
     CMD --> CONFIG
     CMD --> CLUSTER
-    CMD --> REGISTRY
-    CMD --> VM
-    CMD --> RES
-    CMD --> WAIT
+    CMD --> ORCH
     CMD --> CLEANUP
-    CMD --> AUDIT
     CMD --> LOGGING
+
+    ORCH --> REGISTRY
+    ORCH --> VM
+    ORCH --> RES
+    ORCH --> WAIT
+    ORCH --> AUDIT
 
     AUDIT --> CONFIG
     AUDIT --> CONST
@@ -105,7 +108,6 @@ graph TD
     CLUSTER --> CONST
     CONFIG --> CONST
 
-    MAIN["cmd/virtwork/main.go"] --> CMD
 ```
 
 ---
@@ -175,7 +177,8 @@ graph LR
 | `internal/workloads` | No | Pure data producers (cloud-init specs, resource structs) |
 | `internal/cleanup` | No | Sequential VM/Service/Secret deletion with error accumulation |
 | `internal/audit` | No | Sequential SQLite writes via `database/sql` connection pool |
-| `cmd/virtwork` | Yes | Owns errgroup lifecycle; spawns goroutines for parallel operations |
+| `internal/orchestrator` | Yes | Owns errgroup lifecycle for VM creation and secret creation; coordinates planning, resource creation, and readiness |
+| `cmd/virtwork` | Yes | Wires dependencies, delegates to RunOrchestrator and CleanupOrchestrator |
 
 ---
 
@@ -186,32 +189,29 @@ flowchart TD
     START([virtwork run]) --> LOAD_CFG[Load config via Viper\nflags > env > file > defaults]
     LOAD_CFG --> INIT_AUDIT[Init Auditor\nSQLiteAuditor or NoOpAuditor]
     INIT_AUDIT --> START_EXEC[StartExecution\ngenerate run UUID]
-    START_EXEC --> DRY_CHECK{--dry-run?}
+    START_EXEC --> CREATE_ORCH[Create RunOrchestrator\nlogger, client, config, auditor]
+    CREATE_ORCH --> RUN_ORCH[ro.Run]
 
-    DRY_CHECK -->|Yes| GEN_SPECS[Generate VM specs\nfor each workload]
-    GEN_SPECS --> PRINT_YAML[Print specs as YAML]
-    PRINT_YAML --> EXIT_D([Exit])
+    subgraph "RunOrchestrator.Run()"
+        RUN_ORCH --> PLAN[planVMs\nresolve registry, build VMPlan list]
+        PLAN --> DRY_CHECK{--dry-run?}
 
-    DRY_CHECK -->|No| CONNECT[Connect to cluster\ncontroller-runtime client.New]
-    CONNECT --> ENSURE_NS[EnsureNamespace]
-    ENSURE_NS --> CTX_CREATE[Create context.WithTimeout]
-    CTX_CREATE --> WORKLOAD_LOOP[For each enabled workload]
+        DRY_CHECK -->|Yes| PRINT_YAML[Print specs as YAML]
+        PRINT_YAML --> EXIT_D([Return result])
 
-    WORKLOAD_LOOP --> GET_WL[Get workload from registry]
-    GET_WL --> GEN_CI[Generate cloud-init userdata]
-    GEN_CI --> SVC_CHECK{RequiresService?}
-    SVC_CHECK -->|Yes| CREATE_SVC[CreateService\nmust exist before VMs for DNS]
-    SVC_CHECK -->|No| SPAWN_VMS
-    CREATE_SVC --> SPAWN_VMS[Spawn goroutines via errgroup\nBuildVMSpec + CreateVM]
-    SPAWN_VMS --> MORE_WL{More workloads?}
-    MORE_WL -->|Yes| WORKLOAD_LOOP
-    MORE_WL -->|No| ERRGRP_WAIT[errgroup.Wait\nall VM creates]
+        DRY_CHECK -->|No| ENSURE_NS[EnsureNamespace]
+        ENSURE_NS --> SVC_CHECK[createResources\nServices for multi-VM workloads]
+        SVC_CHECK --> CREATE_SECRETS[createSecrets\nerrgroup parallel]
+        CREATE_SECRETS --> SPAWN_VMS[createVMs\nerrgroup parallel\nBuildVMSpec + CreateVM]
+        SPAWN_VMS --> WAIT_CHECK{--no-wait?}
+        WAIT_CHECK -->|Yes| RETURN([Return result])
+        WAIT_CHECK -->|No| POLL[waitForReadiness\nerrgroup concurrent polling]
+        POLL --> RETURN
+    end
 
-    ERRGRP_WAIT --> WAIT_CHECK{--no-wait?}
-    WAIT_CHECK -->|Yes| PRINT_SUMMARY[Print summary table]
-    WAIT_CHECK -->|No| POLL[WaitForAllVMsReady\nerrgroup for concurrent polling]
-    POLL --> COMPLETE_EXEC[CompleteExecution\nset status + timestamp]
-    COMPLETE_EXEC --> PRINT_SUMMARY
+    RETURN --> COMPLETE_EXEC[CompleteExecution\nset status + timestamp]
+    EXIT_D --> COMPLETE_EXEC
+    COMPLETE_EXEC --> PRINT_SUMMARY[Print summary table]
     PRINT_SUMMARY --> EXIT([Exit])
 ```
 
@@ -244,7 +244,7 @@ classDiagram
         +VMResources() VMResourceSpec
         +ExtraVolumes() []Volume
         +ExtraDisks() []Disk
-        +DataVolumeTemplates() []DataVolumeTemplateSpec
+        +DataVolumeTemplates() ([]DataVolumeTemplateSpec, error)
         +RequiresService() bool
         +ServiceSpec() *Service
         +VMCount() int
@@ -252,7 +252,7 @@ classDiagram
 
     class MultiVMWorkload {
         <<interface>>
-        +Roles() []string
+        +RoleDistribution() []RoleSpec
         +UserdataForRole(role, namespace) (string, error)
     }
 
@@ -264,7 +264,7 @@ classDiagram
         +VMResources() VMResourceSpec
         +ExtraVolumes() []Volume
         +ExtraDisks() []Disk
-        +DataVolumeTemplates() []DataVolumeTemplateSpec
+        +DataVolumeTemplates() ([]DataVolumeTemplateSpec, error)
         +RequiresService() false
         +ServiceSpec() nil
         +VMCount() int (Config.VMCount or 1)
@@ -299,7 +299,7 @@ classDiagram
         +Namespace string
         +Name() "network"
         +VMCount() count * 2
-        +Roles() ["server", "client"]
+        +RoleDistribution() []RoleSpec
         +UserdataForRole(role, ns) iperf3 server or client
         +RequiresService() true
         +ServiceSpec() ClusterIP virtwork-iperf3-server :5201
@@ -309,7 +309,7 @@ classDiagram
         +Namespace string
         +Name() "tps"
         +VMCount() count * 2
-        +Roles() ["server", "client"]
+        +RoleDistribution() []RoleSpec
         +UserdataForRole(role, ns) netperf + HTTP server / client loop
         +RequiresService() true
         +ServiceSpec() ClusterIP virtwork-tps-server :12865/:12866/:8080
@@ -477,7 +477,7 @@ Viper's built-in priority chain handles this natively when bound to Cobra flags:
 | Run-to-cleanup linking | `virtwork/run-id` K8s label + `linked_run_ids` JSON array | Labels survive across CLI invocations. JSON array is PostgreSQL JSONB compatible. |
 | Audit credential policy | No SSH credentials stored | Only `ssh_auth_configured` boolean tracked. Security by design. |
 | In-VM disk discovery | `/dev/disk/by-id/virtio-<serial>` via the `Serial` field on KubeVirt `Disk` | `/dev/vdX` device ordering is not stable across VM reboots or migrations; the virtio serial provides a deterministic symlink. The shared `diskSetupScript` helper (`internal/workloads/workload.go`) waits for the symlink, formats if empty, mounts, and writes `/etc/fstab`. |
-| DataVolume names per VM | DV template names are suffixed with the VM name via `namespaceDataVolumes` (`cmd/virtwork/main.go`) | DataVolume names are namespace-scoped; deploying multiple VMs of the same workload would otherwise collide on the template name. |
+| DataVolume names per VM | DV template names are suffixed with the VM name via `NamespaceDataVolumes` (`internal/orchestrator/types.go`) | DataVolume names are namespace-scoped; deploying multiple VMs of the same workload would otherwise collide on the template name. |
 | Structured logging | `log/slog` JSON via `internal/logging.NewLogger(out, verbose)` | Machine-parseable logs for pipeline consumption; `--verbose` flips the level from `INFO` to `DEBUG`. New code uses the logger; `fmt.Fprintf` calls were removed from `cmd/virtwork/main.go`. |
 | Chaos workload safety | Opt-in by name, namespace-scoped destructive behavior, no platform-level kill switch | Chaos workloads can fill a data PVC, shape egress traffic, or kill processes — all confined to the VM they run in. Namespace isolation is the safety boundary. See [chaos-workloads.md](chaos-workloads.md) for risk and operational guidance. |
 
@@ -489,7 +489,7 @@ Viper's built-in priority chain handles this natively when bound to Cobra flags:
 virtwork/
 ├── cmd/
 │   └── virtwork/
-│       └── main.go                # Cobra root + subcommands, orchestration
+│       └── main.go                # Cobra root + subcommands, dependency wiring
 ├── internal/
 │   ├── constants/
 │   │   └── constants.go           # API coords, labels, defaults
@@ -509,9 +509,14 @@ virtwork/
 │   │   └── wait.go                # VMI readiness polling (errgroup)
 │   ├── cleanup/
 │   │   └── cleanup.go             # Label-based teardown (VMs, Services, Secrets)
+│   ├── orchestrator/
+│   │   ├── orchestrator.go        # RunOrchestrator: plan, create, wait
+│   │   ├── cleanup.go             # CleanupOrchestrator: label-based cleanup coordination
+│   │   └── types.go               # VMPlan, VMSpecInput, NamespaceDataVolumes helper
 │   ├── audit/
 │   │   ├── audit.go               # Auditor interface, SQLiteAuditor, NoOpAuditor
 │   │   ├── schema.go              # DDL for 5 audit tables + indexes
+│   │   ├── migrate.go             # Schema migration strategy
 │   │   └── records.go             # WorkloadRecord, VMRecord, ResourceRecord, EventRecord
 │   ├── workloads/
 │   │   ├── workload.go            # Workload + MultiVMWorkload interfaces, BaseWorkload, diskSetupScript
@@ -545,7 +550,7 @@ virtwork/
 │   ├── guide/                     # Hands-on guides (overview, deploying, adding workloads)
 │   ├── implementation-plan.md     # Historical: original phased build plan
 │   └── openshift-virtualization-workload-automation.md  # Historical: original design rationale
-├── Dockerfile                     # Multi-stage build (Debian builder + UBI9 runtime)
+├── Dockerfile                     # Multi-stage build (Alpine builder + UBI9 runtime)
 ├── Dockerfile.ci                  # CI variant of the runtime image
 ├── entrypoint.sh
 ├── Makefile
