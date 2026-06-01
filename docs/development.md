@@ -4,7 +4,7 @@
 
 ### Prerequisites
 
-- Go 1.25+
+- Go 1.26+
 - [Ginkgo CLI](https://onsi.github.io/ginkgo/#installing-ginkgo) (for BDD test runner)
 
 ### Install Ginkgo CLI
@@ -427,6 +427,7 @@ internal/           # Application packages (not importable externally)
   wait/             # VMI readiness polling (errgroup)
   cleanup/          # Label-based teardown (VMs, Services, Secrets)
   audit/            # SQLite audit tracking (Auditor interface, schema, records)
+  orchestrator/     # Run + Cleanup orchestrators (errgroup concurrency, VM creation flow)
   workloads/        # Workload + MultiVMWorkload interfaces, nine implementations, registry
   testutil/         # Shared test helpers for integration and E2E tests
 tests/              # Tests requiring external infrastructure
