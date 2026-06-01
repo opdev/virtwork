@@ -15,7 +15,7 @@ virtwork and kube-burner solve adjacent but non-overlapping problems. kube-burne
 
 ## Prerequisites
 
-- **Go**: 1.25+ (for building from source)
+- **Go**: 1.26+ (for building from source)
 - **OpenShift**: 4.12+ with OpenShift Virtualization (CNV) installed
   - KubeVirt API v1.7.0+ compatible
   - CDI (Containerized Data Importer) v1.64.0+ compatible
@@ -149,6 +149,7 @@ Flags:
       --ssh-password string        SSH password for VMs
       --ssh-key strings            SSH authorized key (repeatable)
       --ssh-key-file strings       SSH key file path (repeatable)
+      --vm-concurrency int         Max concurrent VM creation operations
 
 Global Flags:
       --namespace string           Kubernetes namespace for VMs
@@ -303,12 +304,11 @@ oc exec -it deploy/virtwork -- virtwork cleanup
 ### Building the Container Image
 
 ```bash
-# Build (requires glibc — CGO is needed for SQLite)
 podman build -t quay.io/opdev/virtwork:latest .
 
 # The Dockerfile uses a multi-stage build:
-# Stage 1: golang:1.25-bookworm (Debian) for CGO compilation
-# Stage 2: ubi9/ubi-minimal for a minimal runtime with sqlite-libs
+# Stage 1: golang:1.26-alpine for pure-Go compilation (CGO_ENABLED=0)
+# Stage 2: ubi9/ubi-minimal for a minimal runtime
 ```
 
 ## Architecture
@@ -316,12 +316,12 @@ podman build -t quay.io/opdev/virtwork:latest .
 The codebase follows a strict layered architecture where each layer depends only on layers below it.
 
 ```
-Layer 4 — Orchestration     cmd/virtwork, cleanup, audit
+Layer 4 — Orchestration     cmd/virtwork, orchestrator, cleanup
 Layer 3 — Workload Defs     workloads (Workload + MultiVMWorkload interfaces, registry,
                             cpu, memory, disk, database, network, tps, chaos-disk,
                             chaos-network, chaos-process)
 Layer 2 — K8s Abstractions  vm, resources, wait
-Layer 1 — Infrastructure    config, cluster, cloudinit, logging
+Layer 1 — Infrastructure    config, cluster, cloudinit, logging, audit
 Layer 0 — Definitions       constants
 ```
 
@@ -344,6 +344,7 @@ virtwork/
 │   ├── resources/                 # Namespace + Service + Secret helpers
 │   ├── wait/                      # VMI readiness polling
 │   ├── cleanup/                   # Label-based teardown (VMs, Services, Secrets)
+│   ├── orchestrator/              # Run + cleanup orchestration logic
 │   ├── audit/                     # SQLite audit tracking (Auditor interface, schema, records)
 │   ├── workloads/                 # Workload + MultiVMWorkload interfaces, 9 implementations, registry
 │   └── testutil/                  # Shared test helpers for integration + E2E
@@ -360,7 +361,7 @@ virtwork/
 │   ├── secret.yaml
 │   ├── pvc.yaml
 │   └── deployment.yaml
-├── Dockerfile                     # Multi-stage build (Debian builder + UBI9 runtime)
+├── Dockerfile                     # Multi-stage build (Alpine builder + UBI9 runtime)
 ├── Dockerfile.ci                  # CI variant of the runtime image
 ├── entrypoint.sh                  # Container entrypoint (auto-run or sleep)
 ├── Makefile                       # CI targets (test, vet, lint, build, ci, verify)
