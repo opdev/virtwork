@@ -175,9 +175,10 @@ flowchart TD
 
     Q2 -->|Storage — disk I/O| B1["virtwork<br/><b>--workloads disk</b>"]
     Q2 -->|Monitoring — CPU/memory metrics| B2["virtwork<br/><b>--workloads cpu,memory</b>"]
-    Q2 -->|Network — VM-to-VM throughput| B3["virtwork<br/><b>--workloads network</b>"]
+    Q2 -->|Network — VM-to-VM throughput| B3["virtwork<br/><b>--workloads network,tps</b>"]
     Q2 -->|Database — OLTP load| B4["virtwork<br/><b>--workloads database</b>"]
-    Q2 -->|All of the above on OPL bare metal| B5["virtwork<br/><b>all workloads enabled by default</b>"]
+    Q2 -->|Chaos / resilience testing| B5["virtwork<br/><b>--workloads chaos-disk,chaos-network,chaos-process</b>"]
+    Q2 -->|All of the above on OPL bare metal| B6["virtwork<br/><b>all nine workloads enabled by default</b>"]
 
     style A1 fill:#1a3a5c,stroke:#4a9eda,color:#eee
     style A2 fill:#1a3a5c,stroke:#4a9eda,color:#eee
@@ -189,6 +190,7 @@ flowchart TD
     style B3 fill:#3a1a1a,stroke:#e94560,color:#eee
     style B4 fill:#3a1a1a,stroke:#e94560,color:#eee
     style B5 fill:#3a1a1a,stroke:#e94560,color:#eee
+    style B6 fill:#3a1a1a,stroke:#e94560,color:#eee
     style Start fill:#2a2a2a,stroke:#aaa,color:#fff
     style Q1 fill:#1e1e1e,stroke:#888,color:#eee
     style Q2 fill:#1e1e1e,stroke:#888,color:#eee
@@ -222,9 +224,9 @@ In the OpenShift Partner Labs (OPL) context, a **partner product** is an ISV's t
 
 | Partner Product Type | What "handles" actually means |
 |---|---|
-| **Storage** | Does your storage driver correctly serve VM disk I/O? Does it report IOPS and throughput accurately? Does it stay stable under `fio` mixed read/write load? |
-| **Monitoring** | Does your monitoring agent correctly scrape CPU, memory, and disk metrics from inside VMs? Do your dashboards reflect what `stress-ng` and `fio` are actually doing? |
-| **Network** | Does your CNI or network product correctly route `iperf3 --bidir` traffic between VMs? Does it report the right throughput? Does it hold up under sustained bidirectional load? |
+| **Storage** | Does your storage driver correctly serve VM disk I/O? Does it report IOPS and throughput accurately? Does it stay stable under `fio` mixed read/write load? Does it alert correctly when `chaos-disk` fills the volume to 90%? |
+| **Monitoring** | Does your monitoring agent correctly scrape CPU, memory, and disk metrics from inside VMs? Do your dashboards reflect what `stress-ng` and `fio` are actually doing? Do your alerts fire when `chaos-process` kills monitored processes? |
+| **Network** | Does your CNI or network product correctly route `iperf3 --bidir` and `netperf`/`curl` traffic between VMs? Does it report the right throughput? Does it detect the latency and packet loss injected by `chaos-network`? |
 | **Database** | Does your product correctly observe or manage a PostgreSQL instance under `pgbench` OLTP load running inside a VM? |
 
 virtwork exists specifically to generate the signals each of these product categories needs to prove the answer is yes — on OpenShift Partner Labs (OPL) bare metal, against real KubeVirt VMs, with workloads that outlast the tool that created them.
