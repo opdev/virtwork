@@ -11,7 +11,7 @@ This guide walks you through how virtwork works, how to deploy workloads with it
 
 - Familiarity with Kubernetes/OpenShift concepts (namespaces, pods, services)
 - For the deployment demo: an OpenShift cluster with [OpenShift Virtualization](https://docs.openshift.com/container-platform/latest/virt/about_virt/about-virt.html) (CNV) installed
-- For the developer tutorial: Go 1.25+ and the [Ginkgo CLI](https://onsi.github.io/ginkgo/#installing-ginkgo)
+- For the developer tutorial: Go 1.26+ and the [Ginkgo CLI](https://onsi.github.io/ginkgo/#installing-ginkgo)
 
 ## Guide Sections
 
