@@ -129,7 +129,7 @@ Indexes: `started_at`, `namespace`, `status`, `run_id`.
 | `audit_id` | INTEGER NOT NULL | FK → `audit_log.id` |
 | `workload_type` | TEXT NOT NULL | `cpu`, `memory`, `disk`, `database`, `network`, `tps`, `chaos-disk`, `chaos-network`, `chaos-process` |
 | `enabled` | INTEGER NOT NULL | 0 or 1 (always 1 in current orchestration) |
-| `vm_count` | INTEGER NOT NULL | Reported by `Workload.VMCount()` — `N` for single-VM, `N × len(Roles())` for multi-VM |
+| `vm_count` | INTEGER NOT NULL | Reported by `Workload.VMCount()` — `N` for single-VM, sum of `RoleDistribution()` counts for multi-VM |
 | `cpu_cores` | INTEGER NOT NULL | Effective per-VM CPU cores |
 | `memory` | TEXT NOT NULL | Effective per-VM memory (e.g., `2Gi`) |
 | `has_data_disk` | INTEGER NOT NULL | 1 when `DataVolumeTemplates()` is non-empty |
@@ -214,7 +214,7 @@ Indexes: `audit_id`, `event_type`, `occurred_at`.
 
 ```mermaid
 sequenceDiagram
-    participant CLI as cmd/virtwork
+    participant CLI as orchestrator
     participant A as Auditor
     participant DB as SQLite
 
