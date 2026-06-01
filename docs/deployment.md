@@ -113,7 +113,7 @@ containers:
 
 For development you may pin to `:latest` instead, but be aware that `IfNotPresent` plus `:latest` can pin a node to an older copy of the image until it's pulled again. Either bump the tag, or set `imagePullPolicy: Always` for floating tags.
 
-The container image is built from [`Dockerfile`](../Dockerfile) (multi-stage: `golang:1.25-bookworm` builder for CGO + `ubi9/ubi-minimal` runtime with `sqlite-libs`). A CI variant lives at [`Dockerfile.ci`](../Dockerfile.ci).
+The container image is built from [`Dockerfile`](../Dockerfile) (multi-stage: `golang:1.26-alpine` builder with `CGO_ENABLED=0` + `ubi9/ubi-minimal` runtime). A CI variant lives at [`Dockerfile.ci`](../Dockerfile.ci).
 
 ```bash
 podman build -t quay.io/opdev/virtwork:vX.Y.Z .
@@ -168,7 +168,7 @@ virtwork-database-data-virtwork-database-0  Succeeded   3m
 virtwork-chaos-disk-data-virtwork-chaos-disk-0  Succeeded  3m
 ```
 
-The suffix (`-virtwork-disk-0`, `-virtwork-chaos-disk-0`) comes from `namespaceDataVolumes` in `cmd/virtwork/main.go`. Each `VMCount > 1` deployment gets its own uniquely-named DataVolume so multiple VMs of the same workload type don't collide on a single namespace-scoped DV name. The base name (`virtwork-disk-data`, etc.) is what the workload declares in its `DataVolumeTemplates()` method; the orchestrator appends the VM name.
+The suffix (`-virtwork-disk-0`, `-virtwork-chaos-disk-0`) comes from `NamespaceDataVolumes` in `internal/orchestrator/types.go`. Each `VMCount > 1` deployment gets its own uniquely-named DataVolume so multiple VMs of the same workload type don't collide on a single namespace-scoped DV name. The base name (`virtwork-disk-data`, etc.) is what the workload declares in its `DataVolumeTemplates()` method; the orchestrator appends the VM name.
 
 ## Persisting the Audit Database
 
