@@ -572,17 +572,22 @@ If your workload needs more than one role of VM (e.g., a server and a client), i
 // In internal/workloads/workload.go
 type MultiVMWorkload interface {
     Workload
-    Roles() []string
+    RoleDistribution() []RoleSpec
     UserdataForRole(role string, namespace string) (string, error)
+}
+
+type RoleSpec struct {
+    Role    string
+    VMCount int
 }
 ```
 
 Pattern:
 
 1. Embed `BaseWorkload` and store any per-workload state (e.g., a `Namespace` field for in-cluster DNS).
-2. Override `VMCount()` to return `count * len(Roles())` so the orchestrator creates the right number of VMs per role.
-3. Override `Roles()` to return the role names (e.g., `[]string{"server", "client"}`).
-4. Override `UserdataForRole(role, namespace)` to return role-specific cloud-init. The default `CloudInitUserdata()` typically delegates to `UserdataForRole("server", namespace)`.
+2. Implement `RoleDistribution()` to return per-role VM counts (e.g., `[]RoleSpec{{Role: "server", VMCount: 1}, {Role: "client", VMCount: 1}}`).
+3. Override `VMCount()` to sum the `RoleSpec.VMCount` values from `RoleDistribution()`.
+4. Implement `UserdataForRole(role, namespace)` to return role-specific cloud-init. The default `CloudInitUserdata()` typically delegates to `UserdataForRole("server", namespace)`.
 5. Set `RequiresService()` to `true` and provide a `ServiceSpec()` selecting server VMs by the `virtwork/role: server` label that the orchestrator applies automatically.
 6. Clients reach servers via the in-cluster DNS name `<service-name>.<namespace>.svc.cluster.local` — never poll for pod IPs.
 
