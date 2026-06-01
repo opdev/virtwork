@@ -264,9 +264,9 @@ Chaos workloads are recorded in the audit database exactly like any other worklo
 
 Source files:
 
-- `internal/workloads/chaos_disk.go` — `ChaosDiskWorkload` struct, `chaosDiskScript`, `chaosDiskSystemdUnit`
+- `internal/workloads/chaos_disk.go` — `ChaosDiskWorkload` struct, `chaosDiskScriptTemplate`, `chaosDiskSystemdUnit`
 - `internal/workloads/chaos_network.go` — `ChaosNetworkWorkload` struct, `chaosNetworkStartScript`, `chaosNetworkStopScript`, `chaosNetworkSystemdUnit`
-- `internal/workloads/chaos_process.go` — `ChaosProcessWorkload` struct, `chaosProcessScript`, `chaosProcessSystemdUnit`
+- `internal/workloads/chaos_process.go` — `ChaosProcessWorkload` struct, `chaosProcessScript`, `chaosProcessSystemdUnitTemplate`
 - `internal/workloads/registry.go` — `DefaultRegistry()` registers all three under the names `chaos-disk`, `chaos-network`, `chaos-process`
 
 All three embed `BaseWorkload` and use the standard `BuildCloudConfig(opts)` helper for SSH credential injection. chaos-disk additionally uses the shared `diskSetupScript(serial, mountPoint)` helper from `internal/workloads/workload.go` for the standard wait/format/mount/fstab pattern.
