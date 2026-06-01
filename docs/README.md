@@ -28,6 +28,7 @@ Targeted references — read when you need a specific fact.
 ## Contributor
 
 - [development.md](development.md) — Environment setup, building, running unit/integration/E2E tests, cluster prerequisites, Makefile targets, adding a new workload, SSH/audit configuration, testing patterns, commit conventions
+- [documentation-audit.md](documentation-audit.md) — Runbook for checking documentation against the codebase; cross-reference checklist, common drift patterns, and workflow
 - [../build/golden-image/README.md](../build/golden-image/README.md) — Building and using the optional Fedora-based golden container disk image with pre-installed workload tools
 
 ## Historical
