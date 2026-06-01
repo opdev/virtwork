@@ -453,10 +453,10 @@ The codebase follows a strict layered architecture where each layer depends only
 | Layer | Packages | Goroutines | Purpose |
 |-------|----------|------------|---------|
 | 0 | `constants` | No | Pure values — API coordinates, labels, defaults |
-| 1 | `config`, `cloudinit`, `cluster`, `logging` | No | Configuration, cloud-init YAML, K8s client init, structured logging |
+| 1 | `config`, `cloudinit`, `cluster`, `logging`, `audit` | No | Configuration, cloud-init YAML, K8s client init, structured logging, audit tracking |
 | 2 | `vm`, `resources`, `wait` | Yes | K8s CRUD operations with retry, readiness polling |
 | 3 | `workloads` | No | Pure data producers — cloud-init specs, resource structs |
-| 4 | `cmd/virtwork`, `cleanup`, `audit` | Yes | Orchestration, teardown, and audit tracking |
+| 4 | `cmd/virtwork`, `orchestrator`, `cleanup` | Yes | Dependency wiring, orchestration, teardown |
 
 ### Concurrency Pattern
 
