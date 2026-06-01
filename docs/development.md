@@ -460,7 +460,7 @@ The codebase follows a strict layered architecture where each layer depends only
 
 ### Concurrency Pattern
 
-Go's native concurrency is used throughout. Parallel operations (VM creation, readiness polling, cleanup) use `errgroup.Group` for structured error handling, with `context.Context` for timeouts and cancellation.
+Go's native concurrency is used throughout. The `internal/orchestrator` package drives parallel VM creation and readiness polling via `errgroup.Group` for structured error handling, with `context.Context` for timeouts and cancellation.
 
 ```go
 g, ctx := errgroup.WithContext(ctx)
@@ -600,7 +600,7 @@ If your workload needs persistent storage inside the VM:
 1. Override `DataVolumeTemplates()` to return a CDI `DataVolume` for each volume needed. Use `vm.BuildDataVolumeTemplate(name, size)` from `internal/vm`.
 2. Override `ExtraVolumes()` and `ExtraDisks()` to wire the DataVolume into the VM. **Always set the `Serial` field on the `Disk`** — the in-VM script discovers the device through `/dev/disk/by-id/virtio-<serial>`, which is deterministic across reboots (unlike `/dev/vdX`, which is not).
 3. In your cloud-init userdata, write the shared `diskSetupScript(serial, mountPoint)` helper (from `internal/workloads/workload.go`) as the first script. It waits for the symlink, formats with XFS if empty, mounts, and writes `/etc/fstab` for persistence across reboots.
-4. The orchestrator's `namespaceDataVolumes` helper automatically suffixes DV template names with the VM name to avoid collisions across multiple VMs of the same workload. Your template name should be the un-suffixed base (e.g., `virtwork-chaos-disk-data`).
+4. The `NamespaceDataVolumes` helper in `internal/orchestrator/types.go` automatically suffixes DV template names with the VM name to avoid collisions across multiple VMs of the same workload. Your template name should be the un-suffixed base (e.g., `virtwork-chaos-disk-data`).
 
 Reference workloads: `disk.go` (single fio mount), `database.go` (PostgreSQL data dir), `chaos_disk.go` (fill/release loop). All three follow the same pattern.
 
