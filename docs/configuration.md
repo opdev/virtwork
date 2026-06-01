@@ -42,7 +42,7 @@ These apply to both `virtwork run` and `virtwork cleanup`.
 | Flag | Env Var | YAML Key | Default | Description |
 |---|---|---|---|---|
 | `--workloads` | — | _(handled via `workloads` map per-key)_ | All nine workloads, sorted: `chaos-disk, chaos-network, chaos-process, cpu, database, disk, memory, network, tps` | Comma-separated list of workloads to deploy |
-| `--vm-count` | — | `workloads.<name>.vm_count` | `1` | VMs per workload (multi-VM workloads multiply by `len(Roles())`, so 1 becomes 2 for network and tps) |
+| `--vm-count` | — | `workloads.<name>.vm_count` | `1` | VMs per workload (multi-VM workloads sum their `RoleDistribution()` counts, so 1 becomes 2 for network and tps) |
 | `--cpu-cores` | `VIRTWORK_CPU_CORES` | `cpu_cores` / `workloads.<name>.cpu_cores` | `2` | CPU cores per VM (per-workload override beats global) |
 | `--memory` | `VIRTWORK_MEMORY` | `memory` / `workloads.<name>.memory` | `2Gi` | Memory per VM |
 | `--disk-size` | `VIRTWORK_DATA_DISK_SIZE` | `data_disk_size` | `10Gi` | Data-disk size for storage-backed workloads (disk, database, chaos-disk) |
@@ -54,6 +54,7 @@ These apply to both `virtwork run` and `virtwork cleanup`.
 | `--ssh-password` | `VIRTWORK_SSH_PASSWORD` | `ssh_password` | _empty_ | Password for the SSH user (plain-text in the VM spec — prefer keys) |
 | `--ssh-key` | — | `ssh_authorized_keys` (YAML list) | _empty_ | Inline SSH public key; repeatable |
 | `--ssh-key-file` | — | _(handled as inline key after reading)_ | _empty_ | Path to a public key file; repeatable |
+| `--vm-concurrency` | `VIRTWORK_VM_CONCURRENCY` | `vm-concurrency` | `10` | Max concurrent VM creation operations |
 | _(env only)_ | `VIRTWORK_SSH_AUTHORIZED_KEYS` | `ssh_authorized_keys` | _empty_ | Comma-separated list of inline keys (env-var form) |
 
 > **Note:** `--ssh-key-file` is a CLI-only convenience that reads a public-key file from disk at runtime and merges its content into the `ssh_authorized_keys` list. There is no YAML or environment-variable equivalent — to configure SSH keys via YAML or `VIRTWORK_SSH_AUTHORIZED_KEYS`, supply the fully-realized public-key strings directly.
@@ -67,6 +68,7 @@ These apply to both `virtwork run` and `virtwork cleanup`.
 | `--delete-namespace` | — | — | `false` | Also delete the namespace itself after deleting managed resources |
 | `--run-id` | — | — | _empty_ | Limit cleanup to resources labeled `virtwork/run-id=<uuid>` |
 | `--dry-run` | — | — | `false` | Print intent without actually deleting |
+| `--yes` / `-y` | — | — | `false` | Skip confirmation prompt and proceed with cleanup |
 
 Global flags (`--namespace`, `--kubeconfig`, `--audit`, `--no-audit`, `--audit-db`, `--verbose`) also apply.
 
@@ -90,6 +92,7 @@ Global flags (`--namespace`, `--kubeconfig`, `--audit`, `--no-audit`, `--audit-d
 | `VIRTWORK_SSH_USER` | string | `virtwork` | flag-bound | SSH username |
 | `VIRTWORK_TIMEOUT` | int | `600` | flag-bound | Readiness timeout seconds |
 | `VIRTWORK_VERBOSE` | bool | `false` | flag-bound | Verbose logging |
+| `VIRTWORK_VM_CONCURRENCY` | int | `10` | flag-bound | Max concurrent VM creation operations |
 | `VIRTWORK_WAIT_FOR_READY` | bool | `true` | flag-bound | Inverse of `--no-wait` |
 | `VIRTWORK_COMMAND` | string | _empty_ | deployment only | In-pod auto-run command: `run`, `cleanup`, or empty (sleep). Read by `entrypoint.sh`, not Viper. |
 | `VIRTWORK_ARGS` | string | _empty_ | deployment only | Extra arguments when `VIRTWORK_COMMAND` is set. Read by `entrypoint.sh`, not Viper. |
