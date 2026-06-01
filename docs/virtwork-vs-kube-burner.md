@@ -66,9 +66,13 @@ Workloads deployed inside VMs:
 | `memory` | `stress-ng --vm 1 --vm-bytes 80%` | Sustained memory pressure at 80% |
 | `database` | PostgreSQL + `pgbench -c 10 -j 2 -T 300` | Realistic OLTP database transactions |
 | `network` | `iperf3 --bidir` (server + client VM pairs) | Bidirectional throughput between VMs |
+| `tps` | `netperf` + `curl` (server + client VM pairs) | Multi-port HTTP throughput with configurable file size, iterations, and duration |
 | `disk` | `fio` with mixed random + sequential profiles | Mixed I/O patterns on a dedicated data disk |
+| `chaos-disk` | `fallocate`/`dd` fill-release loop | Sustained disk-pressure events on a data disk |
+| `chaos-network` | `tc` + `netem` qdisc | Injected latency and packet loss on VM egress |
+| `chaos-process` | shell + `ps`/`kill` | Random process termination inside the VM |
 
-All workloads run as **systemd services** — they survive VM reboots and auto-restart on failure. They produce realistic CPU, memory, database, network, and disk I/O signals for monitoring systems to observe and validate.
+All workloads run as **systemd services** — they survive VM reboots and auto-restart on failure. They produce realistic CPU, memory, database, network, and disk I/O signals for monitoring systems to observe and validate. The three chaos workloads extend this by injecting failures — disk pressure, network degradation, process kills — that exercise a partner product's alerting, recovery, and resilience handling.
 
 #### virtwork layered architecture
 
