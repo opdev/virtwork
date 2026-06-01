@@ -518,9 +518,9 @@ func (w *MyWorkload) CloudInitUserdata() (string, error) {
 |--------|---------|---------------|
 | `ExtraVolumes()` | `nil` | VM needs additional volume mounts |
 | `ExtraDisks()` | `nil` | VM needs additional disk definitions |
-| `DataVolumeTemplates()` | `nil` | Workload needs persistent storage |
+| `DataVolumeTemplates()` | `nil, nil` | Workload needs persistent storage (returns `[]DataVolumeTemplateSpec, error`) |
 | `RequiresService()` | `false` | VMs need a K8s Service for communication |
-| `ServiceSpec(namespace)` | `nil` | Define the Service when `RequiresService()` is true |
+| `ServiceSpec()` | `nil` | Define the Service when `RequiresService()` is true |
 | `VMCount()` | `1` | Workload needs multiple VMs (e.g., server/client) |
 
 For multi-VM workloads with per-role userdata, implement the `MultiVMWorkload` interface:
