@@ -181,7 +181,7 @@ type Workload interface {
     VMResources() VMResourceSpec                           // "How many CPU cores and memory?"
     ExtraVolumes() []kubevirtv1.Volume                     // "Do you need extra volumes?"
     ExtraDisks() []kubevirtv1.Disk                         // "Do you need extra disks?"
-    DataVolumeTemplates() []kubevirtv1.DataVolumeTemplateSpec // "Do you need persistent storage?"
+    DataVolumeTemplates() ([]kubevirtv1.DataVolumeTemplateSpec, error) // "Do you need persistent storage?"
     RequiresService() bool                                 // "Do you need a K8s Service?"
     ServiceSpec() *corev1.Service                          // "What should that Service look like?"
     VMCount() int                                          // "How many VMs do you need?"
@@ -219,12 +219,12 @@ Concrete workloads embed `BaseWorkload` and only override what they need. This c
 | **Disk** | `DataVolumeTemplates`, `ExtraDisks`, `ExtraVolumes` (virtio Serial + `diskSetupScript`) | Medium |
 | **Database** | `DataVolumeTemplates`, `ExtraDisks`, `ExtraVolumes` (virtio Serial + `diskSetupScript`) | Medium |
 | **Chaos-disk** | `DataVolumeTemplates`, `ExtraDisks`, `ExtraVolumes` (virtio Serial + `diskSetupScript`) | Medium |
-| **Network** | `VMCount`, `Roles`, `UserdataForRole`, `RequiresService`, `ServiceSpec` (implements `MultiVMWorkload`) | Most complex |
-| **TPS** | `VMCount`, `Roles`, `UserdataForRole`, `RequiresService`, `ServiceSpec`, `Params` (implements `MultiVMWorkload`) | Most complex |
+| **Network** | `VMCount`, `RoleDistribution`, `UserdataForRole`, `RequiresService`, `ServiceSpec` (implements `MultiVMWorkload`) | Most complex |
+| **TPS** | `VMCount`, `RoleDistribution`, `UserdataForRole`, `RequiresService`, `ServiceSpec`, `Params` (implements `MultiVMWorkload`) | Most complex |
 
 The multi-VM workloads (network, tps) are the most involved — they create two VMs per configured count (a server and a client), need a Kubernetes Service for DNS routing between them, and generate different cloud-init YAML for each role.
 
-`MultiVMWorkload` extends `Workload` with `Roles()` and `UserdataForRole(role, namespace)`. The orchestrator type-asserts to this interface and dispatches per role; see [development.md](../development.md) for the implementation pattern.
+`MultiVMWorkload` extends `Workload` with `RoleDistribution()` and `UserdataForRole(role, namespace)`. `RoleDistribution()` returns `[]RoleSpec`, where each `RoleSpec` declares a role name and how many VMs that role needs. The orchestrator type-asserts to this interface and iterates the distribution to create the correct number of VMs per role; see [development.md](../development.md) for the implementation pattern.
 
 ```mermaid
 flowchart LR
@@ -272,7 +272,8 @@ If you want to dig deeper into how each component works:
 | How workloads define themselves | `internal/workloads/` — `Workload` and `MultiVMWorkload` interfaces in `workload.go`; implementations in `cpu.go`, `memory.go`, `disk.go`, `database.go`, `network.go`, `tps.go`, `chaos_disk.go`, `chaos_network.go`, `chaos_process.go` |
 | The `diskSetupScript` helper for storage-backed workloads | `internal/workloads/workload.go` — generates the wait/format/mount/fstab script for `/dev/disk/by-id/virtio-<serial>` |
 | How VMs are built from workload data | `internal/vm/vm.go` — `BuildVMSpec()` and `CreateVM()` |
-| The CLI orchestration flow | `cmd/virtwork/main.go` — `runE()` and `cleanupE()`, including `namespaceDataVolumes` for per-VM DV naming |
+| The run orchestration flow | `internal/orchestrator/orchestrator.go` — `RunOrchestrator.Run()` coordinates planning, resource creation, and readiness; `NamespaceDataVolumes` for per-VM DV naming is in `internal/orchestrator/types.go` |
+| The CLI entry point | `cmd/virtwork/main.go` — `runE()` and `cleanupE()` wire dependencies and delegate to the orchestrator |
 | Configuration loading | `internal/config/config.go` — `LoadConfig()` with Viper |
 | Cloud-init YAML generation | `internal/cloudinit/cloudinit.go` — `BuildCloudConfig()` |
 | Resource helpers (namespace, service, secret) | `internal/resources/resources.go` |

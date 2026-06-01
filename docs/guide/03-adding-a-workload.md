@@ -15,7 +15,7 @@ This is a good first workload because it exercises the core `Workload` interface
 
 ## Before You Start
 
-- Go 1.25+ installed
+- Go 1.26+ installed
 - Ginkgo CLI installed: `go install github.com/onsi/ginkgo/v2/ginkgo@latest`
 - Read [How Virtwork Works](01-overview.md) to understand the workload interface
 - See [docs/development.md](../development.md) for environment setup
@@ -303,29 +303,12 @@ All `HTTPWorkload` tests should pass, and existing workload tests remain green.
 
 ## Step 4: Register the Workload
 
-The workload exists but the CLI doesn't know about it yet. Two changes are needed in `internal/workloads/registry.go`.
-
-### Add to AllWorkloadNames
-
-```go
-// Before:
-var AllWorkloadNames = []string{"cpu", "database", "disk", "memory", "network"}
-
-// After:
-var AllWorkloadNames = []string{"cpu", "database", "disk", "http", "memory", "network"}
-```
-
-Keep the list alphabetically sorted.
-
-### Add the factory to DefaultRegistry
+The workload exists but the CLI doesn't know about it yet. Add its factory to `DefaultRegistry()` in `internal/workloads/registry.go`:
 
 ```go
 func DefaultRegistry() Registry {
 	return Registry{
-		"cpu": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-			return NewCPUWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
-		},
-		// ... existing entries ...
+		// ... existing entries (chaos-disk, chaos-network, chaos-process, cpu, database, disk, memory, network, tps) ...
 		"http": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
 			return NewHTTPWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
 		},
@@ -334,17 +317,19 @@ func DefaultRegistry() Registry {
 }
 ```
 
+That's the only change needed — `AllWorkloadNames()` is a function that derives its list from `DefaultRegistry().List()`, so adding the factory automatically includes `"http"` in the workload name list.
+
 ### Update affected tests
 
 Adding a workload to the registry changes two things that existing tests verify:
 
-1. **Registry tests** — The count of registered workloads increases from 5 to 6, and `List()` returns a different slice.
+1. **Registry tests** — The count of registered workloads increases (currently 9 → 10), and `List()` returns a different slice.
 2. **Orchestration tests** — If the default `--workloads` flag includes all workload names, the total VM count changes.
 
 Search for these assertions and update them:
 
 ```bash
-grep -rn "AllWorkloadNames\|Len(5)\|HaveLen(5)" internal/ cmd/
+grep -rn "AllWorkloadNames\|Len(9)\|HaveLen(9)" internal/ cmd/
 ```
 
 Update any hard-coded counts to reflect the new workload.
@@ -472,13 +457,13 @@ If your workload needs persistent storage (for example, a workload that writes b
 
 ```go
 // DataVolumeTemplates returns a CDI DataVolumeTemplateSpec. The orchestrator
-// suffixes the template name with the VM name (namespaceDataVolumes in
-// cmd/virtwork/main.go) to avoid collisions when --vm-count > 1, so use the
-// un-suffixed base name here.
-func (w *MyWorkload) DataVolumeTemplates() []kubevirtv1.DataVolumeTemplateSpec {
+// suffixes the template name with the VM name (NamespaceDataVolumes in
+// internal/orchestrator/types.go) to avoid collisions when --vm-count > 1,
+// so use the un-suffixed base name here.
+func (w *MyWorkload) DataVolumeTemplates() ([]kubevirtv1.DataVolumeTemplateSpec, error) {
     return []kubevirtv1.DataVolumeTemplateSpec{
         vm.BuildDataVolumeTemplate("my-data", w.DataDiskSize),
-    }
+    }, nil
 }
 
 // ExtraDisks adds the disk definition to the VM spec. ALWAYS set the Serial
@@ -536,13 +521,13 @@ return w.BuildCloudConfig(CloudConfigOpts{
 If your workload needs more than one role of VM (a server and one or more clients, for example), implement the `MultiVMWorkload` interface. The two canonical references are `internal/workloads/network.go` (simplest — one Service port, iperf3) and `internal/workloads/tps.go` (multi-port Service with configurable `Params` for `file-size`, `iterations`, `duration`).
 
 1. Add a `Namespace` field to your struct — the client needs it to build the server's in-cluster DNS name.
-2. Implement `Roles() []string` (e.g., `[]string{"server", "client"}`).
+2. Implement `RoleDistribution() []RoleSpec` — return a slice of `RoleSpec{Role: "server", VMCount: 1}` entries declaring how many VMs each role needs.
 3. Implement `UserdataForRole(role, namespace) (string, error)` — return different cloud-init YAML per role. The orchestrator dispatches per role; the client constructs `<service>.<namespace>.svc.cluster.local` and never polls for pod IPs.
-4. Override `VMCount()` to return `count * len(Roles())` so the orchestrator creates the right number of VMs.
+4. Override `VMCount()` to return the sum of all `RoleSpec.VMCount` values from `RoleDistribution()`.
 5. Override `RequiresService()` to return `true`.
 6. Implement `ServiceSpec()` to create a ClusterIP Service. Its selector should match `virtwork/role: server` (and ideally `app.kubernetes.io/component: <your-workload>`) — the orchestrator applies the `virtwork/role` label to each VM automatically.
 
-The orchestrator detects `MultiVMWorkload` via type assertion and calls `UserdataForRole()` per role/instance instead of `CloudInitUserdata()`.
+The orchestrator detects `MultiVMWorkload` via type assertion, iterates `RoleDistribution()`, and calls `UserdataForRole()` for each role/instance instead of `CloudInitUserdata()`.
 
 ### Workload Complexity Spectrum
 
@@ -550,7 +535,7 @@ The orchestrator detects `MultiVMWorkload` via type assertion and calls `Userdat
 flowchart LR
     A["<b>Simple</b><br/>CPU, Memory, Chaos-process<br/><i>Name + CloudInit only</i>"]
     B["<b>With Storage</b><br/>Disk, Database, Chaos-disk<br/><i>+ DataVolumeTemplates<br/>+ ExtraDisks (with Serial)<br/>+ ExtraVolumes<br/>+ diskSetupScript</i>"]
-    C["<b>Multi-VM</b><br/>Network, TPS<br/><i>+ MultiVMWorkload<br/>(Roles, UserdataForRole)<br/>+ Service + VMCount</i>"]
+    C["<b>Multi-VM</b><br/>Network, TPS<br/><i>+ MultiVMWorkload<br/>(RoleDistribution, UserdataForRole)<br/>+ Service + VMCount</i>"]
     A --> B --> C
 ```
 
@@ -575,9 +560,9 @@ Before submitting a new workload, verify:
 
 **If multi-VM:**
 
-- [ ] Implements `Roles() []string`
+- [ ] Implements `RoleDistribution() []RoleSpec`
 - [ ] Implements `UserdataForRole(role, namespace) (string, error)`
-- [ ] `VMCount()` returns `Config.VMCount * len(Roles())`
+- [ ] `VMCount()` returns the sum of all `RoleSpec.VMCount` values from `RoleDistribution()`
 - [ ] `ServiceSpec().Spec.Selector` includes `virtwork/role: <server-role>` and `app.kubernetes.io/component: <name>`
 - [ ] Client userdata builds the server DNS as `<service>.<namespace>.svc.cluster.local`
 
