@@ -245,7 +245,7 @@ sequenceDiagram
     Eng->>KB: virt-density run
     KB-->>Eng: ✓ Boot latency acceptable<br/>✓ Cluster handles VM density
 
-    Eng->>VW: virtwork run --workloads cpu,memory,database,network,disk
+    Eng->>VW: virtwork run
     VW-->>Eng: ✓ VMs created<br/>✓ systemd services started<br/>✓ Run ID logged to SQLite
     Note over VW: virtwork exits — systemd<br/>keeps workloads running
 
@@ -302,15 +302,25 @@ workloads:
     vm_count: 2
     cpu_cores: 4
     memory: 4Gi
+  memory:
+    enabled: true
+  disk:
+    enabled: true
   database:
     enabled: true
     cpu_cores: 2
     memory: 4Gi
   network:
-    enabled: true    # creates N×2 VMs: server + client pairs
-  disk:
+    enabled: true    # creates server + client VM pairs
+  tps:
     enabled: true
-  memory:
+    params:
+      file-size: "50M"
+  chaos-disk:
+    enabled: true
+  chaos-network:
+    enabled: true
+  chaos-process:
     enabled: true
 ```
 
