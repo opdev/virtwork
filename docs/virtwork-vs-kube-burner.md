@@ -119,7 +119,7 @@ Strict layering: no cross-layer dependencies. Each layer only depends on the lay
 | **Monitoring role** | Scrapes cluster metrics, indexes to ES/OpenSearch/local | Produces metrics *for* external monitoring tools to scrape                                |
 | **SSH access** | Via `virtctl ssh` in virt-density tests | First-class: `--ssh-user`, `--ssh-key-file`; `virtctl ssh` or port-forward                |
 | **Deployment** | Binary or container, runs externally to cluster | Binary or Kustomize-deployed pod running in-cluster                                       |
-| **Maturity** | Active, community-maintained, CNCF-adjacent | Beta (0 stars, 58 commits, 2 contributors as of Feb 2026)                                 |
+| **Maturity** | Active, community-maintained, CNCF-adjacent | Active development                                                                        |
 
 ---
 
@@ -336,7 +336,7 @@ Used together, the two tools cover the full picture: kube-burner establishes tha
 - [kube-burner Configuration Reference — KubeVirt](https://kube-burner.github.io/kube-burner/latest/reference/configuration/#kubevirt)
 - [kube-burner-ocp GitHub](https://github.com/kube-burner/kube-burner-ocp)
 - [kube-burner-ocp Virt Workloads Docs](https://kube-burner.github.io/kube-burner-ocp/latest/)
-- [virtwork GitHub](https://github.com/redhat-openshift-partner-labs/virtwork)
+- [virtwork GitHub](https://github.com/opdev/virtwork)
 - [OpenShift Partner Lab Overview](https://connect.redhat.com/en/blog/the-openshift-partner-lab)
 - [Red Hat Virt Density Blog — kube-burner usage](https://developers.redhat.com/blog/2025/11/17/high-scale-performance-testing-virt-density)
 - [Use kube-burner to measure OpenShift VM and storage deployment at scale](https://developers.redhat.com/articles/2024/09/04/use-kube-burner-measure-red-hat-openshift-vm-and-storage-deployment-scale)
