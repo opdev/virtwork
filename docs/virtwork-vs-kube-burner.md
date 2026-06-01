@@ -74,10 +74,10 @@ All workloads run as **systemd services** — they survive VM reboots and auto-r
 
 ```mermaid
 graph TD
-    L4["Layer 4 — Orchestration<br/><code>cmd/virtwork · cleanup · audit</code>"]
-    L3["Layer 3 — Workload Definitions<br/><code>interface · cpu · memory · database · network · disk · registry</code>"]
+    L4["Layer 4 — Orchestration<br/><code>cmd/virtwork · orchestrator · cleanup</code>"]
+    L3["Layer 3 — Workload Definitions<br/><code>interface · cpu · memory · disk · database · network · tps · chaos-* · registry</code>"]
     L2["Layer 2 — K8s Abstractions<br/><code>vm · resources · wait</code>"]
-    L1["Layer 1 — Infrastructure<br/><code>config · cluster · cloudinit</code>"]
+    L1["Layer 1 — Infrastructure<br/><code>config · cluster · cloudinit · logging · audit</code>"]
     L0["Layer 0 — Definitions<br/><code>constants</code>"]
 
     L4 --> L3 --> L2 --> L1 --> L0
