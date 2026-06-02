@@ -80,7 +80,17 @@ var _ = Describe("RunOrchestrator", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result).NotTo(BeNil())
 				Expect(result.VMCount).To(Equal(1))
-				Expect(buf.String()).To(ContainSubstring("virtwork-cpu-0"))
+
+				output := buf.String()
+				Expect(output).To(ContainSubstring("virtwork-cpu-0"))
+
+				By("rendering VMs with secretRef instead of inline userData")
+				Expect(output).To(ContainSubstring("secretRef:"))
+				Expect(output).To(ContainSubstring("name: virtwork-cpu-0-cloudinit"))
+
+				By("rendering cloud-init Secret YAML")
+				Expect(output).To(ContainSubstring("kind: Secret"))
+				Expect(output).To(ContainSubstring("virtwork-cpu-0-cloudinit"))
 			})
 
 			It("should handle multiple workloads in dry-run", func() {
@@ -109,6 +119,15 @@ var _ = Describe("RunOrchestrator", func() {
 				Expect(err).NotTo(HaveOccurred())
 				// network workload with VMCount=2 creates 4 VMs (2 server + 2 client)
 				Expect(result.VMCount).To(Equal(4))
+
+				output := buf.String()
+
+				By("rendering Service YAML for workloads that require it")
+				Expect(output).To(ContainSubstring("kind: Service"))
+
+				By("rendering Secrets for each VM")
+				Expect(output).To(ContainSubstring("virtwork-network-server-0-cloudinit"))
+				Expect(output).To(ContainSubstring("virtwork-network-client-0-cloudinit"))
 			})
 		})
 

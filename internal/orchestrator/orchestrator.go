@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	sigyaml "sigs.k8s.io/yaml"
 
@@ -90,7 +92,7 @@ func (ro *RunOrchestrator) Run(
 	}
 
 	if cfg.DryRun {
-		if err := ro.printDryRun(plans); err != nil {
+		if err := ro.printDryRun(plans, workloadInstances, runID); err != nil {
 			return nil, err
 		}
 		return &RunResult{
@@ -623,8 +625,65 @@ func (ro *RunOrchestrator) waitForReadiness(
 	return nil
 }
 
-func (ro *RunOrchestrator) printDryRun(plans []VMPlan) error {
+func (ro *RunOrchestrator) printDryRun(
+	plans []VMPlan,
+	workloadInstances map[string]workloads.Workload,
+	runID string,
+) error {
+	cfg := ro.config
 	ro.logger.Info("dry run mode", slog.Int("total_vms", len(plans)))
+
+	for name, w := range workloadInstances {
+		if w.RequiresService() {
+			svc := w.ServiceSpec()
+			if svc != nil {
+				svc.TypeMeta = metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Service",
+				}
+				if svc.Labels == nil {
+					svc.Labels = make(map[string]string)
+				}
+				svc.Labels[constants.LabelRunID] = runID
+
+				data, err := sigyaml.Marshal(svc)
+				if err != nil {
+					return fmt.Errorf("marshaling Service for %q: %w", name, err)
+				}
+				_, _ = fmt.Fprintf(ro.writer, "# Service: %s (workload: %s)\n%s\n%s\n", svc.Name, name, string(data), "---")
+			}
+		}
+	}
+
+	for i := range plans {
+		secretName := plans[i].VMName + "-cloudinit"
+		plans[i].VMSpec.CloudInitSecretName = secretName
+
+		secret := &corev1.Secret{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "v1",
+				Kind:       "Secret",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      secretName,
+				Namespace: cfg.Namespace,
+				Labels: map[string]string{
+					constants.LabelAppName:   plans[i].VMSpec.Labels[constants.LabelAppName],
+					constants.LabelManagedBy: constants.ManagedByValue,
+					constants.LabelComponent: plans[i].Component,
+					constants.LabelRunID:     runID,
+				},
+			},
+			StringData: map[string]string{
+				constants.SecretKeyUserdata: plans[i].VMSpec.CloudInitUserdata,
+			},
+		}
+		data, err := sigyaml.Marshal(secret)
+		if err != nil {
+			return fmt.Errorf("marshaling Secret for %q: %w", plans[i].VMName, err)
+		}
+		_, _ = fmt.Fprintf(ro.writer, "# Secret: %s (workload: %s)\n%s\n%s\n", secretName, plans[i].Component, string(data), "---")
+	}
 
 	for _, p := range plans {
 		vmObj, err := vm.BuildVMSpec(vm.VMSpecOpts{
