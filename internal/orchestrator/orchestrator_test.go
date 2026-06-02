@@ -80,6 +80,8 @@ var _ = Describe("RunOrchestrator", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result).NotTo(BeNil())
 				Expect(result.VMCount).To(Equal(1))
+				Expect(result.SecretCount).To(Equal(1))
+				Expect(result.ServiceCount).To(Equal(0))
 
 				output := buf.String()
 				Expect(output).To(ContainSubstring("virtwork-cpu-0"))
@@ -119,6 +121,8 @@ var _ = Describe("RunOrchestrator", func() {
 				Expect(err).NotTo(HaveOccurred())
 				// network workload with VMCount=2 creates 4 VMs (2 server + 2 client)
 				Expect(result.VMCount).To(Equal(4))
+				Expect(result.SecretCount).To(Equal(4))
+				Expect(result.ServiceCount).To(Equal(1))
 
 				output := buf.String()
 

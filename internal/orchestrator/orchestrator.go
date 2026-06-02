@@ -92,12 +92,15 @@ func (ro *RunOrchestrator) Run(
 	}
 
 	if cfg.DryRun {
-		if err := ro.printDryRun(plans, workloadInstances, runID); err != nil {
+		svcCount, secretCount, err := ro.printDryRun(plans, workloadInstances, runID)
+		if err != nil {
 			return nil, err
 		}
 		return &RunResult{
-			RunID:   runID,
-			VMCount: len(plans),
+			RunID:        runID,
+			VMCount:      len(plans),
+			ServiceCount: svcCount,
+			SecretCount:  secretCount,
 		}, nil
 	}
 
@@ -629,10 +632,11 @@ func (ro *RunOrchestrator) printDryRun(
 	plans []VMPlan,
 	workloadInstances map[string]workloads.Workload,
 	runID string,
-) error {
+) (int, int, error) {
 	cfg := ro.config
 	ro.logger.Info("dry run mode", slog.Int("total_vms", len(plans)))
 
+	svcCount := 0
 	for name, w := range workloadInstances {
 		if w.RequiresService() {
 			svc := w.ServiceSpec()
@@ -648,9 +652,10 @@ func (ro *RunOrchestrator) printDryRun(
 
 				data, err := sigyaml.Marshal(svc)
 				if err != nil {
-					return fmt.Errorf("marshaling Service for %q: %w", name, err)
+					return 0, 0, fmt.Errorf("marshaling Service for %q: %w", name, err)
 				}
 				_, _ = fmt.Fprintf(ro.writer, "# Service: %s (workload: %s)\n%s\n%s\n", svc.Name, name, string(data), "---")
+				svcCount++
 			}
 		}
 	}
@@ -680,7 +685,7 @@ func (ro *RunOrchestrator) printDryRun(
 		}
 		data, err := sigyaml.Marshal(secret)
 		if err != nil {
-			return fmt.Errorf("marshaling Secret for %q: %w", plans[i].VMName, err)
+			return 0, 0, fmt.Errorf("marshaling Secret for %q: %w", plans[i].VMName, err)
 		}
 		_, _ = fmt.Fprintf(ro.writer, "# Secret: %s (workload: %s)\n%s\n%s\n", secretName, plans[i].Component, string(data), "---")
 	}
@@ -700,13 +705,13 @@ func (ro *RunOrchestrator) printDryRun(
 			DataVolumeTemplates: p.VMSpec.DataVolumeTemplates,
 		})
 		if err != nil {
-			return fmt.Errorf("building VM spec for %q: %w", p.VMName, err)
+			return 0, 0, fmt.Errorf("building VM spec for %q: %w", p.VMName, err)
 		}
 		data, err := sigyaml.Marshal(vmObj)
 		if err != nil {
-			return fmt.Errorf("marshaling VM spec for %q: %w", p.VMName, err)
+			return 0, 0, fmt.Errorf("marshaling VM spec for %q: %w", p.VMName, err)
 		}
 		_, _ = fmt.Fprintf(ro.writer, "# VM: %s (workload: %s)\n%s\n%s\n", p.VMName, p.Component, string(data), "---")
 	}
-	return nil
+	return svcCount, len(plans), nil
 }
