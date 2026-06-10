@@ -31,13 +31,6 @@ Targeted references — read when you need a specific fact.
 - [documentation-audit.md](documentation-audit.md) — Runbook for checking documentation against the codebase; cross-reference checklist, common drift patterns, and workflow
 - [../build/golden-image/README.md](../build/golden-image/README.md) — Building and using the optional Fedora-based golden container disk image with pre-installed workload tools
 
-## Historical
-
-These documents capture earlier project state and are intentionally not updated. They are preserved as context.
-
-- [implementation-plan.md](implementation-plan.md) — Original phased build plan (phases 0–12), pre-chaos / pre-tps / pre-logging
-- [openshift-virtualization-workload-automation.md](openshift-virtualization-workload-automation.md) — Original design rationale, written before any application code existed
-
 ---
 
 > **Conventions for this directory**
