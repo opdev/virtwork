@@ -67,9 +67,17 @@ func (co *CleanupOrchestrator) Execute(
 ) (*cleanup.CleanupResult, error) {
 	if err := co.auditor.RecordEvent(ctx, execID, audit.EventRecord{
 		EventType: "cleanup_started",
-		Message:   fmt.Sprintf("Starting cleanup (namespace: %s, run-id filter: %q)", co.config.Namespace, runID),
+		Message: fmt.Sprintf(
+			"Starting cleanup (namespace: %s, run-id filter: %q)",
+			co.config.Namespace,
+			runID,
+		),
 	}); err != nil {
-		co.logger.Warn("audit record failed", slog.String("op", "RecordEvent"), slog.String("error", err.Error()))
+		co.logger.Warn(
+			"audit record failed",
+			slog.String("op", "RecordEvent"),
+			slog.String("error", err.Error()),
+		)
 	}
 
 	result, err := cleanup.CleanupAll(ctx, co.client, co.config, deleteNamespace, runID)
@@ -87,6 +95,8 @@ func (co *CleanupOrchestrator) Execute(
 		}
 	}
 
+	co.markDeletionsInAudit(ctx, result)
+
 	if auditErr := co.auditor.RecordCleanupCounts(ctx, execID,
 		result.VMsDeleted, result.ServicesDeleted, result.SecretsDeleted,
 		result.DVsDeleted, result.PVCsDeleted, result.NamespaceDeleted); auditErr != nil {
@@ -103,8 +113,61 @@ func (co *CleanupOrchestrator) Execute(
 			result.VMsDeleted, result.ServicesDeleted, result.SecretsDeleted,
 			result.DVsDeleted, result.PVCsDeleted),
 	}); auditErr != nil {
-		co.logger.Warn("audit record failed", slog.String("op", "RecordEvent"), slog.String("error", auditErr.Error()))
+		co.logger.Warn(
+			"audit record failed",
+			slog.String("op", "RecordEvent"),
+			slog.String("error", auditErr.Error()),
+		)
 	}
 
 	return result, nil
+}
+
+func (co *CleanupOrchestrator) markDeletionsInAudit(
+	ctx context.Context,
+	result *cleanup.CleanupResult,
+) {
+	ns := co.config.Namespace
+
+	if len(result.DeletedVMNames) > 0 && len(result.RunIDs) > 0 {
+		if err := co.auditor.MarkVMsDeletedByName(
+			ctx,
+			result.DeletedVMNames,
+			ns,
+			result.RunIDs,
+		); err != nil {
+			co.logger.Warn(
+				"audit record failed",
+				slog.String("op", "MarkVMsDeletedByName"),
+				slog.String("error", err.Error()),
+			)
+		}
+	}
+
+	for _, rt := range []struct {
+		typ   string
+		names []string
+	}{
+		{"Service", result.DeletedServiceNames},
+		{"Secret", result.DeletedSecretNames},
+		{"DataVolume", result.DeletedDVNames},
+		{"PersistentVolumeClaim", result.DeletedPVCNames},
+	} {
+		if len(rt.names) > 0 && len(result.RunIDs) > 0 {
+			if err := co.auditor.MarkResourcesDeletedByName(
+				ctx,
+				rt.typ,
+				rt.names,
+				ns,
+				result.RunIDs,
+			); err != nil {
+				co.logger.Warn(
+					"audit record failed",
+					slog.String("op", "MarkResourcesDeletedByName"),
+					slog.String("type", rt.typ),
+					slog.String("error", err.Error()),
+				)
+			}
+		}
+	}
 }

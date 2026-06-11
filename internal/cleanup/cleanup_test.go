@@ -686,6 +686,49 @@ var _ = Describe("CleanupAll", func() {
 		Expect(result.Errors).To(BeEmpty())
 	})
 
+	It("should track deleted resource names", func() {
+		vm1 := newManagedVM("vm-1")
+		vm2 := newManagedVM("vm-2")
+		svc1 := newManagedService("svc-1")
+		sec1 := newManagedSecret("sec-1")
+		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(vm1, vm2, svc1, sec1).Build()
+
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.DeletedVMNames).To(ConsistOf("vm-1", "vm-2"))
+		Expect(result.DeletedServiceNames).To(ConsistOf("svc-1"))
+		Expect(result.DeletedSecretNames).To(ConsistOf("sec-1"))
+		Expect(result.DeletedDVNames).To(BeEmpty())
+		Expect(result.DeletedPVCNames).To(BeEmpty())
+	})
+
+	// nolint: dupl
+	It("should not include failed deletions in name lists", func() {
+		vm1 := newManagedVM("vm-1")
+		vm2 := newManagedVM("vm-2")
+		callCount := 0
+		c := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(vm1, vm2).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Delete: func(ctx context.Context, cl client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
+					if _, ok := obj.(*kubevirtv1.VirtualMachine); ok {
+						callCount++
+						if callCount == 1 {
+							return fmt.Errorf("VM deletion; %w", ErrDeleteResource)
+						}
+					}
+					return cl.Delete(ctx, obj, opts...)
+				},
+			}).
+			Build()
+
+		result, err := cleanup.CleanupAll(ctx, c, &config.Config{Namespace: namespace}, false, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.DeletedVMNames).To(HaveLen(1))
+		Expect(result.VMsDeleted).To(Equal(1))
+	})
+
 	It("should handle empty namespace gracefully", func() {
 		c := fake.NewClientBuilder().WithScheme(scheme).Build()
 

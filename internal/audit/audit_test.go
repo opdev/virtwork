@@ -314,6 +314,149 @@ var _ = Describe("SQLiteAuditor", func() {
 		})
 	})
 
+	Describe("MarkVMsDeletedByName", func() {
+		It("marks matching VMs as deleted scoped by runID", func() {
+			cfg := &config.Config{Namespace: "test-ns"}
+			execID1, runID1, err := auditor.StartExecution(ctx, "run", cfg)
+			Expect(err).NotTo(HaveOccurred())
+
+			wlID1, err := auditor.RecordWorkload(ctx, execID1, audit.WorkloadRecord{
+				WorkloadType: "cpu", Enabled: true, VMCount: 2, CPUCores: 2, Memory: "2Gi",
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			vm1ID, err := auditor.RecordVM(ctx, execID1, wlID1, audit.VMRecord{
+				VMName: "virtwork-cpu-0", Namespace: "test-ns", Component: "cpu",
+				CPUCores: 2, Memory: "2Gi", ContainerDiskImage: "img",
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			vm2ID, err := auditor.RecordVM(ctx, execID1, wlID1, audit.VMRecord{
+				VMName: "virtwork-cpu-1", Namespace: "test-ns", Component: "cpu",
+				CPUCores: 2, Memory: "2Gi", ContainerDiskImage: "img",
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Create a second run with the same VM name — should NOT be affected
+			execID2, _, err := auditor.StartExecution(ctx, "run", cfg)
+			Expect(err).NotTo(HaveOccurred())
+
+			wlID2, err := auditor.RecordWorkload(ctx, execID2, audit.WorkloadRecord{
+				WorkloadType: "cpu", Enabled: true, VMCount: 1, CPUCores: 2, Memory: "2Gi",
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			otherRunVMID, err := auditor.RecordVM(ctx, execID2, wlID2, audit.VMRecord{
+				VMName: "virtwork-cpu-0", Namespace: "test-ns", Component: "cpu",
+				CPUCores: 2, Memory: "2Gi", ContainerDiskImage: "img",
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(auditor.MarkVMsDeletedByName(ctx,
+				[]string{"virtwork-cpu-0", "virtwork-cpu-1"},
+				"test-ns",
+				[]string{runID1},
+			)).To(Succeed())
+
+			db := auditor.DB()
+
+			// Both VMs from run 1 should be deleted
+			for _, vmID := range []int64{vm1ID, vm2ID} {
+				var status string
+				var deletedAt sql.NullString
+				err = db.QueryRow(`SELECT status, deleted_at FROM vm_details WHERE id = ?`, vmID).
+					Scan(&status, &deletedAt)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(status).To(Equal("deleted"))
+				Expect(deletedAt.Valid).To(BeTrue())
+			}
+
+			// VM from run 2 should remain untouched
+			var otherStatus string
+			err = db.QueryRow(`SELECT status FROM vm_details WHERE id = ?`, otherRunVMID).Scan(&otherStatus)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(otherStatus).To(Equal("created"))
+		})
+
+		It("is a no-op when vmNames is empty", func() {
+			cfg := &config.Config{Namespace: "test-ns"}
+			_, runID, err := auditor.StartExecution(ctx, "run", cfg)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(auditor.MarkVMsDeletedByName(ctx, []string{}, "test-ns", []string{runID})).To(Succeed())
+		})
+
+		It("is a no-op when runIDs is empty", func() {
+			Expect(auditor.MarkVMsDeletedByName(ctx, []string{"virtwork-cpu-0"}, "test-ns", []string{})).To(Succeed())
+		})
+	})
+
+	Describe("MarkResourcesDeletedByName", func() {
+		It("marks matching resources as deleted scoped by type and runID", func() {
+			cfg := &config.Config{Namespace: "test-ns"}
+			execID1, runID1, err := auditor.StartExecution(ctx, "run", cfg)
+			Expect(err).NotTo(HaveOccurred())
+
+			secretID, err := auditor.RecordResource(ctx, execID1, audit.ResourceRecord{
+				ResourceType: "Secret", ResourceName: "virtwork-cpu-0-cloudinit", Namespace: "test-ns",
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			svcID, err := auditor.RecordResource(ctx, execID1, audit.ResourceRecord{
+				ResourceType: "Service", ResourceName: "virtwork-iperf3-server", Namespace: "test-ns",
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Second run — same secret name, should NOT be affected
+			execID2, _, err := auditor.StartExecution(ctx, "run", cfg)
+			Expect(err).NotTo(HaveOccurred())
+
+			otherSecretID, err := auditor.RecordResource(ctx, execID2, audit.ResourceRecord{
+				ResourceType: "Secret", ResourceName: "virtwork-cpu-0-cloudinit", Namespace: "test-ns",
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			// Mark only Secrets from run 1 as deleted
+			Expect(auditor.MarkResourcesDeletedByName(ctx,
+				"Secret",
+				[]string{"virtwork-cpu-0-cloudinit"},
+				"test-ns",
+				[]string{runID1},
+			)).To(Succeed())
+
+			db := auditor.DB()
+
+			// Secret from run 1 should be deleted
+			var status string
+			var deletedAt sql.NullString
+			err = db.QueryRow(`SELECT status, deleted_at FROM resource_details WHERE id = ?`, secretID).
+				Scan(&status, &deletedAt)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(status).To(Equal("deleted"))
+			Expect(deletedAt.Valid).To(BeTrue())
+
+			// Service from run 1 should NOT be affected (different type)
+			err = db.QueryRow(`SELECT status FROM resource_details WHERE id = ?`, svcID).Scan(&status)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(status).To(Equal("created"))
+
+			// Secret from run 2 should NOT be affected
+			err = db.QueryRow(`SELECT status FROM resource_details WHERE id = ?`, otherSecretID).Scan(&status)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(status).To(Equal("created"))
+		})
+
+		It("is a no-op when names is empty", func() {
+			cfg := &config.Config{Namespace: "test-ns"}
+			_, runID, err := auditor.StartExecution(ctx, "run", cfg)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(auditor.MarkResourcesDeletedByName(
+				ctx, "Secret", []string{}, "test-ns", []string{runID}),
+			).To(Succeed())
+		})
+	})
+
 	Describe("event recording", func() {
 		It("records events with optional VM and workload IDs", func() {
 			cfg := &config.Config{Namespace: "test-ns"}
@@ -559,6 +702,9 @@ var _ = Describe("NoOpAuditor", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(resID).To(Equal(int64(0)))
 		Expect(a.RecordResourceDeletion(ctx, 0)).To(Succeed())
+
+		Expect(a.MarkVMsDeletedByName(ctx, []string{"vm-0"}, "ns", []string{"run-1"})).To(Succeed())
+		Expect(a.MarkResourcesDeletedByName(ctx, "Secret", []string{"s-0"}, "ns", []string{"run-1"})).To(Succeed())
 
 		Expect(a.RecordEvent(ctx, 0, audit.EventRecord{})).To(Succeed())
 		Expect(a.Close()).To(Succeed())
