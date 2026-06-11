@@ -22,7 +22,11 @@ import (
 // Auditor defines the contract for recording execution audit data.
 type Auditor interface {
 	// StartExecution creates an audit_log row and returns its ID and generated run UUID.
-	StartExecution(ctx context.Context, cmd string, cfg *config.Config) (executionID int64, runID string, err error)
+	StartExecution(
+		ctx context.Context,
+		cmd string,
+		cfg *config.Config,
+	) (executionID int64, runID string, err error)
 	// CompleteExecution finalises the audit_log row with status and optional error summary.
 	CompleteExecution(ctx context.Context, id int64, status string, errSummary string) error
 	// LinkCleanupToRuns sets linked_run_ids on a cleanup audit_log row.
@@ -36,21 +40,52 @@ type Auditor interface {
 	) error
 
 	// RecordWorkload inserts a workload_details row.
-	RecordWorkload(ctx context.Context, executionID int64, w WorkloadRecord) (workloadID int64, err error)
+	RecordWorkload(
+		ctx context.Context,
+		executionID int64,
+		w WorkloadRecord,
+	) (workloadID int64, err error)
 	// UpdateWorkloadStatus updates the status and completed_at of a workload_details row.
 	UpdateWorkloadStatus(ctx context.Context, id int64, status string) error
 
 	// RecordVM inserts a vm_details row.
-	RecordVM(ctx context.Context, executionID int64, workloadID int64, v VMRecord) (vmID int64, err error)
+	RecordVM(
+		ctx context.Context,
+		executionID int64,
+		workloadID int64,
+		v VMRecord,
+	) (vmID int64, err error)
 	// UpdateVMStatus updates phase and status on a vm_details row.
 	UpdateVMStatus(ctx context.Context, id int64, phase string, status string) error
 	// RecordVMDeletion sets deleted_at and status='deleted' on a vm_details row.
 	RecordVMDeletion(ctx context.Context, id int64) error
 
 	// RecordResource inserts a resource_details row.
-	RecordResource(ctx context.Context, executionID int64, r ResourceRecord) (resourceID int64, err error)
+	RecordResource(
+		ctx context.Context,
+		executionID int64,
+		r ResourceRecord,
+	) (resourceID int64, err error)
 	// RecordResourceDeletion sets deleted_at and status='deleted' on a resource_details row.
 	RecordResourceDeletion(ctx context.Context, id int64) error
+
+	// MarkVMsDeletedByName marks vm_details rows as deleted by VM name and namespace,
+	// scoped to audit records from the given run IDs.
+	MarkVMsDeletedByName(
+		ctx context.Context,
+		vmNames []string,
+		namespace string,
+		runIDs []string,
+	) error
+	// MarkResourcesDeletedByName marks resource_details rows as deleted by type, name,
+	// and namespace, scoped to audit records from the given run IDs.
+	MarkResourcesDeletedByName(
+		ctx context.Context,
+		resourceType string,
+		names []string,
+		namespace string,
+		runIDs []string,
+	) error
 
 	// RecordEvent inserts an events row.
 	RecordEvent(ctx context.Context, executionID int64, e EventRecord) error
@@ -95,7 +130,11 @@ func now() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
 
-func (a *SQLiteAuditor) StartExecution(ctx context.Context, cmd string, cfg *config.Config) (int64, string, error) {
+func (a *SQLiteAuditor) StartExecution(
+	ctx context.Context,
+	cmd string,
+	cfg *config.Config,
+) (int64, string, error) {
 	runID := uuid.New().String()
 
 	workloadNames := make([]string, 0, len(cfg.Workloads))
@@ -106,7 +145,8 @@ func (a *SQLiteAuditor) StartExecution(ctx context.Context, cmd string, cfg *con
 
 	sshConfigured := cfg.SSHPassword != "" || len(cfg.SSHAuthorizedKeys) > 0
 
-	res, err := a.db.ExecContext(ctx, `
+	res, err := a.db.ExecContext(
+		ctx, `
 		INSERT INTO audit_log (
 			run_id, command, status, kubeconfig_path, cluster_context, namespace,
 			container_disk_image, default_cpu_cores, default_memory, data_disk_size,
@@ -129,7 +169,12 @@ func (a *SQLiteAuditor) StartExecution(ctx context.Context, cmd string, cfg *con
 	return id, runID, nil
 }
 
-func (a *SQLiteAuditor) CompleteExecution(ctx context.Context, id int64, status string, errSummary string) error {
+func (a *SQLiteAuditor) CompleteExecution(
+	ctx context.Context,
+	id int64,
+	status string,
+	errSummary string,
+) error {
 	var errPtr *string
 	if errSummary != "" {
 		errPtr = &errSummary
@@ -140,7 +185,11 @@ func (a *SQLiteAuditor) CompleteExecution(ctx context.Context, id int64, status 
 	return err
 }
 
-func (a *SQLiteAuditor) LinkCleanupToRuns(ctx context.Context, cleanupID int64, runIDs []string) error {
+func (a *SQLiteAuditor) LinkCleanupToRuns(
+	ctx context.Context,
+	cleanupID int64,
+	runIDs []string,
+) error {
 	data, err := json.Marshal(runIDs)
 	if err != nil {
 		return fmt.Errorf("marshaling run IDs: %w", err)
@@ -171,8 +220,13 @@ func (a *SQLiteAuditor) RecordCleanupCounts(
 	return err
 }
 
-func (a *SQLiteAuditor) RecordWorkload(ctx context.Context, executionID int64, w WorkloadRecord) (int64, error) {
-	res, err := a.db.ExecContext(ctx, `
+func (a *SQLiteAuditor) RecordWorkload(
+	ctx context.Context,
+	executionID int64,
+	w WorkloadRecord,
+) (int64, error) {
+	res, err := a.db.ExecContext(
+		ctx, `
 		INSERT INTO workload_details (
 			audit_id, workload_type, enabled, vm_count, cpu_cores, memory,
 			has_data_disk, data_disk_size, requires_service, status
@@ -193,8 +247,14 @@ func (a *SQLiteAuditor) UpdateWorkloadStatus(ctx context.Context, id int64, stat
 	return err
 }
 
-func (a *SQLiteAuditor) RecordVM(ctx context.Context, executionID int64, workloadID int64, v VMRecord) (int64, error) {
-	res, err := a.db.ExecContext(ctx, `
+func (a *SQLiteAuditor) RecordVM(
+	ctx context.Context,
+	executionID int64,
+	workloadID int64,
+	v VMRecord,
+) (int64, error) {
+	res, err := a.db.ExecContext(
+		ctx, `
 		INSERT INTO vm_details (
 			audit_id, workload_id, vm_name, namespace, component, role,
 			cpu_cores, memory, container_disk_image, has_data_disk, data_disk_size,
@@ -210,7 +270,12 @@ func (a *SQLiteAuditor) RecordVM(ctx context.Context, executionID int64, workloa
 	return res.LastInsertId()
 }
 
-func (a *SQLiteAuditor) UpdateVMStatus(ctx context.Context, id int64, phase string, status string) error {
+func (a *SQLiteAuditor) UpdateVMStatus(
+	ctx context.Context,
+	id int64,
+	phase string,
+	status string,
+) error {
 	if status == "ready" {
 		_, err := a.db.ExecContext(ctx,
 			`UPDATE vm_details SET phase = ?, status = ?, ready_at = ? WHERE id = ?`,
@@ -230,8 +295,13 @@ func (a *SQLiteAuditor) RecordVMDeletion(ctx context.Context, id int64) error {
 	return err
 }
 
-func (a *SQLiteAuditor) RecordResource(ctx context.Context, executionID int64, r ResourceRecord) (int64, error) {
-	res, err := a.db.ExecContext(ctx, `
+func (a *SQLiteAuditor) RecordResource(
+	ctx context.Context,
+	executionID int64,
+	r ResourceRecord,
+) (int64, error) {
+	res, err := a.db.ExecContext(
+		ctx, `
 		INSERT INTO resource_details (audit_id, resource_type, resource_name, namespace, status, created_at)
 		VALUES (?, ?, ?, ?, 'created', ?)`,
 		executionID, r.ResourceType, r.ResourceName, r.Namespace, now(),
@@ -249,8 +319,82 @@ func (a *SQLiteAuditor) RecordResourceDeletion(ctx context.Context, id int64) er
 	return err
 }
 
+func (a *SQLiteAuditor) MarkVMsDeletedByName(
+	ctx context.Context,
+	vmNames []string,
+	namespace string,
+	runIDs []string,
+) error {
+	if len(vmNames) == 0 || len(runIDs) == 0 {
+		return nil
+	}
+	query, args := buildMarkDeletedQuery(
+		"vm_details", "vm_name", "",
+		vmNames, namespace, runIDs,
+	)
+	_, err := a.db.ExecContext(ctx, query, args...)
+	return err
+}
+
+func (a *SQLiteAuditor) MarkResourcesDeletedByName(
+	ctx context.Context,
+	resourceType string,
+	names []string,
+	namespace string,
+	runIDs []string,
+) error {
+	if len(names) == 0 || len(runIDs) == 0 {
+		return nil
+	}
+	query, args := buildMarkDeletedQuery(
+		"resource_details", "resource_name", resourceType,
+		names, namespace, runIDs,
+	)
+	_, err := a.db.ExecContext(ctx, query, args...)
+	return err
+}
+
+func buildMarkDeletedQuery(
+	table, nameCol, resourceType string,
+	names []string,
+	namespace string,
+	runIDs []string,
+) (string, []interface{}) {
+	args := []interface{}{now()}
+
+	namePlaceholders := make([]string, len(names))
+	for i, n := range names {
+		namePlaceholders[i] = "?"
+		args = append(args, n)
+	}
+	args = append(args, namespace)
+
+	runPlaceholders := make([]string, len(runIDs))
+	for i, r := range runIDs {
+		runPlaceholders[i] = "?"
+		args = append(args, r)
+	}
+
+	query := fmt.Sprintf(
+		`UPDATE %s SET status = 'deleted', deleted_at = ?
+		 WHERE %s IN (%s) AND namespace = ?
+		   AND audit_id IN (SELECT id FROM audit_log WHERE run_id IN (%s))`,
+		table, nameCol,
+		strings.Join(namePlaceholders, ","),
+		strings.Join(runPlaceholders, ","),
+	)
+
+	if resourceType != "" {
+		query += " AND resource_type = ?"
+		args = append(args, resourceType)
+	}
+
+	return query, args
+}
+
 func (a *SQLiteAuditor) RecordEvent(ctx context.Context, executionID int64, e EventRecord) error {
-	_, err := a.db.ExecContext(ctx, `
+	_, err := a.db.ExecContext(
+		ctx, `
 		INSERT INTO events (audit_id, vm_id, workload_id, event_type, message, error_detail, occurred_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		executionID, e.VMID, e.WorkloadID, e.EventType,
@@ -271,7 +415,11 @@ func (a *SQLiteAuditor) Close() error {
 // NoOpAuditor is an Auditor that does nothing, used when auditing is disabled.
 type NoOpAuditor struct{}
 
-func (NoOpAuditor) StartExecution(_ context.Context, _ string, _ *config.Config) (int64, string, error) {
+func (NoOpAuditor) StartExecution(
+	_ context.Context,
+	_ string,
+	_ *config.Config,
+) (int64, string, error) {
 	return 0, "", nil
 }
 
@@ -280,7 +428,13 @@ func (NoOpAuditor) CompleteExecution(_ context.Context, _ int64, _ string, _ str
 }
 
 func (NoOpAuditor) LinkCleanupToRuns(_ context.Context, _ int64, _ []string) error { return nil }
-func (NoOpAuditor) RecordCleanupCounts(_ context.Context, _ int64, _, _, _, _, _ int, _ bool) error {
+
+func (NoOpAuditor) RecordCleanupCounts(
+	_ context.Context,
+	_ int64,
+	_, _, _, _, _ int,
+	_ bool,
+) error {
 	return nil
 }
 
@@ -291,12 +445,36 @@ func (NoOpAuditor) UpdateWorkloadStatus(_ context.Context, _ int64, _ string) er
 func (NoOpAuditor) RecordVM(_ context.Context, _ int64, _ int64, _ VMRecord) (int64, error) {
 	return 0, nil
 }
-func (NoOpAuditor) UpdateVMStatus(_ context.Context, _ int64, _ string, _ string) error { return nil }
-func (NoOpAuditor) RecordVMDeletion(_ context.Context, _ int64) error                   { return nil }
+
+func (NoOpAuditor) UpdateVMStatus(
+	_ context.Context,
+	_ int64,
+	_ string,
+	_ string,
+) error {
+	return nil
+}
+
+func (NoOpAuditor) RecordVMDeletion(_ context.Context, _ int64) error { return nil }
+
 func (NoOpAuditor) RecordResource(_ context.Context, _ int64, _ ResourceRecord) (int64, error) {
 	return 0, nil
 }
 func (NoOpAuditor) RecordResourceDeletion(_ context.Context, _ int64) error { return nil }
+func (NoOpAuditor) MarkVMsDeletedByName(_ context.Context, _ []string, _ string, _ []string) error {
+	return nil
+}
+
+func (NoOpAuditor) MarkResourcesDeletedByName(
+	_ context.Context,
+	_ string,
+	_ []string,
+	_ string,
+	_ []string,
+) error {
+	return nil
+}
+
 func (NoOpAuditor) RecordEvent(_ context.Context, _ int64, _ EventRecord) error {
 	return nil
 }

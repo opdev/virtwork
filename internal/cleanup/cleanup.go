@@ -28,6 +28,12 @@ type CleanupResult struct {
 	NamespaceDeleted bool
 	Errors           []error
 	RunIDs           []string // unique run IDs collected from cleaned-up resources
+
+	DeletedVMNames      []string
+	DeletedServiceNames []string
+	DeletedSecretNames  []string
+	DeletedDVNames      []string
+	DeletedPVCNames     []string
 }
 
 // CleanupPreview summarises what a cleanup operation would delete, without modifying anything.
@@ -163,6 +169,7 @@ func CleanupAll(
 			continue
 		}
 		result.VMsDeleted++
+		result.DeletedVMNames = append(result.DeletedVMNames, vmList.Items[i].Name)
 	}
 
 	// Delete services by label
@@ -179,6 +186,7 @@ func CleanupAll(
 			continue
 		}
 		result.ServicesDeleted++
+		result.DeletedServiceNames = append(result.DeletedServiceNames, svcList.Items[i].Name)
 	}
 
 	// Delete secrets by label
@@ -198,6 +206,7 @@ func CleanupAll(
 			continue
 		}
 		result.SecretsDeleted++
+		result.DeletedSecretNames = append(result.DeletedSecretNames, secretList.Items[i].Name)
 	}
 
 	// Delete DataVolumes by label (before PVCs — DV controller may GC owned PVCs)
@@ -216,6 +225,7 @@ func CleanupAll(
 			continue
 		}
 		result.DVsDeleted++
+		result.DeletedDVNames = append(result.DeletedDVNames, dvList.Items[i].Name)
 	}
 
 	// Delete PVCs by label
@@ -232,6 +242,7 @@ func CleanupAll(
 			continue
 		}
 		result.PVCsDeleted++
+		result.DeletedPVCNames = append(result.DeletedPVCNames, pvcList.Items[i].Name)
 	}
 
 	// Collect unique run IDs
