@@ -1,0 +1,128 @@
+%% Workload Development: using, creating, and extending workloads
+%% Audience: users running existing workloads, developers adding new workload types
+
+sequenceDiagram
+    autonumber
+
+    actor User
+    participant CLI as virtwork CLI
+    participant Config as Config / Viper
+    participant Registry as Workload Registry
+    participant Workload as Workload Instance
+    participant CloudInit as CloudInit Builder
+    participant Orch as Orchestrator
+    participant Cluster as OpenShift Cluster
+
+    %% ─── WORKLOAD RESOLUTION ─────────────────────────────────────
+
+    Note over User, Registry: Workload resolution from CLI to concrete instance
+    User ->> CLI: --workloads cpu,network,disk
+    CLI ->> CLI: ValidateWorkloadNames(["cpu","network","disk"])
+    Note right of CLI: Checks names against DefaultRegistry<br/>Suggests fixes via Levenshtein distance<br/>e.g. "cpuu" → "did you mean cpu?"
+
+    CLI ->> Config: LoadConfig(cmd) — merge flag+env+file+defaults
+    Note right of Config: Per-workload overrides from config.yaml:<br/>workloads:<br/>  cpu:<br/>    vm_count: 3<br/>    cpu_cores: 4<br/>    memory: "4Gi"
+    Config -->> CLI: Config with map[string]WorkloadConfig
+
+    %% ─── SINGLE-VM WORKLOAD (e.g. CPU) ──────────────────────────
+
+    Note over Registry, Cluster: Single-VM workload flow (e.g. cpu, memory, disk, chaos-*)
+    CLI ->> Orch: Run(workloadNames, runID)
+    Orch ->> Registry: DefaultRegistry()
+    Registry -->> Orch: Registry map[name] → factory
+
+    Orch ->> Registry: Get("cpu", workloadConfig, opts...)
+    Registry -->> Orch: *CPUWorkload (implements Workload)
+
+    Orch ->> Workload: VMCount()
+    Workload -->> Orch: N (from config, default 1)
+
+    Orch ->> Workload: VMResources()
+    Workload -->> Orch: {CPUCores, Memory}
+
+    Orch ->> Workload: CloudInitUserdata()
+    Workload ->> CloudInit: BuildCloudConfig(opts)
+    Note right of CloudInit: Packages: ["stress-ng"]<br/>WriteFiles: [systemd unit]<br/>RunCmd: [enable service]<br/>SSH credentials injected
+    CloudInit -->> Workload: "#cloud-config\n..."
+    Workload -->> Orch: cloud-init YAML
+
+    Orch ->> Workload: DataVolumeTemplates()
+    Workload -->> Orch: nil (CPU needs no data disk)
+
+    Orch ->> Workload: RequiresService()
+    Workload -->> Orch: false
+
+    loop For each VM (0..N-1)
+        Note over Orch: VM name: virtwork-cpu-0, virtwork-cpu-1, ...
+        Orch ->> Cluster: Create cloud-init Secret
+        Orch ->> Cluster: Create VirtualMachine
+    end
+
+    %% ─── MULTI-VM WORKLOAD (e.g. network) ───────────────────────
+
+    Note over Registry, Cluster: Multi-VM workload flow (e.g. network, tps)
+    Orch ->> Registry: Get("network", workloadConfig, opts...)
+    Registry -->> Orch: *NetworkWorkload (implements MultiVMWorkload)
+
+    Orch ->> Workload: RoleDistribution()
+    Workload -->> Orch: [{server, N}, {client, N}]
+
+    Orch ->> Workload: RequiresService()
+    Workload -->> Orch: true
+
+    Orch ->> Workload: ServiceSpec()
+    Workload -->> Orch: ClusterIP Service (iperf3 port 5201)
+    Orch ->> Cluster: Create Service (virtwork-iperf3-server)
+
+    loop For each role in RoleDistribution
+        Orch ->> Workload: UserdataForRole(role, namespace)
+        alt role = "server"
+            Workload ->> CloudInit: BuildCloudConfig(iperf3 -s)
+        else role = "client"
+            Workload ->> CloudInit: BuildCloudConfig(iperf3 -c server.ns.svc)
+        end
+        CloudInit -->> Workload: role-specific cloud-init YAML
+        Workload -->> Orch: cloud-init YAML
+
+        loop For each VM in role (0..perRole-1)
+            Note over Orch: VM name: virtwork-network-server-0, ...-client-0
+            Orch ->> Cluster: Create cloud-init Secret
+            Orch ->> Cluster: Create VirtualMachine
+        end
+    end
+
+    %% ─── WORKLOAD WITH DATA DISK (e.g. disk, database) ──────────
+
+    Note over Registry, Cluster: Workload with persistent storage (e.g. disk, database, chaos-disk)
+    Orch ->> Registry: Get("disk", workloadConfig, opts...)
+    Registry -->> Orch: *DiskWorkload
+
+    Orch ->> Workload: DataVolumeTemplates()
+    Workload -->> Orch: DataVolumeTemplateSpec (blank PVC, e.g. 20Gi)
+
+    Orch ->> Workload: ExtraDisks()
+    Workload -->> Orch: Disk{Name: "data-disk", Bus: virtio}
+
+    Orch ->> Workload: ExtraVolumes()
+    Workload -->> Orch: Volume{DataVolume source}
+
+    Note over Orch: NamespaceDataVolumes() uniquifies disk names per VM:<br/>data-disk → virtwork-disk-0-data-disk
+
+    loop For each VM
+        Orch ->> Cluster: Create VM with DataVolumeTemplate
+        Note right of Cluster: CDI provisions PVC automatically<br/>from DataVolumeTemplate
+    end
+
+    %% ─── CREATING A NEW WORKLOAD ─────────────────────────────────
+
+    Note over User, Registry: How to add a new workload type
+
+    Note over Workload: Implement the Workload interface:<br/>─ Name() string<br/>─ CloudInitUserdata() (string, error)<br/>─ VMResources() VMResourceSpec<br/>─ ExtraVolumes() []Volume<br/>─ ExtraDisks() []Disk<br/>─ DataVolumeTemplates() ([]DVT, error)<br/>─ RequiresService() bool<br/>─ ServiceSpec() *Service<br/>─ VMCount() int
+
+    Note over Workload: For multi-VM: also implement MultiVMWorkload:<br/>─ RoleDistribution() []RoleSpec<br/>─ UserdataForRole(role, namespace) (string, error)
+
+    Note over Workload: Embed BaseWorkload for defaults:<br/>─ VMResources, VMCount, ExtraVolumes,<br/>  ExtraDisks, DataVolumeTemplates,<br/>  RequiresService, ServiceSpec all have<br/>  sensible default implementations
+
+    Note over Registry: Register in DefaultRegistry():<br/>"my-workload": func(cfg, opts) Workload {<br/>    return NewMyWorkload(cfg, opts.SSHUser, ...)<br/>}
+
+    Note over CloudInit: Build cloud-init via BaseWorkload.BuildCloudConfig:<br/>─ Specify packages to install<br/>─ Write systemd unit files<br/>─ Run commands to enable services<br/>─ SSH credentials are injected automatically

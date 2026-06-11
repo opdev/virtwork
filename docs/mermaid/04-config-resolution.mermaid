@@ -1,0 +1,106 @@
+%% Config Resolution: priority chain from CLI flags to final Config struct
+%% Shows flag binding, env var mapping, YAML file parsing, and SSH key resolution
+
+sequenceDiagram
+    autonumber
+
+    actor User
+    participant Cobra as Cobra Command
+    participant Viper as Viper Instance
+    participant Env as Environment
+    participant File as config.yaml
+    participant Defaults as SetDefaults
+    participant SSH as resolveSSHKeys
+    participant Config as Config struct
+
+    %% ─── PRIORITY CHAIN (highest → lowest) ──────────────────────
+
+    Note over User, Defaults: Priority chain: CLI flags > env vars > config file > defaults
+
+    User ->> Cobra: virtwork run --workloads cpu,network<br/>--cpu-cores 4 --memory 8Gi --namespace prod
+
+    Note over Cobra: BindPersistentFlags registers:<br/>--namespace, --kubeconfig, --config,<br/>--verbose, --audit, --no-audit, --audit-db
+
+    Note over Cobra: BindRunFlags registers:<br/>--workloads, --vm-count, --cpu-cores,<br/>--memory, --disk-size, --container-disk-image,<br/>--dry-run, --no-wait, --timeout,<br/>--ssh-user, --ssh-password, --ssh-key,<br/>--ssh-key-file, --vm-concurrency
+
+    Cobra ->> Viper: LoadConfig(cmd) begins
+
+    %% ─── STEP 1: DEFAULTS ───────────────────────────────────────
+
+    Note over Viper, Defaults: Step 1 — Register defaults (lowest priority)
+    Viper ->> Defaults: SetDefaults(v)
+    Note right of Defaults: namespace → "virtwork"<br/>container-disk-image → "quay.io/containerdisks/fedora:41"<br/>disk-size → "10Gi"<br/>cpu-cores → 2<br/>memory → "2Gi"<br/>wait-for-ready → true<br/>timeout → 600<br/>ssh-user → "virtwork"<br/>audit → true<br/>audit-db → "virtwork.db"<br/>vm-concurrency → 10
+    Defaults -->> Viper: Defaults registered
+
+    %% ─── STEP 2: ENV VARS ───────────────────────────────────────
+
+    Note over Viper, Env: Step 2 — Bind environment variables
+    Viper ->> Viper: SetEnvPrefix("VIRTWORK")
+    Viper ->> Viper: SetEnvKeyReplacer("-" → "_")
+    Viper ->> Viper: AutomaticEnv()
+    Note right of Env: VIRTWORK_NAMESPACE=staging<br/>VIRTWORK_CPU_CORES=2<br/>VIRTWORK_SSH_AUTHORIZED_KEYS=key1,key2<br/>VIRTWORK_KUBECONFIG=/path/to/kubeconfig
+
+    %% ─── STEP 3: CONFIG FILE ────────────────────────────────────
+
+    Note over Viper, File: Step 3 — Read YAML config file (if --config provided)
+    alt --config flag set
+        Viper ->> File: ReadInConfig()
+        Note right of File: namespace: production<br/>container-disk-image: registry.io/fedora:latest<br/>cpu-cores: 2<br/>memory: "4Gi"<br/>workloads:<br/>  cpu:<br/>    enabled: true<br/>    vm_count: 3<br/>    cpu_cores: 8<br/>    memory: "16Gi"<br/>  network:<br/>    enabled: true<br/>    vm_count: 2<br/>  disk:<br/>    enabled: false<br/>ssh-authorized-keys:<br/>  - "ssh-ed25519 AAAA... user@host"
+        File -->> Viper: Config merged (below env, above defaults)
+    else No --config flag
+        Note over Viper: Skip file — use env + defaults only
+    end
+
+    %% ─── STEP 4: CLI FLAGS (HIGHEST PRIORITY) ───────────────────
+
+    Note over Cobra, Viper: Step 4 — Bind CLI flags (highest priority, only if Changed)
+
+    Cobra ->> Viper: bindFlagIfSet for string flags
+    Note right of Cobra: namespace, kubeconfig,<br/>container-disk-image, disk-size,<br/>memory, ssh-user, ssh-password<br/>Only binds if flag was explicitly<br/>passed on CLI (cmd.Flag.Changed == true)<br/>Prevents zero-value flags from<br/>overriding env/file values
+
+    Cobra ->> Viper: Check special flags:
+    Note right of Cobra: --cpu-cores: if Changed → v.Set<br/>--timeout: if Changed → v.Set<br/>--dry-run: if Changed → v.Set<br/>--verbose: if Changed → v.Set<br/>--no-wait: if Changed → WaitForReady=!val<br/>--vm-concurrency: if Changed → v.Set
+
+    %% ─── STEP 5: BUILD CONFIG STRUCT ────────────────────────────
+
+    Note over Viper, Config: Step 5 — Assemble Config struct from resolved values
+    Viper ->> Config: Build Config{}
+    Note right of Config: Namespace: resolved value<br/>ContainerDiskImage: resolved value<br/>DataDiskSize: resolved value<br/>CPUCores: resolved value<br/>Memory: resolved value<br/>KubeconfigPath: resolved value<br/>SSHUser, SSHPassword<br/>WaitForReady, ReadyTimeoutSeconds<br/>DryRun, Verbose<br/>AuditEnabled, AuditDBPath<br/>VMConcurrency
+
+    %% ─── STEP 6: SSH KEY RESOLUTION ─────────────────────────────
+
+    Note over Cobra, SSH: Step 6 — resolveSSHKeys (own priority chain)
+    Cobra ->> SSH: resolveSSHKeys(v, cmd)
+
+    alt --ssh-key or --ssh-key-file flags set (CLI)
+        SSH ->> SSH: Collect inline keys from --ssh-key
+        SSH ->> SSH: Read files from --ssh-key-file, trim whitespace
+        SSH -->> Cobra: CLI keys (highest priority)
+    else VIRTWORK_SSH_AUTHORIZED_KEYS env var set
+        SSH ->> Env: Read env var, split on comma
+        SSH -->> Cobra: Env keys (medium priority)
+    else ssh-authorized-keys in YAML config
+        SSH ->> Viper: GetStringSlice("ssh-authorized-keys")
+        SSH -->> Cobra: File keys (lowest priority)
+    else None set
+        SSH -->> Cobra: Empty slice (SSH keys optional)
+    end
+
+    Note over Config: cfg.SSHAuthorizedKeys = resolved keys
+
+    %% ─── STEP 7: WORKLOADS MAP ──────────────────────────────────
+
+    Viper ->> Config: Unmarshal workloads map from config file
+    Note right of Config: Workloads: map[string]WorkloadConfig<br/>Each entry has: Enabled, VMCount,<br/>CPUCores, Memory, Params
+
+    %% ─── STEP 8: VALIDATION ─────────────────────────────────────
+
+    Note over Config: Step 8 — Validate final Config
+    Config ->> Config: Validate()
+    Note right of Config: Namespace must not be empty<br/>CPUCores must be ≥ 1<br/>Memory must parse as k8s Quantity<br/>DataDiskSize must parse as k8s Quantity<br/>If WaitForReady: timeout ≥ 1s
+    Config -->> Cobra: *Config (validated)
+
+    %% ─── PER-WORKLOAD CONFIG MERGE ──────────────────────────────
+
+    Note over Config: Per-workload config merge (during planVMs)
+    Note right of Config: Global config provides defaults:<br/>  CPUCores=2, Memory="2Gi"<br/><br/>Per-workload overrides from YAML:<br/>  cpu: {cpu_cores: 8, memory: "16Gi"}<br/><br/>Merged WorkloadConfig sent to factory:<br/>  CPUCores=8, Memory="16Gi"<br/><br/>If per-workload field is zero/empty,<br/>the global value fills in

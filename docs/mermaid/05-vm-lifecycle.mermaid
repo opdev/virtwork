@@ -1,0 +1,152 @@
+%% VM Lifecycle: from spec construction through creation, readiness, and deletion
+%% Shows retry logic, KubeVirt resource structure, and readiness polling
+
+sequenceDiagram
+    autonumber
+
+    participant Orch as Orchestrator
+    participant Build as vm.BuildVMSpec
+    participant Crt as vm.CreateVM
+    participant Retry as retryOnTransient
+    participant K8s as K8s API Server
+    participant KV as KubeVirt Controller
+    participant VMI as VirtualMachineInstance
+    participant Poll as wait.WaitForVMReady
+    participant CL as cleanup.CleanupAll
+
+    %% ─── VM SPEC CONSTRUCTION ───────────────────────────────────
+
+    Note over Orch, Build: VM Spec Construction
+    Orch ->> Build: BuildVMSpec(VMSpecOpts)
+    Note right of Build: Input: Name, Namespace, ContainerDiskImage,<br/>CloudInitSecretName, CPUCores, Memory,<br/>Labels, ExtraDisks, ExtraVolumes,<br/>DataVolumeTemplates
+
+    Build ->> Build: Validate inputs
+    Note right of Build: Name non-empty<br/>Namespace non-empty<br/>CPUCores > 0<br/>ContainerDiskImage non-empty
+
+    Build ->> Build: Construct base disks
+    Note right of Build: Disk 1: "containerdisk" (virtio bus)<br/>Disk 2: "cloudinitdisk" (virtio bus)<br/>+ any ExtraDisks from workload
+
+    Build ->> Build: Construct volumes
+    Note right of Build: Vol 1: ContainerDisk{Image}<br/>Vol 2: CloudInitNoCloud{SecretRef}<br/>  (or inline UserData if no secret)<br/>+ any ExtraVolumes from workload
+
+    Build ->> Build: Parse Memory as k8s Quantity
+
+    Build ->> Build: Assemble VirtualMachine
+    Note right of Build: ObjectMeta: {Name, Namespace, Labels}<br/>Spec:<br/>  RunStrategy: Always<br/>  Template.Spec.Domain:<br/>    CPU: {Cores: N}<br/>    Resources: {Requests: {memory: Quantity}}<br/>    Devices:<br/>      Disks: [container, cloudinit, extras...]<br/>      Interfaces: [{Name:"default", Masquerade}]<br/>    Networks: [{Name:"default", Pod}]<br/>  Template.Spec.Volumes: [above]<br/>  DataVolumeTemplates: [from workload]
+
+    Build -->> Orch: *kubevirtv1.VirtualMachine
+
+    %% ─── VM CREATION WITH RETRY ─────────────────────────────────
+
+    Note over Orch, K8s: VM Creation (with transient error retry)
+    Orch ->> Crt: CreateVM(ctx, client, vmObj)
+
+    Crt ->> Retry: retryOnTransient(ctx, createFn, maxRetries=5)
+
+    loop Attempt 0..5 (1 + 5 retries)
+        Retry ->> Retry: Check ctx.Err() (cancelled?)
+
+        Retry ->> Retry: Clear ResourceVersion (fresh create each attempt)
+
+        Retry ->> K8s: client.Create(ctx, vm)
+
+        alt 201 Created
+            K8s -->> Retry: Success
+            Retry -->> Crt: nil
+        else AlreadyExists
+            K8s -->> Retry: AlreadyExists error
+            Retry -->> Crt: nil (idempotent — treated as success)
+        else TooManyRequests / ServerTimeout / ServiceUnavailable / InternalError
+            K8s -->> Retry: Transient error
+            Note right of Retry: isTransientError() == true
+
+            Retry ->> Retry: Calculate backoff<br/>1s × 2^attempt<br/>(1s, 2s, 4s, 8s, 16s)
+
+            Retry ->> Retry: select {<br/>  case <-time.After(backoff):<br/>  case <-ctx.Done():<br/>}
+            Note right of Retry: Respects context cancellation<br/>during backoff sleep
+        else NotFound / Unauthorized / Forbidden / other permanent
+            K8s -->> Retry: Permanent error
+            Note right of Retry: isTransientError() == false
+            Retry -->> Crt: error (no retry)
+        end
+    end
+
+    alt All retries exhausted
+        Retry -->> Crt: "max retries exceeded" wrapping last error
+    end
+
+    Crt -->> Orch: nil or error
+
+    %% ─── KUBEVIRT TAKES OVER ────────────────────────────────────
+
+    Note over K8s, VMI: KubeVirt controller reconciliation (cluster-side)
+    K8s ->> KV: VirtualMachine created event
+    KV ->> KV: Reconcile: RunStrategy=Always → create VMI
+    KV ->> VMI: Create VirtualMachineInstance
+    VMI ->> VMI: Phase: Pending → Scheduling → Scheduled
+    VMI ->> VMI: virt-launcher pod starts
+    VMI ->> VMI: Container disk pulled
+    VMI ->> VMI: Cloud-init userdata applied
+    VMI ->> VMI: DataVolumes provisioned (if any)
+    VMI ->> VMI: Phase: Running
+    Note right of VMI: Guest OS boots<br/>Cloud-init installs packages<br/>Systemd units start workload
+
+    %% ─── READINESS POLLING ──────────────────────────────────────
+
+    Note over Orch, VMI: Readiness Polling (per-VM goroutine)
+    Orch ->> Poll: WaitForVMReady(ctx, client, logger,<br/>vmName, namespace, timeout, interval)
+
+    Poll ->> Poll: deadline = now + timeout
+
+    loop Until Running or deadline exceeded
+        Poll ->> Poll: Check ctx.Err()
+
+        alt Past deadline
+            Poll -->> Orch: ErrVMTimeout
+        end
+
+        Poll ->> K8s: Get VirtualMachineInstance(name, namespace)
+
+        alt NotFound
+            Note right of Poll: VMI not yet created by controller
+            Poll ->> Poll: Log debug, sleep(interval)
+        else Get error
+            Poll -->> Orch: error
+        else VMI.Status.Phase == Running
+            Poll -->> Orch: nil (VM is ready)
+        else Other phase (Pending, Scheduling, Scheduled)
+            Note right of Poll: VM still booting
+            Poll ->> Poll: sleep(interval) via select:<br/>case <-time.After(interval):<br/>case <-ctx.Done():
+        end
+    end
+
+    %% ─── VM DELETION (CLEANUP) ──────────────────────────────────
+
+    Note over Orch, K8s: VM Deletion (during cleanup)
+    Orch ->> CL: CleanupAll(ctx, client, config, deleteNS, runID)
+    CL ->> K8s: List VMs by label selector
+    K8s -->> CL: vmList
+
+    loop For each VM in vmList
+        CL ->> K8s: client.Delete(ctx, &vm)
+        alt Success
+            K8s -->> CL: OK
+        else NotFound
+            K8s -->> CL: NotFound → skip (idempotent)
+        else Other error
+            CL ->> CL: Collect error, continue
+        end
+    end
+
+    CL -->> Orch: CleanupResult (counts, errors, runIDs)
+
+    Note over K8s, VMI: KubeVirt controller reconciliation
+    K8s ->> KV: VirtualMachine deleted
+    KV ->> VMI: Delete VirtualMachineInstance
+    VMI ->> VMI: virt-launcher pod terminated
+    VMI ->> VMI: Phase: (removed)
+
+    %% ─── DATA VOLUME TEMPLATE ───────────────────────────────────
+
+    Note over Build: DataVolumeTemplate construction (for disk/database workloads)
+    Note right of Build: BuildDataVolumeTemplate(name, size):<br/>  Parse size as k8s Quantity<br/>  Return DataVolumeTemplateSpec{<br/>    Name: name,<br/>    Source: {Blank: {}},<br/>    Storage: {Resources: {Requests: size}}<br/>  }<br/><br/>CDI controller provisions the PVC<br/>automatically when VM is created

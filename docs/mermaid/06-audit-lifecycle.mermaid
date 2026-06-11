@@ -1,0 +1,183 @@
+%% Audit Lifecycle: schema migration, recording touchpoints during run and cleanup
+%% Shows the full audit trail from database init through execution completion
+
+sequenceDiagram
+    autonumber
+
+    participant CLI as cmd/virtwork
+    participant Init as initAuditor
+    participant SA as SQLiteAuditor
+    participant Mig as migrateDB
+    participant DB as SQLite DB
+    participant RO as RunOrchestrator
+    participant CO as CleanupOrchestrator
+
+    %% ─── DATABASE INITIALIZATION ────────────────────────────────
+
+    Note over CLI, DB: Database initialization and schema migration
+    CLI ->> Init: initAuditor(cmd, cfg)
+
+    alt --no-audit flag or cfg.AuditEnabled == false
+        Init -->> CLI: NoOpAuditor{} (all methods are no-ops)
+    else Audit enabled
+        Init ->> SA: NewSQLiteAuditor(dbPath)
+        SA ->> SA: MkdirAll for DB directory (0o750)
+        SA ->> DB: sql.Open("sqlite", DSN)
+        Note right of DB: DSN: path?_pragma=journal_mode(WAL)<br/>&_pragma=foreign_keys(on)
+
+        SA ->> Mig: migrateDB(db)
+        Mig ->> DB: CREATE TABLE IF NOT EXISTS schema_version
+        Mig ->> DB: SELECT COUNT(*) FROM schema_version
+
+        alt No rows yet
+            Mig ->> DB: INSERT INTO schema_version (version) VALUES (0)
+        end
+
+        Mig ->> DB: SELECT version FROM schema_version
+        DB -->> Mig: version = N
+
+        loop For each unapplied migration (version N → latest)
+            Mig ->> DB: BEGIN TRANSACTION
+            Mig ->> DB: Execute migration function
+            Note right of DB: migrateV1Baseline executes SchemaSQL:<br/>─ audit_log (execution records)<br/>─ workload_details (per-workload config)<br/>─ vm_details (individual VMs)<br/>─ resource_details (services, secrets)<br/>─ events (fine-grained event log)<br/>─ Indexes on started_at, namespace,<br/>  status, run_id, event_type, etc.
+            Mig ->> DB: UPDATE schema_version SET version = N+1
+            Mig ->> DB: COMMIT
+        end
+
+        Mig -->> SA: Migration complete
+        SA -->> Init: *SQLiteAuditor ready
+        Init -->> CLI: Auditor
+    end
+
+    %% ─── RUN EXECUTION AUDIT TRAIL ──────────────────────────────
+
+    Note over CLI, DB: Audit trail during "virtwork run"
+
+    CLI ->> SA: StartExecution(ctx, "run", cfg)
+    SA ->> SA: Generate runID = uuid.New()
+    SA ->> SA: Extract workloads CSV, SSH configured flag
+    SA ->> DB: INSERT INTO audit_log<br/>(run_id, command, status='in_progress',<br/>kubeconfig_path, cluster_context, namespace,<br/>container_disk_image, default_cpu_cores,<br/>default_memory, data_disk_size, workloads_csv,<br/>dry_run, ssh_auth_configured, cleanup_mode,<br/>wait_for_ready, ready_timeout_seconds, started_at)
+    DB -->> SA: executionID (auto-increment)
+    SA -->> CLI: (executionID, runID)
+
+    Note over RO: Orchestrator records as it works
+
+    loop For each workload (planVMs phase)
+        RO ->> SA: RecordWorkload(execID, WorkloadRecord)
+        SA ->> DB: INSERT INTO workload_details<br/>(audit_id, workload_type, enabled, vm_count,<br/>cpu_cores, memory, has_data_disk, data_disk_size,<br/>requires_service, status='pending')
+        DB -->> SA: workloadID
+    end
+
+    opt Workload skipped (disabled in config)
+        RO ->> SA: RecordEvent(execID, {type:"workload_skipped"})
+        SA ->> DB: INSERT INTO events<br/>(audit_id, vm_id, workload_id, event_type,<br/>message, error_detail, occurred_at)
+    end
+
+    RO ->> SA: RecordEvent(execID, {type:"execution_started"})
+
+    loop For each service created
+        RO ->> SA: RecordResource(execID, {type:"Service", name, ns})
+        SA ->> DB: INSERT INTO resource_details<br/>(audit_id, resource_type, resource_name,<br/>namespace, status='created', created_at)
+        DB -->> SA: resourceID
+
+        RO ->> SA: RecordEvent(execID, {type:"service_created"})
+    end
+
+    loop For each cloud-init secret created
+        RO ->> SA: RecordResource(execID, {type:"Secret", name, ns})
+        SA ->> DB: INSERT INTO resource_details (same schema)
+    end
+
+    loop For each VM created
+        RO ->> SA: RecordVM(execID, wlID, VMRecord)
+        SA ->> DB: INSERT INTO vm_details<br/>(audit_id, workload_id, vm_name, namespace,<br/>component, role, cpu_cores, memory,<br/>container_disk_image, has_data_disk,<br/>data_disk_size, status='created', created_at)
+        DB -->> SA: vmID
+
+        RO ->> SA: RecordEvent(execID, {type:"vm_created"})
+        SA ->> DB: INSERT INTO events<br/>(audit_id, vm_id, event_type, occurred_at)
+    end
+
+    alt VM creation fails
+        RO ->> SA: RecordEvent(execID, {type:"vm_failed", error})
+        loop For each workload
+            RO ->> SA: UpdateWorkloadStatus(wlID, "failed")
+            SA ->> DB: UPDATE workload_details SET status='failed'
+        end
+    end
+
+    opt Readiness polling enabled
+        loop For each VM result
+            alt VM ready
+                RO ->> SA: RecordEvent(execID, {type:"vm_ready"})
+            else VM timed out
+                RO ->> SA: RecordEvent(execID, {type:"vm_timeout"})
+            end
+        end
+
+        alt Any failures
+            loop For each workload
+                alt Has failed VMs
+                    RO ->> SA: UpdateWorkloadStatus(wlID, "failed")
+                else All VMs ready
+                    RO ->> SA: UpdateWorkloadStatus(wlID, "created")
+                end
+            end
+        end
+    end
+
+    alt No failures (all VMs created and ready)
+        loop For each workload
+            RO ->> SA: UpdateWorkloadStatus(wlID, "created")
+            SA ->> DB: UPDATE workload_details SET status='created'
+        end
+    end
+
+    CLI ->> SA: CompleteExecution(execID, "success", "")
+    SA ->> DB: UPDATE audit_log<br/>SET status='success', completed_at=now()
+
+    %% ─── CLEANUP EXECUTION AUDIT TRAIL ──────────────────────────
+
+    Note over CLI, DB: Audit trail during "virtwork cleanup"
+
+    CLI ->> SA: StartExecution(ctx, "cleanup", cfg)
+    SA ->> DB: INSERT INTO audit_log<br/>(run_id, command='cleanup', status='in_progress',<br/>full column set same as run, started_at)
+    DB -->> SA: executionID
+
+    CO ->> SA: RecordEvent(execID, {type:"cleanup_started",<br/>message: "namespace=X, run-id=Y"})
+
+    Note over CO: Cleanup executes, collects run IDs from resources
+
+    CO ->> SA: LinkCleanupToRuns(execID, ["uuid-1", "uuid-2"])
+    SA ->> DB: UPDATE audit_log<br/>SET linked_run_ids = '["uuid-1","uuid-2"]'
+    Note right of DB: linked_run_ids is JSON TEXT<br/>(PostgreSQL JSONB compatible)
+
+    CO ->> SA: MarkVMsDeletedByName(vmNames, namespace, runIDs)
+    SA ->> DB: UPDATE vm_details SET status='deleted', deleted_at<br/>WHERE vm_name IN (...) AND namespace=?<br/>AND audit_id IN (SELECT id FROM audit_log WHERE run_id IN (...))
+
+    CO ->> SA: MarkResourcesDeletedByName(type, names, namespace, runIDs)
+    SA ->> DB: UPDATE resource_details SET status='deleted', deleted_at<br/>WHERE resource_name IN (...) AND resource_type=?<br/>AND audit_id IN (SELECT id FROM audit_log WHERE run_id IN (...))
+    Note right of DB: Called per resource type:<br/>Service, Secret, DataVolume, PersistentVolumeClaim
+
+    CO ->> SA: RecordCleanupCounts(execID, vms, svcs, secrets, dvs, pvcs, nsDeleted)
+    SA ->> DB: UPDATE audit_log<br/>SET vms_deleted=N, services_deleted=N,<br/>secrets_deleted=N, dvs_deleted=N,<br/>pvcs_deleted=N, namespace_deleted=0|1
+
+    CO ->> SA: RecordEvent(execID, {type:"cleanup_completed"})
+
+    CLI ->> SA: CompleteExecution(execID, "success", "")
+    SA ->> DB: UPDATE audit_log<br/>SET status='success', completed_at=now()
+
+    %% ─── ERROR COMPLETION ───────────────────────────────────────
+
+    Note over CLI, DB: Error completion (either command)
+    alt Execution fails at any point
+        CLI ->> SA: CompleteExecution(execID, "error", errSummary)
+        SA ->> DB: UPDATE audit_log<br/>SET status='error', completed_at=now(),<br/>error_summary='...'
+    end
+
+    CLI ->> SA: Close()
+    SA ->> DB: Close database connection
+
+    %% ─── AUDIT ERROR HANDLING ───────────────────────────────────
+
+    Note over RO, SA: Audit error handling policy
+    Note right of SA: Audit is observability, not control flow.<br/>All audit errors are logged via logger.Warn()<br/>and never block the main operation.<br/><br/>If the auditor fails, the run/cleanup<br/>continues — data is best-effort recorded.
