@@ -1,0 +1,124 @@
+%% Cloud-Init Generation: how cloud-init YAML is assembled per workload type
+%% Shows the BuildCloudConfig pipeline, SSH injection, and workload-specific content
+
+sequenceDiagram
+    autonumber
+
+    participant Orch as Orchestrator
+    participant WL as Workload
+    participant Base as BaseWorkload
+    participant CI as cloudinit.BuildCloudConfig
+    participant YAML as YAML Marshal
+
+    %% ─── SINGLE-VM WORKLOAD (CPU example) ───────────────────────
+
+    Note over Orch, YAML: Single-VM workload cloud-init (e.g. CPUWorkload)
+
+    Orch ->> WL: CloudInitUserdata()
+
+    WL ->> Base: BuildCloudConfig(CloudConfigOpts)
+    Note right of WL: CPUWorkload provides:<br/>Packages: ["stress-ng"]<br/>WriteFiles: [{<br/>  Path: "/etc/systemd/system/virtwork-cpu.service",<br/>  Content: [Unit]...[Service]<br/>    ExecStart=/usr/bin/stress-ng --cpu 0<br/>    --cpu-method all --timeout 0<br/>  Permissions: "0644"<br/>}]<br/>RunCmd: [<br/>  ["systemctl","daemon-reload"],<br/>  ["systemctl","enable","--now","virtwork-cpu.service"]<br/>]
+
+    Base ->> Base: Inject SSH credentials into opts
+    Note right of Base: If SSHUser set:<br/>  opts.SSHUser = "virtwork"<br/>  opts.SSHPassword = (if configured)<br/>  opts.SSHAuthorizedKeys = [keys...]
+
+    Base ->> CI: BuildCloudConfig(opts)
+
+    %% ─── CLOUD-INIT BUILD PIPELINE ──────────────────────────────
+
+    Note over CI, YAML: BuildCloudConfig assembly pipeline
+
+    CI ->> CI: Initialize empty doc map
+
+    CI ->> CI: Add packages (if non-empty)
+    Note right of CI: packages:<br/>  - stress-ng
+
+    CI ->> CI: Add write_files (if non-empty)
+    Note right of CI: write_files:<br/>  - path: /etc/systemd/system/virtwork-cpu.service<br/>    content: |<br/>      [Unit]<br/>      Description=virtwork CPU workload<br/>      ...<br/>    permissions: "0644"
+
+    CI ->> CI: Add runcmd (if non-empty)
+    Note right of CI: runcmd:<br/>  - [systemctl, daemon-reload]<br/>  - [systemctl, enable, --now, virtwork-cpu.service]
+
+    CI ->> CI: Build SSH user configuration
+    alt SSHUser is set
+        CI ->> CI: Create user object
+        Note right of CI: users:<br/>  - name: virtwork<br/>    sudo: "ALL=(ALL) NOPASSWD:ALL"<br/>    shell: /bin/bash
+
+        alt SSHPassword is set
+            CI ->> CI: Enable password auth
+            Note right of CI: lock_passwd: false<br/>plain_text_passwd: "password"<br/>ssh_pwauth: true
+        else No password
+            CI ->> CI: Lock password
+            Note right of CI: lock_passwd: true
+        end
+
+        alt SSHAuthorizedKeys is non-empty
+            CI ->> CI: Add authorized keys
+            Note right of CI: ssh_authorized_keys:<br/>  - "ssh-ed25519 AAAA... user@host"
+        end
+    end
+
+    CI ->> CI: Validate Extra map
+    Note right of CI: Rejects reserved keys:<br/>packages, write_files, runcmd,<br/>users, ssh_pwauth<br/>→ ErrReservedKey
+
+    CI ->> CI: Merge Extra keys via maps.Copy()
+
+    CI ->> YAML: yaml.Marshal(doc)
+    YAML -->> CI: YAML bytes
+
+    CI -->> Base: "#cloud-config\n" + YAML string
+    Base -->> WL: cloud-init YAML
+    WL -->> Orch: cloud-init YAML
+
+    %% ─── MULTI-VM WORKLOAD (Network example) ───────────────────
+
+    Note over Orch, YAML: Multi-VM workload cloud-init (e.g. NetworkWorkload)
+
+    Orch ->> WL: UserdataForRole("server", namespace)
+    WL ->> Base: BuildCloudConfig(serverOpts)
+    Note right of WL: Server opts:<br/>Packages: ["iperf3"]<br/>WriteFiles: [systemd unit with<br/>  ExecStart=/usr/bin/iperf3 -s]<br/>RunCmd: [enable service]
+    Base ->> CI: BuildCloudConfig(opts)
+    CI -->> Orch: server cloud-init YAML
+
+    Orch ->> WL: UserdataForRole("client", namespace)
+    WL ->> Base: BuildCloudConfig(clientOpts)
+    Note right of WL: Client opts:<br/>Packages: ["iperf3"]<br/>WriteFiles: [systemd unit with<br/>  ExecStart=bash loop:<br/>    iperf3 -c<br/>    virtwork-iperf3-server.{ns}.svc.cluster.local<br/>    -t 60 -P 4 --bidir<br/>  + restart loop with 10s sleep]<br/>RunCmd: [enable service]
+    Base ->> CI: BuildCloudConfig(opts)
+    CI -->> Orch: client cloud-init YAML
+
+    %% ─── DATA DISK WORKLOAD (Disk example) ──────────────────────
+
+    Note over Orch, YAML: Data disk workload cloud-init (e.g. DiskWorkload)
+
+    Orch ->> WL: CloudInitUserdata()
+    WL ->> Base: BuildCloudConfig(diskOpts)
+    Note right of WL: Disk opts:<br/>Packages: ["fio"]<br/>WriteFiles: [<br/>  fio mixed R/W profile,<br/>  fio sequential write profile,<br/>  systemd unit:<br/>    ExecStartPre=disk setup script<br/>    (mkfs.xfs + mount /data)<br/>    ExecStart=bash loop:<br/>      fio mixed-rw.fio; sleep 10;<br/>      fio seq-write.fio; sleep 10<br/>]<br/>RunCmd: [enable service]
+    Base ->> CI: BuildCloudConfig(opts)
+    CI -->> Orch: disk cloud-init YAML
+
+    %% ─── DATABASE WORKLOAD ──────────────────────────────────────
+
+    Note over Orch, YAML: Database workload cloud-init (e.g. DatabaseWorkload)
+
+    Orch ->> WL: CloudInitUserdata()
+    WL ->> Base: BuildCloudConfig(dbOpts)
+    Note right of WL: Database opts:<br/>Packages: ["postgresql-server"]<br/>WriteFiles: [<br/>  db setup script (initdb, create pgbench db,<br/>    scale factor 50, start postgres),<br/>  systemd unit:<br/>    ExecStartPre=setup script<br/>    ExecStart=bash loop:<br/>      pgbench -c 10 -j 2 -T 300 pgbench<br/>      + sleep 10 between cycles<br/>]<br/>RunCmd: [enable service]
+    Base ->> CI: BuildCloudConfig(opts)
+    CI -->> Orch: database cloud-init YAML
+
+    %% ─── TPS WORKLOAD ───────────────────────────────────────────
+
+    Note over Orch, YAML: TPS workload cloud-init (e.g. TPSWorkload)
+
+    Orch ->> WL: UserdataForRole("server", namespace)
+    WL ->> Base: BuildCloudConfig(tpsServerOpts)
+    Note right of WL: TPS Server opts:<br/>Packages: ["netperf","python3"]<br/>WriteFiles: [<br/>  server script:<br/>    netserver on port 12865<br/>    dd to generate test file<br/>    python3 -m http.server 8080<br/>  systemd unit:<br/>    ExecStart=/usr/local/bin/virtwork-tps-server.sh<br/>]
+
+    Orch ->> WL: UserdataForRole("client", namespace)
+    WL ->> Base: BuildCloudConfig(tpsClientOpts)
+    Note right of WL: TPS Client opts:<br/>Packages: ["netperf","curl"]<br/>WriteFiles: [<br/>  client script:<br/>    wait for server HTTP<br/>    netperf TCP_RR tests<br/>    HTTP file transfer tests<br/>    measure TPS + throughput<br/>  systemd unit:<br/>    ExecStart=/usr/local/bin/virtwork-tps-client.sh<br/>  Params from config:<br/>    file-size (default "10M")<br/>    iterations (default "30")<br/>    duration (default "60")<br/>]
+
+    %% ─── SECRET STORAGE ─────────────────────────────────────────
+
+    Note over Orch: Cloud-init delivery to VM
+    Note right of Orch: Cloud-init YAML stored as K8s Secret:<br/>  Name: {vmName}-cloudinit<br/>  StringData["userdata"]: YAML content<br/>  Size limit: ≤ 1 MiB<br/><br/>VM references secret via:<br/>  CloudInitNoCloud.UserDataSecretRef<br/><br/>KubeVirt injects as NoCloud datasource<br/>at VM boot time

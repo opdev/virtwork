@@ -1,0 +1,88 @@
+%% High-Level Overview: virtwork run & cleanup flows
+%% Audience: evaluators, architects, new team members onboarding
+
+sequenceDiagram
+    autonumber
+
+    actor User
+    participant CLI as virtwork CLI
+    participant Config as Configuration
+    participant Auditor as Audit (SQLite)
+    participant Orchestrator as Orchestrator
+    participant Cluster as OpenShift Cluster
+
+    %% ─── RUN FLOW ────────────────────────────────────────────────
+
+    Note over User, Cluster: virtwork run
+
+    User ->> CLI: virtwork run --workloads cpu,network ...
+    CLI ->> Config: Load config (flags > env > file > defaults)
+    Config -->> CLI: Config with workloads, VM specs, SSH creds
+    CLI ->> CLI: Validate workload names against registry
+    CLI ->> Auditor: Open database, run migrations
+    Auditor -->> CLI: Auditor ready
+
+    CLI ->> Cluster: Connect via kubeconfig
+    Cluster -->> CLI: Kubernetes client
+
+    CLI ->> Auditor: StartExecution(command, config)
+    Auditor -->> CLI: executionID, runID (UUID)
+
+    CLI ->> Orchestrator: Run(workloads, runID)
+
+    Note over Orchestrator, Cluster: Orchestration phases
+    Orchestrator ->> Orchestrator: Plan VMs (resolve workloads, build specs)
+    Orchestrator ->> Cluster: Ensure namespace exists
+    Orchestrator ->> Cluster: Create services (for multi-VM workloads)
+    Orchestrator ->> Cluster: Create cloud-init secrets (parallel)
+    Orchestrator ->> Cluster: Create VMs (parallel, concurrency-limited)
+    Orchestrator ->> Cluster: Wait for VMs to reach Running (parallel polling)
+
+    Orchestrator -->> CLI: RunResult (counts: VMs, services, secrets)
+    CLI ->> Auditor: CompleteExecution(status=success)
+    CLI -->> User: Summary (created N VMs, M services, ...)
+
+    %% ─── CLEANUP FLOW ────────────────────────────────────────────
+
+    Note over User, Cluster: virtwork cleanup
+
+    User ->> CLI: virtwork cleanup [--run-id UUID]
+    CLI ->> Config: Load config
+    CLI ->> Auditor: Open database, run migrations
+    Auditor -->> CLI: Auditor ready
+    CLI ->> Cluster: Connect via kubeconfig
+    Cluster -->> CLI: Kubernetes client
+    CLI ->> Auditor: StartExecution(command=cleanup)
+    Auditor -->> CLI: executionID
+
+    CLI ->> Orchestrator: Preview(runID filter)
+    Orchestrator ->> Cluster: List resources by label selector
+    Note right of Cluster: Label: app.kubernetes.io/managed-by=virtwork<br/>Optional: virtwork/run-id=UUID
+    Cluster -->> Orchestrator: Resource counts
+    Orchestrator -->> CLI: CleanupPreview
+
+    CLI -->> User: Show preview (N VMs, M services, ...)
+    User ->> CLI: Confirm deletion (--run-id or --yes skips prompt)
+
+    CLI ->> Orchestrator: Execute cleanup
+    Orchestrator ->> Cluster: Delete VMs
+    Orchestrator ->> Cluster: Delete Services
+    Orchestrator ->> Cluster: Delete Secrets
+    Orchestrator ->> Cluster: Delete DataVolumes
+    Orchestrator ->> Cluster: Delete PVCs
+    opt Namespace deletion requested
+        Orchestrator ->> Cluster: Delete Namespace
+    end
+    Orchestrator ->> Auditor: LinkCleanupToRuns(collected runIDs)
+    Orchestrator ->> Auditor: RecordCleanupCounts(deletion totals)
+    Orchestrator -->> CLI: CleanupResult (deletion counts, collected runIDs)
+
+    CLI ->> Auditor: CompleteExecution(status=success)
+    CLI -->> User: Cleanup summary
+
+    %% ─── AUDIT CROSS-CUTTING ────────────────────────────────────
+
+    Note over Auditor: Audit records (SQLite, optional via --no-audit)
+    Note over Auditor: Tables: audit_log, workload_details,<br/>vm_details, resource_details, events
+    Note over Auditor: Each run gets a UUID (virtwork/run-id label)<br/>applied to all K8s resources for traceability
+    Note over Auditor: NoOpAuditor used when auditing is disabled

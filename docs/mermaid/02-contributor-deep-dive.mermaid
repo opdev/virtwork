@@ -1,0 +1,264 @@
+%% Contributor Deep-Dive: internal mechanics, concurrency, audit recording, cleanup
+%% Audience: contributors resolving tech debt, fixing bugs, building novel workloads
+
+sequenceDiagram
+    autonumber
+
+    participant CLI as cmd/virtwork<br/>(runE / cleanupE)
+    participant RO as RunOrchestrator
+    participant Reg as Registry
+    participant WL as Workload
+    participant Res as resources pkg
+    participant VM as vm pkg
+    participant Wait as wait pkg
+    participant Aud as SQLiteAuditor
+    participant DB as SQLite DB
+    participant CO as CleanupOrchestrator
+    participant CL as cleanup pkg
+    participant K8s as K8s API
+
+    %% ─── INITIALIZATION ─────────────────────────────────────────
+
+    Note over CLI, DB: Initialization (runE entry point)
+    CLI ->> CLI: config.LoadConfig(cmd)<br/>flags > env > config.yaml > defaults
+    CLI ->> CLI: workloads.ValidateWorkloadNames(names)
+    CLI ->> CLI: logging.NewLogger(writer, verbose)
+
+    CLI ->> Aud: NewSQLiteAuditor(dbPath)
+    Aud ->> DB: Open DB with WAL + foreign keys
+    Aud ->> DB: migrateDB()
+    Note right of DB: 1. Create schema_version table<br/>2. Read current version<br/>3. Apply pending migrations in tx<br/>4. migrateV1Baseline executes SchemaSQL
+    DB -->> Aud: Migrated
+
+    CLI ->> K8s: cluster.Connect(kubeconfigPath)
+    K8s -->> CLI: client.Client (controller-runtime)
+
+    CLI ->> Aud: StartExecution(ctx, "run", cfg)
+    Aud ->> DB: INSERT audit_log (run_id=uuid, command, config snapshot)
+    DB -->> Aud: executionID, runID
+    Aud -->> CLI: executionID, runID
+
+    %% ─── PLAN VMS ────────────────────────────────────────────────
+
+    Note over RO, WL: Phase 1: planVMs — resolve workloads, build VM specs
+
+    CLI ->> RO: NewRunOrchestrator(logger, client, cfg, auditor, writer)
+    CLI ->> RO: Run(ctx, execID, runID, workloadNames, vmCountFlag)
+    RO ->> Reg: DefaultRegistry()
+    Note right of Reg: Pre-populated map:<br/>cpu, memory, disk, database,<br/>network, tps, chaos-disk,<br/>chaos-network, chaos-process
+
+    loop For each workload name
+        RO ->> RO: Check if disabled in config file
+        alt Workload disabled
+            RO ->> Aud: RecordEvent(execID, "workload_skipped")
+        else Workload enabled
+            RO ->> Reg: Get(name, workloadConfig, opts...)
+            Reg ->> Reg: Resolve WorkloadFactory
+            Reg ->> Reg: Build RegistryOpts from functional options<br/>(WithNamespace, WithSSHCredentials, WithDataDiskSize)
+            Reg ->> WL: factory(cfg, registryOpts)
+            WL -->> Reg: Workload instance
+            Reg -->> RO: Workload
+
+            RO ->> Aud: RecordWorkload(execID, WorkloadRecord)
+            Aud ->> DB: INSERT workload_details
+            DB -->> Aud: workloadID
+            Aud -->> RO: workloadID
+
+            RO ->> WL: VMCount() / RoleDistribution()
+            RO ->> WL: VMResources() → {CPUCores, Memory}
+            RO ->> WL: DataVolumeTemplates()
+
+            alt Workload implements MultiVMWorkload
+                loop For each RoleSpec in RoleDistribution()
+                    RO ->> WL: UserdataForRole(role, namespace)
+                    WL -->> RO: role-specific cloud-init YAML
+                    loop For each VM in role (0-indexed)
+                        RO ->> RO: Build VMPlan{WorkloadName, VMName, Component, Role, VMSpecInput}
+                        Note right of RO: VM name: virtwork-{name}-{role}-{i}<br/>Labels: managed-by, component, run-id, role
+                    end
+                end
+            else Single-VM Workload
+                RO ->> WL: CloudInitUserdata()
+                WL -->> RO: cloud-init YAML
+                loop For each VM (0..VMCount-1)
+                    RO ->> RO: Build VMPlan{VMSpecInput}
+                    Note right of RO: VM name: virtwork-{name}-{i}<br/>NamespaceDataVolumes() uniquifies DVT names
+                end
+            end
+        end
+    end
+
+    RO -->> RO: Returns: []VMPlan, []vmNames,<br/>map[name]Workload, map[name]auditWorkloadID
+
+    %% ─── CREATE RESOURCES ────────────────────────────────────────
+
+    Note over RO, K8s: Phase 2: createResources — namespace + services
+    RO ->> Res: EnsureNamespace(ctx, client, namespace, labels)
+    Res ->> K8s: Create Namespace (idempotent: AlreadyExists → merge labels)
+    K8s -->> Res: OK
+
+    loop For each workload requiring service
+        RO ->> WL: ServiceSpec()
+        WL -->> RO: *corev1.Service
+        RO ->> Res: CreateService(ctx, client, svc)
+        Res ->> K8s: Create Service
+        K8s -->> Res: OK
+        RO ->> Aud: RecordResource(execID, ResourceRecord{type, name, ns})
+        Aud ->> DB: INSERT resource_details
+        RO ->> Aud: RecordEvent(execID, "service_created")
+        Aud ->> DB: INSERT events
+    end
+
+    %% ─── CREATE SECRETS (PARALLEL) ──────────────────────────────
+
+    Note over RO, K8s: Phase 3: createSecrets — errgroup with limit 10
+    Note right of RO: errgroup.WithContext(ctx)<br/>g.SetLimit(10)
+
+    par Concurrent secret creation (up to 10 at a time)
+        loop For each VMPlan
+            RO ->> Res: CreateCloudInitSecret(ctx, client, name, ns, userdata, labels)
+            Note right of Res: Secret name: {vmName}-cloudinit<br/>Validates size ≤ 1 MiB<br/>StringData["userdata"] = cloud-init YAML
+            Res ->> K8s: Create Secret
+            K8s -->> Res: OK
+            RO ->> RO: plan.VMSpec.CloudInitSecretName = secretName
+            RO ->> Aud: RecordResource(execID, ResourceRecord{type: "Secret"})
+            Aud ->> DB: INSERT resource_details
+        end
+    end
+
+    %% ─── CREATE VMS (PARALLEL) ──────────────────────────────────
+
+    Note over RO, K8s: Phase 4: createVMs — errgroup with VMConcurrency limit
+    Note right of RO: errgroup.WithContext(ctx)<br/>g.SetLimit(cfg.VMConcurrency)
+
+    par Concurrent VM creation (up to VMConcurrency at a time)
+        loop For each VMPlan
+            RO ->> VM: BuildVMSpec(VMSpecOpts{...})
+            Note right of VM: Constructs kubevirtv1.VirtualMachine:<br/>─ RunStrategy: Always<br/>─ Disks: container + cloudInit + extras<br/>─ Volumes: containerDisk + secretRef + extras<br/>─ Network: masquerade + pod<br/>─ DataVolumeTemplates for persistent storage
+            VM -->> RO: *kubevirtv1.VirtualMachine
+
+            RO ->> VM: CreateVM(ctx, client, vmObj)
+            VM ->> K8s: client.Create(ctx, vm)
+            Note right of K8s: retryOnTransient: 1 + 5 retries<br/>exponential backoff on<br/>TooManyRequests / server errors<br/>AlreadyExists → success (idempotent)
+            K8s -->> VM: OK
+            VM -->> RO: nil
+
+            RO ->> Aud: RecordVM(execID, workloadID, VMRecord)
+            Aud ->> DB: INSERT vm_details
+            RO ->> Aud: RecordEvent(execID, EventRecord{type: "vm_created"})
+            Aud ->> DB: INSERT events
+        end
+    end
+
+    %% ─── WAIT FOR READINESS (PARALLEL) ──────────────────────────
+
+    Note over RO, K8s: Phase 5: waitForReadiness — WaitGroup + goroutine per VM
+    alt cfg.WaitForReady == true
+        RO ->> Wait: WaitForAllVMsReady(ctx, client, logger, vmNames, ns, timeout, interval)
+
+        Note right of Wait: sync.WaitGroup + sync.Mutex<br/>one goroutine per VM (unbounded)
+
+        par One goroutine per VM
+            loop Poll until Running or timeout
+                Wait ->> K8s: Get VirtualMachineInstance
+                K8s -->> Wait: VMI status
+                alt vmi.Status.Phase == Running
+                    Wait -->> Wait: VM ready
+                else Not ready
+                    Wait ->> Wait: Sleep(pollInterval)
+                end
+            end
+        end
+
+        Wait -->> RO: map[vmName]error
+
+        loop For each VM result
+            alt VM ready
+                RO ->> Aud: RecordEvent(execID, "vm_ready")
+            else VM timed out
+                RO ->> Aud: RecordEvent(execID, "vm_timeout")
+            end
+        end
+
+        alt Any failures
+            loop For each workload
+                alt Has failed VMs
+                    RO ->> Aud: UpdateWorkloadStatus(workloadID, "failed")
+                else All VMs ready
+                    RO ->> Aud: UpdateWorkloadStatus(workloadID, "created")
+                end
+            end
+            RO -->> RO: Return error (ErrReadinessCheck)
+        end
+    else cfg.WaitForReady == false
+        Note over RO: Skip readiness check (--no-wait)
+    end
+
+    %% ─── COMPLETION ─────────────────────────────────────────────
+
+    RO -->> CLI: RunResult{RunID, VMCount, ServiceCount, SecretCount}
+    CLI ->> Aud: CompleteExecution(execID, "success", "")
+    Aud ->> DB: UPDATE audit_log SET status, completed_at
+    CLI ->> CLI: printSummary(result)
+    CLI -->> CLI: Return nil
+
+    %% ═══ CLEANUP DEEP-DIVE ══════════════════════════════════════
+
+    Note over CLI, K8s: Cleanup flow (cleanupE entry point)
+    CLI ->> CO: NewCleanupOrchestrator(logger, client, cfg, auditor, writer)
+
+    Note over CO, K8s: Preview phase — read-only label query
+    CLI ->> CO: Preview(ctx, execID, targetRunID)
+    CO ->> CL: PreviewCleanup(ctx, client, config, runID)
+    CL ->> K8s: List VMs (label: managed-by=virtwork [+ run-id=UUID])
+    CL ->> K8s: List Services (same labels)
+    CL ->> K8s: List Secrets (same labels)
+    CL ->> K8s: List DataVolumes (same labels)
+    CL ->> K8s: List PVCs (same labels)
+    CL ->> CL: collectRunID() from each resource's labels
+    CL -->> CO: CleanupPreview{counts, runIDs}
+    CO -->> CLI: CleanupPreview
+
+    CLI ->> CLI: printCleanupPreview()
+    CLI -->> CLI: PromptForConfirmation() (unless --run-id or --yes set)
+
+    Note over CO, K8s: Execute phase — ordered deletion
+    CLI ->> CO: Execute(ctx, execID, deleteNS, targetRunID)
+    CO ->> Aud: RecordEvent(execID, "cleanup_started")
+
+    CO ->> CL: CleanupAll(ctx, client, config, deleteNS, runID)
+
+    Note right of CL: Deletion order matters:<br/>VMs first (stop workloads)<br/>Services (remove networking)<br/>Secrets (remove config)<br/>DataVolumes (release storage)<br/>PVCs (release claims)<br/>Namespace last (if requested)
+
+    loop For each resource type (VMs → SVCs → Secrets → DVs → PVCs)
+        CL ->> K8s: List resources by label
+        loop For each resource
+            CL ->> CL: collectRunID(labels)
+            CL ->> K8s: Delete resource
+            Note right of K8s: NotFound → skip (idempotent)<br/>Other errors → collect, continue
+        end
+    end
+
+    opt deleteNamespace == true
+        CL ->> K8s: Delete Namespace
+    end
+
+    CL -->> CO: CleanupResult{counts, errors, runIDs, deletedNames}
+    CO ->> Aud: LinkCleanupToRuns(execID, runIDs)
+    Aud ->> DB: UPDATE audit_log SET linked_run_ids = JSON array
+    CO ->> Aud: MarkVMsDeletedByName(vmNames, namespace, runIDs)
+    Aud ->> DB: UPDATE vm_details SET status='deleted', deleted_at
+    CO ->> Aud: MarkResourcesDeletedByName(type, names, namespace, runIDs)
+    Aud ->> DB: UPDATE resource_details SET status='deleted', deleted_at
+    CO ->> Aud: RecordCleanupCounts(execID, vms, svcs, secrets, dvs, pvcs, nsDeleted)
+    Aud ->> DB: UPDATE audit_log SET cleanup counters
+    CO ->> Aud: RecordEvent(execID, "cleanup_completed")
+    CO -->> CLI: CleanupResult
+
+    %% ─── ERROR HANDLING PATTERNS ────────────────────────────────
+
+    Note over CLI, K8s: Error handling patterns for contributors
+    Note over VM: K8s API error classification:<br/>─ AlreadyExists → success (idempotent create)<br/>─ TooManyRequests / 5xx → retry with backoff<br/>─ NotFound → fatal (on create) / skip (on delete)<br/>─ Unauthorized / Forbidden → fatal, no retry
+    Note over RO: Concurrency: errgroup collects first error,<br/>cancels context on failure, all goroutines respect ctx.Done()
+    Note over CL: Cleanup: continue-on-error pattern,<br/>collect all errors, report at end
+    Note over Aud: Audit errors: logged via logger.Warn(),<br/>never fail the operation — audit is observability, not control flow

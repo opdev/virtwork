@@ -1,0 +1,198 @@
+%% Cleanup Mechanics: label-based discovery, ordered deletion, and run-id linking
+%% Shows the full cleanup flow including preview, confirmation, and audit integration
+
+sequenceDiagram
+    autonumber
+
+    actor User
+    participant CLI as cleanupE
+    participant CO as CleanupOrchestrator
+    participant CL as cleanup pkg
+    participant K8s as K8s API Server
+    participant Aud as SQLiteAuditor
+    participant DB as SQLite DB
+
+    %% ─── ENTRY AND MODE SELECTION ───────────────────────────────
+
+    Note over User, CLI: Entry point and cleanup mode determination
+    User ->> CLI: virtwork cleanup [flags]
+
+    CLI ->> CLI: config.LoadConfig(cmd)
+    CLI ->> CLI: initAuditor(cmd, cfg)
+    CLI ->> CLI: cluster.Connect(kubeconfigPath)
+
+    CLI ->> CLI: Determine cleanup mode
+    alt --dry-run flag set
+        Note right of CLI: mode = "dry-run"<br/>Preview only, no deletions
+    else --run-id UUID provided
+        Note right of CLI: mode = "run-id"<br/>Targeted cleanup of specific run<br/>Skips confirmation prompt
+    else No --run-id
+        Note right of CLI: mode = "all"<br/>Clean all managed resources<br/>Requires confirmation prompt
+    end
+
+    CLI ->> Aud: StartExecution(ctx, "cleanup", cfg)
+    Aud ->> DB: INSERT audit_log (command='cleanup', cleanup_mode)
+    DB -->> CLI: executionID
+
+    %% ─── PREVIEW PHASE (READ-ONLY) ─────────────────────────────
+
+    Note over CLI, K8s: Preview phase — discover resources without modifying
+    CLI ->> CO: Preview(ctx, execID, targetRunID)
+    CO ->> CL: PreviewCleanup(ctx, client, config, runID)
+
+    CL ->> CL: Build label selector
+    Note right of CL: Base labels:<br/>  app.kubernetes.io/managed-by: virtwork<br/><br/>If runID provided, add:<br/>  virtwork/run-id: {UUID}
+
+    CL ->> K8s: List VirtualMachines (namespace, labels)
+    K8s -->> CL: VM list
+    CL ->> K8s: List Services (namespace, labels)
+    K8s -->> CL: Service list
+    CL ->> K8s: List Secrets (namespace, labels)
+    K8s -->> CL: Secret list
+    CL ->> K8s: List DataVolumes (namespace, labels)
+    K8s -->> CL: DataVolume list
+    CL ->> K8s: List PersistentVolumeClaims (namespace, labels)
+    K8s -->> CL: PVC list
+
+    loop For each resource across all types
+        CL ->> CL: collectRunID(resource.Labels, runIDSet)
+        Note right of CL: Extract virtwork/run-id label<br/>Add to deduplication set
+    end
+
+    CL -->> CO: CleanupPreview{<br/>  VMCount, ServiceCount, SecretCount,<br/>  DVCount, PVCCount, TotalCount,<br/>  RunIDs: [unique UUIDs]<br/>}
+    CO -->> CLI: CleanupPreview
+
+    %% ─── USER CONFIRMATION ──────────────────────────────────────
+
+    Note over User, CLI: Confirmation gate
+    CLI ->> CLI: printCleanupPreview(preview)
+    Note right of CLI: Displays:<br/>Resources to delete:<br/>  VMs: 6<br/>  Services: 2<br/>  Secrets: 6<br/>  DataVolumes: 2<br/>  PVCs: 2<br/>  Total: 18
+
+    alt TotalCount == 0
+        CLI -->> User: "nothing to clean up"
+        CLI ->> Aud: CompleteExecution(execID, "success", "")
+        Note over CLI: Return early — nothing to delete
+    else DryRun mode
+        CLI -->> User: "dry-run mode — no resources were deleted"
+        CLI ->> Aud: CompleteExecution(execID, "success", "")
+        Note over CLI: Return early — preview only
+    else --run-id provided (targeted cleanup)
+        Note right of CLI: Skip confirmation — targeted mode<br/>is considered intentional
+    else --yes flag provided
+        Note right of CLI: Skip confirmation — auto-approved
+    else All mode (no --run-id, no --yes)
+        CLI ->> User: "Proceed with deletion? (yes/NO):"
+        User ->> CLI: PromptForConfirmation()
+        alt User confirms
+            Note right of CLI: Proceed with deletion
+        else User declines
+            CLI -->> User: "cleanup aborted by user"
+            CLI ->> Aud: CompleteExecution(execID, "aborted", "user declined confirmation")
+            Note over CLI: Return early
+        end
+    end
+
+    %% ─── EXECUTION PHASE (ORDERED DELETION) ─────────────────────
+
+    Note over CLI, K8s: Execute phase — ordered resource deletion
+    CLI ->> CO: Execute(ctx, execID, deleteNamespace, targetRunID)
+    CO ->> Aud: RecordEvent(execID, "cleanup_started")
+
+    CO ->> CL: CleanupAll(ctx, client, config, deleteNS, runID)
+
+    CL ->> CL: Build label selector (same as preview)
+
+    Note over CL, K8s: Deletion order is intentional:<br/>1. VMs — stop workloads first<br/>2. Services — remove networking<br/>3. Secrets — remove cloud-init config<br/>4. DataVolumes — release storage (before PVCs)<br/>5. PVCs — release persistent volume claims<br/>6. Namespace — final sweep (if requested)
+
+    Note over CL, K8s: Step 1: Delete VirtualMachines
+    CL ->> K8s: List VMs (namespace, labels)
+    K8s -->> CL: VM list
+    loop For each VM
+        CL ->> CL: collectRunID(vm.Labels, runIDSet)
+        CL ->> K8s: Delete VM
+        alt Success
+            CL ->> CL: vmsDeleted++
+        else NotFound
+            Note right of CL: Skip — already deleted (idempotent)
+        else Other error
+            CL ->> CL: errors = append(errors, err)
+            Note right of CL: Continue — don't abort on single failure
+        end
+    end
+
+    Note over CL, K8s: Step 2: Delete Services
+    CL ->> K8s: List Services (namespace, labels)
+    loop For each Service
+        CL ->> CL: collectRunID + Delete
+        Note right of CL: Same error handling pattern
+    end
+
+    Note over CL, K8s: Step 3: Delete Secrets
+    CL ->> K8s: List Secrets (namespace, labels)
+    loop For each Secret
+        CL ->> CL: collectRunID + Delete
+    end
+
+    Note over CL, K8s: Step 4: Delete DataVolumes (before PVCs)
+    CL ->> K8s: List DataVolumes (namespace, labels)
+    Note right of CL: DVs deleted before PVCs because<br/>CDI controller may own PVCs via<br/>DataVolume → deleting DV first<br/>lets controller GC its owned PVC
+    loop For each DataVolume
+        CL ->> CL: collectRunID + Delete
+    end
+
+    Note over CL, K8s: Step 5: Delete PVCs
+    CL ->> K8s: List PVCs (namespace, labels)
+    loop For each PVC
+        CL ->> CL: collectRunID + Delete
+    end
+
+    opt deleteNamespace == true
+        Note over CL, K8s: Step 6: Delete Namespace (final sweep)
+        CL ->> K8s: Delete Namespace
+        alt Success
+            CL ->> CL: namespaceDeleted = true
+        else NotFound
+            Note right of CL: Already deleted — OK
+        else Error
+            CL ->> CL: errors = append(errors, err)
+        end
+    end
+
+    CL -->> CO: CleanupResult{<br/>  VMsDeleted, ServicesDeleted,<br/>  SecretsDeleted, DVsDeleted,<br/>  PVCsDeleted, NamespaceDeleted,<br/>  Errors: [...],<br/>  RunIDs: [unique UUIDs from all resources],<br/>  DeletedVMNames, DeletedServiceNames,<br/>  DeletedSecretNames, DeletedDVNames,<br/>  DeletedPVCNames<br/>}
+
+    %% ─── AUDIT RECORDING ────────────────────────────────────────
+
+    Note over CO, DB: Audit recording after cleanup
+
+    alt result.RunIDs is non-empty
+        CO ->> Aud: LinkCleanupToRuns(execID, result.RunIDs)
+        Aud ->> DB: UPDATE audit_log<br/>SET linked_run_ids = '["uuid-1","uuid-2",...]'
+        Note right of DB: JSON array stored as TEXT<br/>Links this cleanup to the specific runs<br/>whose resources were deleted
+    end
+
+    CO ->> Aud: MarkVMsDeletedByName(vmNames, namespace, runIDs)
+    Aud ->> DB: UPDATE vm_details SET status='deleted', deleted_at<br/>WHERE vm_name IN (...) AND namespace=?<br/>AND audit_id IN (SELECT id FROM audit_log WHERE run_id IN (...))
+
+    loop For each resource type (Service, Secret, DataVolume, PVC)
+        CO ->> Aud: MarkResourcesDeletedByName(type, names, namespace, runIDs)
+        Aud ->> DB: UPDATE resource_details SET status='deleted', deleted_at<br/>WHERE resource_name IN (...) AND resource_type=?<br/>AND audit_id scoped by run_id
+    end
+
+    CO ->> Aud: RecordCleanupCounts(execID,<br/>vms, svcs, secrets, dvs, pvcs, nsDeleted)
+    Aud ->> DB: UPDATE audit_log<br/>SET vms_deleted=N, services_deleted=N, ...
+
+    CO ->> Aud: RecordEvent(execID, "cleanup_completed")
+
+    CO -->> CLI: CleanupResult
+    CLI ->> Aud: CompleteExecution(execID, "success", "")
+
+    alt Any errors in CleanupResult
+        CLI -->> User: Warnings: [individual deletion errors]
+    end
+
+    CLI -->> User: Cleanup summary:<br/>Deleted N VMs, M services, ...
+
+    %% ─── RUN-ID TRACEABILITY ────────────────────────────────────
+
+    Note over User, DB: Run-ID traceability chain
+    Note right of DB: Every virtwork run generates a UUID (run-id)<br/><br/>run-id is applied as a K8s label to every<br/>resource created during that run:<br/>  virtwork/run-id: "abc-123-..."<br/><br/>Cleanup collects run-ids from the<br/>resources it deletes and stores them<br/>in audit_log.linked_run_ids as JSON<br/><br/>This creates a chain:<br/>  run audit_log.run_id = "abc-123"<br/>    ↓ labels on K8s resources<br/>  cleanup audit_log.linked_run_ids = ["abc-123"]<br/><br/>Query: which cleanup deleted run X?<br/>  SELECT * FROM audit_log<br/>  WHERE linked_run_ids LIKE '%abc-123%'

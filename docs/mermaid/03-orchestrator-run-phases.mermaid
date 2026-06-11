@@ -1,0 +1,191 @@
+%% Orchestrator Run Phases: the 5-phase pipeline inside RunOrchestrator.Run()
+%% Shows concurrency boundaries, error handling, and data flow between phases
+
+sequenceDiagram
+    autonumber
+
+    participant CLI as runE
+    participant RO as RunOrchestrator
+    participant Plan as planVMs
+    participant Reg as Registry
+    participant WL as Workload
+    participant NS as EnsureNamespace
+    participant Svc as CreateService
+    participant Sec as CreateCloudInitSecret
+    participant VM as CreateVM
+    participant Wait as WaitForAllVMsReady
+    participant Aud as Auditor
+
+    CLI ->> RO: Run(ctx, execID, runID, workloadNames, vmCountFlag)
+
+    %% ─── PHASE 1: PLAN ──────────────────────────────────────────
+
+    Note over RO, WL: Phase 1 — planVMs (sequential, pure data)
+    RO ->> Plan: planVMs(ctx, execID, runID, names, vmCount, registry, opts)
+
+    Plan ->> Reg: DefaultRegistry()
+    Note right of Reg: map[string]WorkloadFactory with 9 workload types
+
+    loop For each workload name
+        Plan ->> Plan: Check config: workload disabled?
+        alt Disabled in config
+            Plan ->> Aud: RecordEvent("workload_skipped")
+        else Enabled
+            Plan ->> Plan: Merge global config with per-workload overrides
+            Plan ->> Reg: Get(name, mergedConfig, opts...)
+            Reg -->> Plan: Workload instance
+
+            Plan ->> Aud: RecordWorkload(execID, WorkloadRecord)
+            Aud -->> Plan: workloadID
+
+            alt Implements MultiVMWorkload
+                Plan ->> WL: RoleDistribution()
+                WL -->> Plan: [{role:"server", count:N}, {role:"client", count:N}]
+                loop For each role
+                    Plan ->> WL: UserdataForRole(role, namespace)
+                    WL -->> Plan: cloud-init YAML
+                    loop For each VM in role count (0-indexed)
+                        Plan ->> Plan: Build VMPlan<br/>name: virtwork-{wl}-{role}-{i}<br/>labels: managed-by, component, run-id, role
+                    end
+                end
+            else Single-VM Workload
+                Plan ->> WL: CloudInitUserdata()
+                WL -->> Plan: cloud-init YAML
+                loop For each VM (0..VMCount-1)
+                    Plan ->> WL: DataVolumeTemplates()
+                    WL -->> Plan: []DataVolumeTemplateSpec (or nil)
+                    Plan ->> Plan: Build VMPlan<br/>name: virtwork-{wl}-{i}<br/>NamespaceDataVolumes() uniquifies DVT names
+                end
+            end
+        end
+    end
+
+    Plan -->> RO: []VMPlan, []vmNames,<br/>map[name]Workload, map[name]workloadID
+
+    %% ─── DRY RUN CHECK ──────────────────────────────────────────
+
+    alt cfg.DryRun == true
+        RO ->> RO: printDryRun(plans) — marshal each VM spec to YAML
+        RO -->> CLI: RunResult (dry-run, no cluster changes)
+    end
+
+    %% ─── PHASE 2: RESOURCES ─────────────────────────────────────
+
+    Note over RO, Svc: Phase 2 — createResources (sequential)
+    RO ->> NS: EnsureNamespace(ctx, client, namespace, labels)
+    Note right of NS: Create or merge labels if exists<br/>(AlreadyExists → patch)
+    NS -->> RO: OK
+
+    loop For each workload where RequiresService() == true
+        RO ->> WL: ServiceSpec()
+        WL -->> RO: *corev1.Service
+        RO ->> RO: Inject run-id label into service
+        RO ->> Svc: CreateService(ctx, client, svc)
+        Note right of Svc: AlreadyExists → success (idempotent)
+        Svc -->> RO: OK
+        RO ->> Aud: RecordResource(execID, {type:"Service", name, ns})
+        RO ->> Aud: RecordEvent(execID, "service_created")
+    end
+
+    Note over RO: serviceCount accumulated
+
+    %% ─── PHASE 3: SECRETS ───────────────────────────────────────
+
+    Note over RO, Sec: Phase 3 — createSecrets (parallel, errgroup limit=10)
+    Note right of RO: g, ctx := errgroup.WithContext(ctx)<br/>g.SetLimit(10)<br/>secretsCreated atomic.Int32
+
+    par Up to 10 concurrent goroutines
+        loop For each VMPlan[i]
+            RO ->> Sec: CreateCloudInitSecret(ctx, client,<br/>"{vmName}-cloudinit", ns, userdata, labels)
+            Note right of Sec: Validates size ≤ 1 MiB<br/>StringData["userdata"] = cloud-init YAML<br/>AlreadyExists → success
+            Sec -->> RO: OK
+            RO ->> RO: plans[i].VMSpec.CloudInitSecretName = secretName
+            RO ->> Aud: RecordResource(execID, {type:"Secret", name, ns})
+            RO ->> RO: secretsCreated.Add(1)
+        end
+    end
+
+    RO ->> RO: g.Wait() — returns first error (cancels ctx)
+
+    %% ─── PHASE 4: VMS ───────────────────────────────────────────
+
+    Note over RO, VM: Phase 4 — createVMs (parallel, errgroup limit=VMConcurrency)
+    Note right of RO: g, ctx := errgroup.WithContext(ctx)<br/>g.SetLimit(cfg.VMConcurrency)
+
+    par Up to VMConcurrency concurrent goroutines
+        loop For each VMPlan
+            RO ->> VM: BuildVMSpec(opts) → *kubevirtv1.VirtualMachine
+            RO ->> VM: CreateVM(ctx, client, vmObj)
+            Note right of VM: retryOnTransient: 1 + 5 retries<br/>backoff: 1s, 2s, 4s, 8s, 16s<br/>retries: TooManyRequests, ServerTimeout,<br/>ServiceUnavailable, InternalError<br/>AlreadyExists → success
+
+            alt Success
+                RO ->> Aud: RecordVM(execID, wlID, VMRecord)
+                RO ->> Aud: RecordEvent(execID, "vm_created")
+            else Failure
+                RO ->> Aud: RecordEvent(execID, "vm_failed", error)
+                Note right of RO: Returns error → errgroup cancels ctx
+            end
+        end
+    end
+
+    RO ->> RO: g.Wait() — returns first error
+
+    alt createVMs failed
+        RO ->> RO: Loop all workload IDs
+        RO ->> Aud: UpdateWorkloadStatus(wlID, "failed") for each
+        RO -->> CLI: Return error
+    end
+
+    %% ─── PHASE 5: READINESS ─────────────────────────────────────
+
+    Note over RO, Wait: Phase 5 — waitForReadiness (WaitGroup + goroutine per VM)
+
+    alt cfg.WaitForReady == true
+        RO ->> Wait: WaitForAllVMsReady(ctx, client, logger,<br/>vmNames, ns, timeout, pollInterval)
+        Note right of Wait: sync.WaitGroup + sync.Mutex<br/>One goroutine per VM name<br/>Each defers recover() for panic safety
+
+        par Independent goroutine per VM
+            loop Poll until Running or deadline
+                Wait ->> Wait: Get VMI by ObjectKey
+                alt VMI.Status.Phase == Running
+                    Wait -->> Wait: nil (ready)
+                else NotFound
+                    Wait ->> Wait: Sleep(interval), retry
+                else Other phase
+                    Wait ->> Wait: Sleep(interval), retry
+                else Past deadline
+                    Wait -->> Wait: ErrVMTimeout
+                end
+            end
+        end
+
+        Wait -->> RO: map[vmName]error
+
+        loop For each result
+            alt error == nil (VM ready)
+                RO ->> Aud: RecordEvent(execID, "vm_ready")
+            else error != nil (timeout/failure)
+                RO ->> Aud: RecordEvent(execID, "vm_timeout")
+            end
+        end
+
+        alt Any failures
+            loop For each workload
+                alt Has failed VMs
+                    RO ->> Aud: UpdateWorkloadStatus(wlID, "failed")
+                else All VMs ready
+                    RO ->> Aud: UpdateWorkloadStatus(wlID, "created")
+                end
+            end
+            RO -->> RO: return ErrReadinessCheck (N of M VMs failed)
+        end
+    else --no-wait flag set
+        Note over RO: Skip readiness polling
+    end
+
+    %% ─── COMPLETION ─────────────────────────────────────────────
+
+    Note over RO, CLI: Completion
+    RO -->> CLI: RunResult{RunID, VMCount, ServiceCount, SecretCount}
+    CLI ->> Aud: CompleteExecution(execID, "success", "")
+    CLI ->> CLI: printSummary(result)
