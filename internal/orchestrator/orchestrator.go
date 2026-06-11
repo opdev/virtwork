@@ -86,9 +86,17 @@ func (ro *RunOrchestrator) Run(
 
 	if err := ro.auditor.RecordEvent(ctx, execID, audit.EventRecord{
 		EventType: "execution_started",
-		Message:   fmt.Sprintf("Planned %d VMs across %d workloads", len(plans), len(workloadNames)),
+		Message: fmt.Sprintf(
+			"Planned %d VMs across %d workloads",
+			len(plans),
+			len(workloadNames),
+		),
 	}); err != nil {
-		ro.logger.Warn("audit record failed", slog.String("op", "RecordEvent"), slog.String("error", err.Error()))
+		ro.logger.Warn(
+			"audit record failed",
+			slog.String("op", "RecordEvent"),
+			slog.String("error", err.Error()),
+		)
 	}
 
 	if cfg.DryRun {
@@ -170,7 +178,10 @@ func (ro *RunOrchestrator) planVMs(
 			if fileCfg.Enabled != nil && !*fileCfg.Enabled {
 				if err := ro.auditor.RecordEvent(ctx, execID, audit.EventRecord{
 					EventType: "workload_skipped",
-					Message:   fmt.Sprintf("Workload %q disabled via config (enabled: false)", name),
+					Message: fmt.Sprintf(
+						"Workload %q disabled via config (enabled: false)",
+						name,
+					),
 				}); err != nil {
 					ro.logger.Warn(
 						"audit record failed",
@@ -217,7 +228,11 @@ func (ro *RunOrchestrator) planVMs(
 
 		dvTemplatesForAudit, err := w.DataVolumeTemplates()
 		if err != nil {
-			return nil, nil, nil, nil, fmt.Errorf("building data volume templates for %q: %w", name, err)
+			return nil, nil, nil, nil, fmt.Errorf(
+				"building data volume templates for %q: %w",
+				name,
+				err,
+			)
 		}
 		wlID, auditErr := ro.auditor.RecordWorkload(ctx, execID, audit.WorkloadRecord{
 			WorkloadType:    name,
@@ -605,7 +620,11 @@ func (ro *RunOrchestrator) waitForReadiness(
 	if failures > 0 {
 		for comp, wlID := range auditWorkloadIDs {
 			if failedWorkloads[comp] {
-				if auditErr := ro.auditor.UpdateWorkloadStatus(ctx, wlID, "failed"); auditErr != nil {
+				if auditErr := ro.auditor.UpdateWorkloadStatus(
+					ctx,
+					wlID,
+					"failed",
+				); auditErr != nil {
 					ro.logger.Warn(
 						"audit record failed",
 						slog.String("op", "UpdateWorkloadStatus"),
@@ -613,7 +632,11 @@ func (ro *RunOrchestrator) waitForReadiness(
 					)
 				}
 			} else {
-				if auditErr := ro.auditor.UpdateWorkloadStatus(ctx, wlID, "created"); auditErr != nil {
+				if auditErr := ro.auditor.UpdateWorkloadStatus(
+					ctx,
+					wlID,
+					"created",
+				); auditErr != nil {
 					ro.logger.Warn(
 						"audit record failed",
 						slog.String("op", "UpdateWorkloadStatus"),
@@ -654,7 +677,14 @@ func (ro *RunOrchestrator) printDryRun(
 				if err != nil {
 					return 0, 0, fmt.Errorf("marshaling Service for %q: %w", name, err)
 				}
-				_, _ = fmt.Fprintf(ro.writer, "# Service: %s (workload: %s)\n%s\n%s\n", svc.Name, name, string(data), "---")
+				_, _ = fmt.Fprintf(
+					ro.writer,
+					"# Service: %s (workload: %s)\n%s\n%s\n",
+					svc.Name,
+					name,
+					string(data),
+					"---",
+				)
 				svcCount++
 			}
 		}
@@ -687,7 +717,14 @@ func (ro *RunOrchestrator) printDryRun(
 		if err != nil {
 			return 0, 0, fmt.Errorf("marshaling Secret for %q: %w", plans[i].VMName, err)
 		}
-		_, _ = fmt.Fprintf(ro.writer, "# Secret: %s (workload: %s)\n%s\n%s\n", secretName, plans[i].Component, string(data), "---")
+		_, _ = fmt.Fprintf(
+			ro.writer,
+			"# Secret: %s (workload: %s)\n%s\n%s\n",
+			secretName,
+			plans[i].Component,
+			string(data),
+			"---",
+		)
 	}
 
 	for _, p := range plans {
@@ -711,7 +748,14 @@ func (ro *RunOrchestrator) printDryRun(
 		if err != nil {
 			return 0, 0, fmt.Errorf("marshaling VM spec for %q: %w", p.VMName, err)
 		}
-		_, _ = fmt.Fprintf(ro.writer, "# VM: %s (workload: %s)\n%s\n%s\n", p.VMName, p.Component, string(data), "---")
+		_, _ = fmt.Fprintf(
+			ro.writer,
+			"# VM: %s (workload: %s)\n%s\n%s\n",
+			p.VMName,
+			p.Component,
+			string(data),
+			"---",
+		)
 	}
 	return svcCount, len(plans), nil
 }
