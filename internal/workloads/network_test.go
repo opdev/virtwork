@@ -87,7 +87,9 @@ var _ = Describe("NetworkWorkload", func() {
 		}
 		Expect(serviceContent).NotTo(BeEmpty())
 		Expect(serviceContent).To(ContainSubstring("iperf3 -c"))
-		Expect(serviceContent).To(ContainSubstring("virtwork-iperf3-server.virtwork.svc.cluster.local"))
+		Expect(
+			serviceContent,
+		).To(ContainSubstring("virtwork-iperf3-server.virtwork.svc.cluster.local"))
 		Expect(serviceContent).To(ContainSubstring("--bidir"))
 	})
 
@@ -106,7 +108,9 @@ var _ = Describe("NetworkWorkload", func() {
 				break
 			}
 		}
-		Expect(serviceContent).To(ContainSubstring("virtwork-iperf3-server.custom-ns.svc.cluster.local"))
+		Expect(
+			serviceContent,
+		).To(ContainSubstring("virtwork-iperf3-server.custom-ns.svc.cluster.local"))
 	})
 
 	It("should return error for unknown role", func() {
@@ -203,5 +207,67 @@ var _ = Describe("NetworkWorkload", func() {
 
 	It("should implement MultiVMWorkload interface", func() {
 		var _ workloads.MultiVMWorkload = w
+	})
+
+	Context("param wiring", func() {
+		It("should use default param values when Params is nil", func() {
+			result, err := w.UserdataForRole("client", "virtwork")
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+			file := files[0].(map[string]interface{})
+			content := file["content"].(string)
+
+			Expect(content).To(ContainSubstring("-t 60"))
+			Expect(content).To(ContainSubstring("-P 4"))
+		})
+
+		It("should wire custom params from WorkloadConfig.Params", func() {
+			custom := workloads.NewNetworkWorkload(config.WorkloadConfig{
+				Enabled:  new(true),
+				VMCount:  1,
+				CPUCores: 2,
+				Memory:   "2Gi",
+				Params: map[string]string{
+					"parallel-streams": "8",
+					"test-duration":    "120",
+				},
+			}, "virtwork", "virtwork", "", nil)
+
+			result, err := custom.UserdataForRole("client", "virtwork")
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+			file := files[0].(map[string]interface{})
+			content := file["content"].(string)
+
+			Expect(content).To(ContainSubstring("-t 120"))
+			Expect(content).To(ContainSubstring("-P 8"))
+		})
+
+		It("should use defaults for missing individual params", func() {
+			partial := workloads.NewNetworkWorkload(config.WorkloadConfig{
+				Enabled:  new(true),
+				VMCount:  1,
+				CPUCores: 2,
+				Memory:   "2Gi",
+				Params: map[string]string{
+					"test-duration": "30",
+				},
+			}, "virtwork", "virtwork", "", nil)
+
+			result, err := partial.UserdataForRole("client", "virtwork")
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+			file := files[0].(map[string]interface{})
+			content := file["content"].(string)
+
+			Expect(content).To(ContainSubstring("-t 30"))
+			Expect(content).To(ContainSubstring("-P 4"))
+		})
 	})
 })
