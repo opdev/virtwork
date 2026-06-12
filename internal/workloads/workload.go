@@ -78,9 +78,26 @@ type VMResourceSpec struct {
 // Embed this struct in concrete workloads to inherit sensible defaults.
 type BaseWorkload struct {
 	Config            config.WorkloadConfig
+	ParamSchema       ParamSchema
 	SSHUser           string
 	SSHPassword       string
 	SSHAuthorizedKeys []string
+}
+
+// GetParam returns the user-supplied value for key, or its schema default.
+// Panics if key is not declared in ParamSchema (programming error).
+func (b *BaseWorkload) GetParam(key string) string {
+	for i := range b.ParamSchema {
+		if b.ParamSchema[i].Key == key {
+			if b.Config.Params != nil {
+				if val, ok := b.Config.Params[key]; ok && val != "" {
+					return val
+				}
+			}
+			return b.ParamSchema[i].Default
+		}
+	}
+	panic(fmt.Sprintf("BUG: unknown param key %q — not in schema", key))
 }
 
 // VMResources returns the CPU and memory spec from the workload config.
