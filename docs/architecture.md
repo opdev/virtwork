@@ -358,11 +358,11 @@ classDiagram
 
 | Workload | VM Count | Data Volume | K8s Service | Packages | Workload Tool |
 |----------|----------|-------------|-------------|----------|---------------|
-| CPU | N (configurable) | No | No | stress-ng | `stress-ng --cpu 0 --cpu-method all` |
-| Memory | N (configurable) | No | No | stress-ng | `stress-ng --vm 1 --vm-bytes 80% --vm-method all` |
-| Disk | N (configurable) | Yes (`/mnt/data`) | No | fio | Mixed R/W + sequential write profiles |
-| Database | N (configurable) | Yes (`/var/lib/pgsql/data`) | No | postgresql-server | `pgbench -c 10 -j 2 -T 300` loop |
-| Network | N × 2 (server + client) | No | Yes — `virtwork-iperf3-server` :5201 | iperf3 | `iperf3 -s` / `iperf3 -c ... --bidir` |
+| CPU | N (configurable) | No | No | stress-ng | `stress-ng --cpu 0 --cpu-load 100 --cpu-method all` (defaults; tunable via `params`) |
+| Memory | N (configurable) | No | No | stress-ng | `stress-ng --vm 1 --vm-bytes 80% --vm-method all` (defaults; tunable via `params`) |
+| Disk | N (configurable) | Yes (`/mnt/data`) | No | fio | Mixed R/W + sequential write profiles (defaults; tunable via `params`) |
+| Database | N (configurable) | Yes (`/var/lib/pgsql/data`) | No | postgresql-server | `pgbench -c 10 -j 2 -T 300` loop (defaults; tunable via `params`) |
+| Network | N × 2 (server + client) | No | Yes — `virtwork-iperf3-server` :5201 | iperf3 | `iperf3 -s` / `iperf3 -c ... -P 4 -t 60 --bidir` (defaults; tunable via `params`) |
 | TPS | N × 2 (server + client) | No | Yes — `virtwork-tps-server` :12865 / :12866 / :8080 | netperf, python3 | `netperf -t TCP_RR` + curl HTTP file fetch loop |
 | Chaos-disk | N (configurable) | Yes (`/mnt/data`) | No | (golden image: `fallocate`, `dd`) | Fill to target percent, sleep, release, repeat |
 | Chaos-network | N (configurable) | No | No | iproute-tc (+ `sch_netem` kernel module) | `tc qdisc add ... netem delay 100ms loss 5%` |
