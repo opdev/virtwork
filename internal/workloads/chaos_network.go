@@ -45,6 +45,12 @@ RestartSec=10
 WantedBy=multi-user.target
 `
 
+// ChaosNetworkParamSchema declares the configurable params for the chaos-network workload.
+var ChaosNetworkParamSchema = ParamSchema{
+	{Key: "latency-ms", Type: ParamInt, Default: "100", Desc: "Added latency in milliseconds via tc/netem"},
+	{Key: "packet-loss-percent", Type: ParamString, Default: "5.0", Desc: "Packet loss percentage via tc/netem"},
+}
+
 // ChaosNetworkWorkload generates cloud-init userdata for network chaos injection
 // using tc (traffic control) and netem (network emulation).
 type ChaosNetworkWorkload struct {
@@ -61,29 +67,12 @@ func NewChaosNetworkWorkload(
 	return &ChaosNetworkWorkload{
 		BaseWorkload: BaseWorkload{
 			Config:            cfg,
+			ParamSchema:       ChaosNetworkParamSchema,
 			SSHUser:           sshUser,
 			SSHPassword:       sshPassword,
 			SSHAuthorizedKeys: sshKeys,
 		},
 	}
-}
-
-func (w *ChaosNetworkWorkload) latencyMs() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["latency-ms"]; ok && val != "" {
-			return val
-		}
-	}
-	return "100"
-}
-
-func (w *ChaosNetworkWorkload) packetLossPercent() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["packet-loss-percent"]; ok && val != "" {
-			return val
-		}
-	}
-	return "5.0"
 }
 
 // Name returns "chaos-network".
@@ -96,8 +85,8 @@ func (w *ChaosNetworkWorkload) Name() string {
 // (sch_netem); the start script runs modprobe as a fallback for non-golden images.
 func (w *ChaosNetworkWorkload) CloudInitUserdata() (string, error) {
 	startScript := fmt.Sprintf(chaosNetworkStartScript,
-		w.latencyMs(),
-		w.packetLossPercent())
+		w.GetParam("latency-ms"),
+		w.GetParam("packet-loss-percent"))
 
 	return w.BuildCloudConfig(CloudConfigOpts{
 		Packages: []string{"iproute-tc"},

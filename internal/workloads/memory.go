@@ -23,6 +23,13 @@ RestartSec=10
 WantedBy=multi-user.target
 `
 
+// MemoryParamSchema declares the configurable params for the memory workload.
+var MemoryParamSchema = ParamSchema{
+	{Key: "memory-percent", Type: ParamInt, Default: "80", Desc: "Target memory usage percentage for stress-ng (--vm-bytes)"},
+	{Key: "vm-stressors", Type: ParamInt, Default: "1", Desc: "Number of VM stressor workers for stress-ng (--vm)"},
+	{Key: "vm-method", Type: ParamString, Default: "all", Desc: "Memory stressor method for stress-ng (--vm-method)"},
+}
+
 // MemoryWorkload generates cloud-init userdata for a continuous memory pressure
 // workload using stress-ng. It uses a single VM worker (--vm 1) targeting 80%
 // of available memory to produce sustained pressure without triggering OOM kills.
@@ -39,38 +46,12 @@ func NewMemoryWorkload(
 	return &MemoryWorkload{
 		BaseWorkload: BaseWorkload{
 			Config:            cfg,
+			ParamSchema:       MemoryParamSchema,
 			SSHUser:           sshUser,
 			SSHPassword:       sshPassword,
 			SSHAuthorizedKeys: sshKeys,
 		},
 	}
-}
-
-func (w *MemoryWorkload) memoryPercent() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["memory-percent"]; ok && val != "" {
-			return val
-		}
-	}
-	return "80"
-}
-
-func (w *MemoryWorkload) vmStressors() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["vm-stressors"]; ok && val != "" {
-			return val
-		}
-	}
-	return "1"
-}
-
-func (w *MemoryWorkload) vmMethod() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["vm-method"]; ok && val != "" {
-			return val
-		}
-	}
-	return "all"
 }
 
 // Name returns "memory".
@@ -81,7 +62,7 @@ func (w *MemoryWorkload) Name() string {
 // CloudInitUserdata returns cloud-init YAML that installs stress-ng and runs a
 // continuous memory pressure workload via systemd.
 func (w *MemoryWorkload) CloudInitUserdata() (string, error) {
-	unit := fmt.Sprintf(memorySystemdUnitTemplate, w.vmStressors(), w.memoryPercent(), w.vmMethod())
+	unit := fmt.Sprintf(memorySystemdUnitTemplate, w.GetParam("vm-stressors"), w.GetParam("memory-percent"), w.GetParam("vm-method"))
 	return w.BuildCloudConfig(CloudConfigOpts{
 		Packages: []string{"stress-ng"},
 		WriteFiles: []WriteFile{

@@ -31,6 +31,12 @@ WantedBy=multi-user.target
 
 var ErrUnknownNetworkRole = errors.New("unexpected network role; expected 'server' or 'client'")
 
+// NetworkParamSchema declares the configurable params for the network workload.
+var NetworkParamSchema = ParamSchema{
+	{Key: "parallel-streams", Type: ParamInt, Default: "4", Desc: "Number of parallel iperf3 streams (-P)"},
+	{Key: "test-duration", Type: ParamInt, Default: "60", Desc: "Duration in seconds per iperf3 test (-t)"},
+}
+
 // NetworkWorkload generates cloud-init userdata for an iperf3 network benchmark.
 // It creates two VMs: a server running iperf3 in listen mode, and a client that
 // runs bidirectional tests against the server via DNS. A K8s Service routes
@@ -50,30 +56,13 @@ func NewNetworkWorkload(
 	return &NetworkWorkload{
 		BaseWorkload: BaseWorkload{
 			Config:            cfg,
+			ParamSchema:       NetworkParamSchema,
 			SSHUser:           sshUser,
 			SSHPassword:       sshPassword,
 			SSHAuthorizedKeys: sshKeys,
 		},
 		Namespace: namespace,
 	}
-}
-
-func (w *NetworkWorkload) parallelStreams() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["parallel-streams"]; ok && val != "" {
-			return val
-		}
-	}
-	return "4"
-}
-
-func (w *NetworkWorkload) testDuration() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["test-duration"]; ok && val != "" {
-			return val
-		}
-	}
-	return "60"
 }
 
 // Name returns "network".
@@ -185,7 +174,7 @@ RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
-`, dnsName, w.testDuration(), w.parallelStreams())
+`, dnsName, w.GetParam("test-duration"), w.GetParam("parallel-streams"))
 
 	return w.BuildCloudConfig(CloudConfigOpts{
 		Packages: []string{"iperf3"},

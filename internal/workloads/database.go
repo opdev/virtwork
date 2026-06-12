@@ -86,6 +86,13 @@ RestartSec=10
 WantedBy=multi-user.target
 `
 
+// DatabaseParamSchema declares the configurable params for the database workload.
+var DatabaseParamSchema = ParamSchema{
+	{Key: "scale-factor", Type: ParamInt, Default: "50", Desc: "pgbench scale factor (-s)"},
+	{Key: "clients", Type: ParamInt, Default: "10", Desc: "Number of concurrent pgbench clients (-c)"},
+	{Key: "duration", Type: ParamInt, Default: "300", Desc: "pgbench run duration in seconds (-T)"},
+}
+
 // DatabaseWorkload generates cloud-init userdata for a PostgreSQL database
 // benchmark workload using pgbench. It formats a data disk, initializes
 // PostgreSQL, creates a pgbench database at scale 50, and runs continuous
@@ -105,39 +112,13 @@ func NewDatabaseWorkload(
 	return &DatabaseWorkload{
 		BaseWorkload: BaseWorkload{
 			Config:            cfg,
+			ParamSchema:       DatabaseParamSchema,
 			SSHUser:           sshUser,
 			SSHPassword:       sshPassword,
 			SSHAuthorizedKeys: sshKeys,
 		},
 		DataDiskSize: dataDiskSize,
 	}
-}
-
-func (w *DatabaseWorkload) scaleFactor() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["scale-factor"]; ok && val != "" {
-			return val
-		}
-	}
-	return "50"
-}
-
-func (w *DatabaseWorkload) clients() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["clients"]; ok && val != "" {
-			return val
-		}
-	}
-	return "10"
-}
-
-func (w *DatabaseWorkload) duration() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["duration"]; ok && val != "" {
-			return val
-		}
-	}
-	return "300"
 }
 
 // Name returns "database".
@@ -149,8 +130,8 @@ func (w *DatabaseWorkload) Name() string {
 // a setup script for one-time database initialization, and creates a systemd
 // service that runs continuous pgbench benchmarks.
 func (w *DatabaseWorkload) CloudInitUserdata() (string, error) {
-	setupScript := fmt.Sprintf(dbSetupScriptTemplate, w.scaleFactor())
-	serviceUnit := fmt.Sprintf(dbSystemdUnitTemplate, w.clients(), w.duration())
+	setupScript := fmt.Sprintf(dbSetupScriptTemplate, w.GetParam("scale-factor"))
+	serviceUnit := fmt.Sprintf(dbSystemdUnitTemplate, w.GetParam("clients"), w.GetParam("duration"))
 	return w.BuildCloudConfig(CloudConfigOpts{
 		Packages: []string{"postgresql-server"},
 		WriteFiles: []WriteFile{

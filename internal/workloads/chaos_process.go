@@ -124,6 +124,13 @@ StandardError=journal
 WantedBy=multi-user.target
 `
 
+// ChaosProcessParamSchema declares the configurable params for the chaos-process workload.
+var ChaosProcessParamSchema = ParamSchema{
+	{Key: "signal", Type: ParamString, Default: "SIGTERM", Desc: "Signal to send to target processes"},
+	{Key: "interval", Type: ParamInt, Default: "30", Desc: "Seconds between chaos actions"},
+	{Key: "min-pid", Type: ParamInt, Default: "1000", Desc: "Minimum PID to target (skips kernel threads)"},
+}
+
 // ChaosProcessWorkload generates cloud-init userdata for a process chaos workload
 // that randomly kills non-essential processes to test resilience.
 type ChaosProcessWorkload struct {
@@ -139,38 +146,12 @@ func NewChaosProcessWorkload(
 	return &ChaosProcessWorkload{
 		BaseWorkload: BaseWorkload{
 			Config:            cfg,
+			ParamSchema:       ChaosProcessParamSchema,
 			SSHUser:           sshUser,
 			SSHPassword:       sshPassword,
 			SSHAuthorizedKeys: sshKeys,
 		},
 	}
-}
-
-func (w *ChaosProcessWorkload) signal() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["signal"]; ok && val != "" {
-			return val
-		}
-	}
-	return "SIGTERM"
-}
-
-func (w *ChaosProcessWorkload) interval() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["interval"]; ok && val != "" {
-			return val
-		}
-	}
-	return "30"
-}
-
-func (w *ChaosProcessWorkload) minPid() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["min-pid"]; ok && val != "" {
-			return val
-		}
-	}
-	return "1000"
 }
 
 // Name returns "chaos-process".
@@ -182,9 +163,9 @@ func (w *ChaosProcessWorkload) Name() string {
 // and runs it as a systemd service.
 func (w *ChaosProcessWorkload) CloudInitUserdata() (string, error) {
 	unit := fmt.Sprintf(chaosProcessSystemdUnitTemplate,
-		w.signal(),
-		w.interval(),
-		w.minPid())
+		w.GetParam("signal"),
+		w.GetParam("interval"),
+		w.GetParam("min-pid"))
 
 	return w.BuildCloudConfig(CloudConfigOpts{
 		Packages: []string{"procps-ng"},

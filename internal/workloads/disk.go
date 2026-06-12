@@ -58,6 +58,15 @@ RestartSec=10
 WantedBy=multi-user.target
 `
 
+// DiskParamSchema declares the configurable params for the disk workload.
+var DiskParamSchema = ParamSchema{
+	{Key: "block-size-rw", Type: ParamString, Default: "4k", Desc: "Block size for random read/write fio profile"},
+	{Key: "block-size-seq", Type: ParamString, Default: "128k", Desc: "Block size for sequential write fio profile"},
+	{Key: "rwmixread", Type: ParamInt, Default: "70", Desc: "Read percentage in mixed read/write fio profile"},
+	{Key: "numjobs", Type: ParamInt, Default: "4", Desc: "Number of parallel fio jobs"},
+	{Key: "runtime", Type: ParamInt, Default: "300", Desc: "Runtime in seconds per fio profile run"},
+}
+
 // DiskWorkload generates cloud-init userdata for a disk I/O workload using fio.
 // It alternates between a 4K random read/write mix and 128K sequential writes.
 type DiskWorkload struct {
@@ -75,57 +84,13 @@ func NewDiskWorkload(
 	return &DiskWorkload{
 		BaseWorkload: BaseWorkload{
 			Config:            cfg,
+			ParamSchema:       DiskParamSchema,
 			SSHUser:           sshUser,
 			SSHPassword:       sshPassword,
 			SSHAuthorizedKeys: sshKeys,
 		},
 		DataDiskSize: dataDiskSize,
 	}
-}
-
-func (w *DiskWorkload) blockSizeRW() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["block-size-rw"]; ok && val != "" {
-			return val
-		}
-	}
-	return "4k"
-}
-
-func (w *DiskWorkload) blockSizeSeq() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["block-size-seq"]; ok && val != "" {
-			return val
-		}
-	}
-	return "128k"
-}
-
-func (w *DiskWorkload) rwMixRead() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["rwmixread"]; ok && val != "" {
-			return val
-		}
-	}
-	return "70"
-}
-
-func (w *DiskWorkload) numJobs() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["numjobs"]; ok && val != "" {
-			return val
-		}
-	}
-	return "4"
-}
-
-func (w *DiskWorkload) fioRuntime() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["runtime"]; ok && val != "" {
-			return val
-		}
-	}
-	return "300"
 }
 
 // Name returns "disk".
@@ -137,9 +102,9 @@ func (w *DiskWorkload) Name() string {
 // profiles, and creates a systemd service that alternates between them.
 func (w *DiskWorkload) CloudInitUserdata() (string, error) {
 	mixedRW := fmt.Sprintf(fioMixedRWProfileTemplate,
-		w.rwMixRead(), w.blockSizeRW(), w.numJobs(), w.fioRuntime())
+		w.GetParam("rwmixread"), w.GetParam("block-size-rw"), w.GetParam("numjobs"), w.GetParam("runtime"))
 	seqWrite := fmt.Sprintf(fioSeqWriteProfileTemplate,
-		w.blockSizeSeq(), w.fioRuntime())
+		w.GetParam("block-size-seq"), w.GetParam("runtime"))
 	return w.BuildCloudConfig(CloudConfigOpts{
 		Packages: []string{"fio"},
 		WriteFiles: []WriteFile{

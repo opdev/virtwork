@@ -23,6 +23,12 @@ RestartSec=10
 WantedBy=multi-user.target
 `
 
+// CPUParamSchema declares the configurable params for the CPU workload.
+var CPUParamSchema = ParamSchema{
+	{Key: "cpu-load-percent", Type: ParamInt, Default: "100", Desc: "Target CPU load percentage for stress-ng (--cpu-load)"},
+	{Key: "cpu-method", Type: ParamString, Default: "all", Desc: "CPU stressor method for stress-ng (--cpu-method)"},
+}
+
 // CPUWorkload generates cloud-init userdata for a continuous CPU stress workload
 // using stress-ng.
 type CPUWorkload struct {
@@ -38,29 +44,12 @@ func NewCPUWorkload(
 	return &CPUWorkload{
 		BaseWorkload: BaseWorkload{
 			Config:            cfg,
+			ParamSchema:       CPUParamSchema,
 			SSHUser:           sshUser,
 			SSHPassword:       sshPassword,
 			SSHAuthorizedKeys: sshKeys,
 		},
 	}
-}
-
-func (w *CPUWorkload) cpuLoadPercent() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["cpu-load-percent"]; ok && val != "" {
-			return val
-		}
-	}
-	return "100"
-}
-
-func (w *CPUWorkload) cpuMethod() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["cpu-method"]; ok && val != "" {
-			return val
-		}
-	}
-	return "all"
 }
 
 // Name returns "cpu".
@@ -71,7 +60,7 @@ func (w *CPUWorkload) Name() string {
 // CloudInitUserdata returns cloud-init YAML that installs stress-ng and runs a
 // continuous CPU stress workload via systemd.
 func (w *CPUWorkload) CloudInitUserdata() (string, error) {
-	unit := fmt.Sprintf(cpuSystemdUnitTemplate, w.cpuLoadPercent(), w.cpuMethod())
+	unit := fmt.Sprintf(cpuSystemdUnitTemplate, w.GetParam("cpu-load-percent"), w.GetParam("cpu-method"))
 	return w.BuildCloudConfig(CloudConfigOpts{
 		Packages: []string{"stress-ng"},
 		WriteFiles: []WriteFile{
