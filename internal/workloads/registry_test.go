@@ -224,6 +224,102 @@ var _ = Describe("AllWorkloadNames", func() {
 	})
 })
 
+var _ = Describe("ValidateParams", func() {
+	var reg workloads.Registry
+
+	BeforeEach(func() {
+		reg = workloads.DefaultRegistry()
+	})
+
+	It("should accept valid params for a workload", func() {
+		err := reg.ValidateParams("cpu", map[string]string{
+			"cpu-load-percent": "50",
+			"cpu-method":       "matrixprod",
+		})
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("should accept empty params", func() {
+		err := reg.ValidateParams("cpu", map[string]string{})
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("should reject unknown param keys", func() {
+		err := reg.ValidateParams("cpu", map[string]string{
+			"bogus-key": "42",
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("unknown param"))
+		Expect(err.Error()).To(ContainSubstring("bogus-key"))
+	})
+
+	It("should suggest close matches for typos", func() {
+		err := reg.ValidateParams("cpu", map[string]string{
+			"cpu-load-percnt": "50",
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("did you mean"))
+		Expect(err.Error()).To(ContainSubstring("cpu-load-percent"))
+	})
+
+	It("should reject non-integer values for ParamInt keys", func() {
+		err := reg.ValidateParams("cpu", map[string]string{
+			"cpu-load-percent": "banana",
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("must be an integer"))
+	})
+
+	It("should accept valid integer values", func() {
+		err := reg.ValidateParams("database", map[string]string{
+			"scale-factor": "100",
+			"clients":      "20",
+			"duration":     "600",
+		})
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("should reject empty string values for ParamString keys", func() {
+		err := reg.ValidateParams("cpu", map[string]string{
+			"cpu-method": "",
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("must not be empty"))
+	})
+
+	It("should return error for unknown workload", func() {
+		err := reg.ValidateParams("nonexistent", map[string]string{"key": "val"})
+		Expect(err).To(HaveOccurred())
+		Expect(errors.Is(err, workloads.ErrWorkloadUnknown)).To(BeTrue())
+	})
+})
+
+var _ = Describe("AllParamSchemas", func() {
+	It("should return schemas for all 9 workloads", func() {
+		schemas := workloads.DefaultRegistry().AllParamSchemas()
+		Expect(schemas).To(HaveLen(9))
+		Expect(schemas).To(HaveKey("cpu"))
+		Expect(schemas).To(HaveKey("memory"))
+		Expect(schemas).To(HaveKey("disk"))
+		Expect(schemas).To(HaveKey("database"))
+		Expect(schemas).To(HaveKey("network"))
+		Expect(schemas).To(HaveKey("tps"))
+		Expect(schemas).To(HaveKey("chaos-disk"))
+		Expect(schemas).To(HaveKey("chaos-network"))
+		Expect(schemas).To(HaveKey("chaos-process"))
+	})
+
+	It("should contain correct param count for cpu", func() {
+		schemas := workloads.DefaultRegistry().AllParamSchemas()
+		Expect(schemas["cpu"]).To(HaveLen(2))
+	})
+
+	It("should contain correct param count for disk", func() {
+		schemas := workloads.DefaultRegistry().AllParamSchemas()
+		Expect(schemas["disk"]).To(HaveLen(5))
+	})
+})
+
 var _ = Describe("ValidateWorkloadNames", func() {
 	It("should accept all valid workload names", func() {
 		err := workloads.ValidateWorkloadNames(workloads.AllWorkloadNames())
