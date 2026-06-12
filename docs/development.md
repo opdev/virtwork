@@ -591,7 +591,7 @@ Pattern:
 5. Set `RequiresService()` to `true` and provide a `ServiceSpec()` selecting server VMs by the `virtwork/role: server` label that the orchestrator applies automatically.
 6. Clients reach servers via the in-cluster DNS name `<service-name>.<namespace>.svc.cluster.local` — never poll for pod IPs.
 
-The canonical references are `internal/workloads/network.go` (simplest — one port, iperf3) and `internal/workloads/tps.go` (multi-port Service with configurable `Params` for `file-size`, `iterations`, `duration`).
+The canonical references are `internal/workloads/network.go` (simplest — one port, iperf3) and `internal/workloads/tps.go` (multi-port Service). All workloads support configurable `Params` via the getter-with-default pattern (see [Configurable Params](#going-further-configurable-params) below).
 
 ### Going Further: Storage-Backed Workloads
 
@@ -603,6 +603,56 @@ If your workload needs persistent storage inside the VM:
 4. The `NamespaceDataVolumes` helper in `internal/orchestrator/types.go` automatically suffixes DV template names with the VM name to avoid collisions across multiple VMs of the same workload. Your template name should be the un-suffixed base (e.g., `virtwork-chaos-disk-data`).
 
 Reference workloads: `disk.go` (single fio mount), `database.go` (PostgreSQL data dir), `chaos_disk.go` (fill/release loop). All three follow the same pattern.
+
+### Going Further: Configurable Params
+
+All workloads expose tunable knobs through `WorkloadConfig.Params map[string]string`. Users set these in YAML config under `workloads.<name>.params`. The standard pattern is a nil-safe getter method with a hardcoded default:
+
+```go
+func (w *MyWorkload) concurrency() string {
+    if w.Config.Params != nil {
+        if val, ok := w.Config.Params["concurrency"]; ok && val != "" {
+            return val
+        }
+    }
+    return "10"
+}
+```
+
+Then use the getter when building cloud-init content. Convert your systemd unit constant to a template with `%s` placeholders and interpolate with `fmt.Sprintf`:
+
+```go
+const mySystemdUnitTemplate = `[Unit]
+Description=My workload
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/my-tool --concurrency %s --duration %s
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+`
+
+func (w *MyWorkload) CloudInitUserdata() (string, error) {
+    unit := fmt.Sprintf(mySystemdUnitTemplate, w.concurrency(), w.duration())
+    return w.BuildCloudConfig(CloudConfigOpts{
+        // ...
+        WriteFiles: []WriteFile{{
+            Path: "/etc/systemd/system/virtwork-my-workload.service",
+            Content: unit,
+        }},
+    })
+}
+```
+
+Every workload should have a `Context("param wiring")` test block with three cases:
+
+1. **Nil params** — `Params` field omitted, output contains default values
+2. **Full override** — all param keys set, output reflects custom values
+3. **Partial override** — some keys set, unset keys fall back to defaults
+
+See `internal/workloads/cpu_test.go` for the simplest example, or `disk_test.go` for a workload with multiple output files to verify. Document new param keys in `docs/configuration.md` — both in the YAML example and the params table.
 
 ### Going Further: Structured Logging
 

@@ -518,7 +518,7 @@ return w.BuildCloudConfig(CloudConfigOpts{
 
 ### Making It Multi-VM
 
-If your workload needs more than one role of VM (a server and one or more clients, for example), implement the `MultiVMWorkload` interface. The two canonical references are `internal/workloads/network.go` (simplest — one Service port, iperf3) and `internal/workloads/tps.go` (multi-port Service with configurable `Params` for `file-size`, `iterations`, `duration`).
+If your workload needs more than one role of VM (a server and one or more clients, for example), implement the `MultiVMWorkload` interface. The two canonical references are `internal/workloads/network.go` (simplest — one Service port, iperf3) and `internal/workloads/tps.go` (multi-port Service). All workloads support configurable `Params` via the getter-with-default pattern — see [development.md](../development.md#going-further-configurable-params).
 
 1. Add a `Namespace` field to your struct — the client needs it to build the server's in-cluster DNS name.
 2. Implement `RoleDistribution() []RoleSpec` — return a slice of `RoleSpec{Role: "server", VMCount: 1}` entries declaring how many VMs each role needs.
@@ -552,6 +552,9 @@ Before submitting a new workload, verify:
 - [ ] Packages used are available in Fedora's default repos (or pre-installed in the golden image, if applicable)
 - [ ] Systemd unit has `Restart=always` and `WantedBy=multi-user.target`
 - [ ] Tests cover: Name, packages, systemd unit content, valid YAML, VMResources, defaults for optional methods
+- [ ] Tunable values exposed as `params` with getter-with-default methods (see [development.md](../development.md#going-further-configurable-params))
+- [ ] Param wiring tests: nil params → defaults, full override, partial override
+- [ ] New param keys documented in `docs/configuration.md` (YAML example + params table)
 - [ ] Registered in `DefaultRegistry()` (`internal/workloads/registry.go`) with a factory function
 - [ ] Existing registry/orchestration test counts updated
 - [ ] `go test ./...` passes
