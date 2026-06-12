@@ -25,7 +25,12 @@ WantedBy=multi-user.target
 
 // CPUParamSchema declares the configurable params for the CPU workload.
 var CPUParamSchema = ParamSchema{
-	{Key: "cpu-load-percent", Type: ParamInt, Default: "100", Desc: "Target CPU load percentage for stress-ng (--cpu-load)"},
+	{
+		Key:     "cpu-load-percent",
+		Type:    ParamInt,
+		Default: "100",
+		Desc:    "Target CPU load percentage for stress-ng (--cpu-load)",
+	},
 	{Key: "cpu-method", Type: ParamString, Default: "all", Desc: "CPU stressor method for stress-ng (--cpu-method)"},
 }
 

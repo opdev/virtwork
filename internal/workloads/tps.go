@@ -52,7 +52,12 @@ var ErrInvalidFileSize = errors.New(
 
 // TPSParamSchema declares the configurable params for the TPS workload.
 var TPSParamSchema = ParamSchema{
-	{Key: "file-size", Type: ParamString, Default: "10M", Desc: "Size of the test file for HTTP transfer (e.g. 10M, 1G)"},
+	{
+		Key:     "file-size",
+		Type:    ParamString,
+		Default: "10M",
+		Desc:    "Size of the test file for HTTP transfer (e.g. 10M, 1G)",
+	},
 	{Key: "iterations", Type: ParamInt, Default: "30", Desc: "Number of test iterations per cycle"},
 	{Key: "duration", Type: ParamInt, Default: "60", Desc: "Duration in seconds per netperf test (-l)"},
 }
