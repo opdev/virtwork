@@ -50,8 +50,14 @@ func WithDataDiskSize(size string) Option {
 // WorkloadFactory creates a Workload from a WorkloadConfig and resolved options.
 type WorkloadFactory func(config.WorkloadConfig, *RegistryOpts) Workload
 
-// Registry maps workload names to their factory functions.
-type Registry map[string]WorkloadFactory
+// RegistryEntry pairs a workload factory with its param schema.
+type RegistryEntry struct {
+	Factory     WorkloadFactory
+	ParamSchema ParamSchema
+}
+
+// Registry maps workload names to their registry entries.
+type Registry map[string]RegistryEntry
 
 // AllWorkloadNames returns a sorted list of all built-in workload names,
 // derived from the default registry.
@@ -62,72 +68,59 @@ func AllWorkloadNames() []string {
 // DefaultRegistry returns a Registry pre-populated with all built-in workloads.
 func DefaultRegistry() Registry {
 	return Registry{
-		"chaos-process": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-			return NewChaosProcessWorkload(
-				cfg,
-				opts.SSHUser,
-				opts.SSHPassword,
-				opts.SSHAuthorizedKeys,
-			)
+		"chaos-process": {
+			Factory: func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
+				return NewChaosProcessWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+			},
+			ParamSchema: ChaosProcessParamSchema,
 		},
-		"chaos-network": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-			return NewChaosNetworkWorkload(
-				cfg,
-				opts.SSHUser,
-				opts.SSHPassword,
-				opts.SSHAuthorizedKeys,
-			)
+		"chaos-network": {
+			Factory: func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
+				return NewChaosNetworkWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+			},
+			ParamSchema: ChaosNetworkParamSchema,
 		},
-		"chaos-disk": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-			return NewChaosDiskWorkload(
-				cfg,
-				opts.DataDiskSize,
-				opts.SSHUser,
-				opts.SSHPassword,
-				opts.SSHAuthorizedKeys,
-			)
+		"chaos-disk": {
+			Factory: func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
+				return NewChaosDiskWorkload(cfg, opts.DataDiskSize, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+			},
+			ParamSchema: ChaosDiskParamSchema,
 		},
-		"cpu": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-			return NewCPUWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+		"cpu": {
+			Factory: func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
+				return NewCPUWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+			},
+			ParamSchema: CPUParamSchema,
 		},
-		"memory": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-			return NewMemoryWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+		"memory": {
+			Factory: func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
+				return NewMemoryWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+			},
+			ParamSchema: MemoryParamSchema,
 		},
-		"disk": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-			return NewDiskWorkload(
-				cfg,
-				opts.DataDiskSize,
-				opts.SSHUser,
-				opts.SSHPassword,
-				opts.SSHAuthorizedKeys,
-			)
+		"disk": {
+			Factory: func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
+				return NewDiskWorkload(cfg, opts.DataDiskSize, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+			},
+			ParamSchema: DiskParamSchema,
 		},
-		"database": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-			return NewDatabaseWorkload(
-				cfg,
-				opts.DataDiskSize,
-				opts.SSHUser,
-				opts.SSHPassword,
-				opts.SSHAuthorizedKeys,
-			)
+		"database": {
+			Factory: func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
+				return NewDatabaseWorkload(cfg, opts.DataDiskSize, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+			},
+			ParamSchema: DatabaseParamSchema,
 		},
-		"network": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-			return NewNetworkWorkload(
-				cfg,
-				opts.Namespace,
-				opts.SSHUser,
-				opts.SSHPassword,
-				opts.SSHAuthorizedKeys,
-			)
+		"network": {
+			Factory: func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
+				return NewNetworkWorkload(cfg, opts.Namespace, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+			},
+			ParamSchema: NetworkParamSchema,
 		},
-		"tps": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-			return NewTPSWorkload(
-				cfg,
-				opts.Namespace,
-				opts.SSHUser,
-				opts.SSHPassword,
-				opts.SSHAuthorizedKeys,
-			)
+		"tps": {
+			Factory: func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
+				return NewTPSWorkload(cfg, opts.Namespace, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+			},
+			ParamSchema: TPSParamSchema,
 		},
 	}
 }
@@ -209,7 +202,7 @@ func levenshtein(a, b string) int {
 // Get retrieves a workload by name, constructing it with the given config and options.
 // Returns an error listing available names if the workload is not found.
 func (r Registry) Get(name string, cfg config.WorkloadConfig, opts ...Option) (Workload, error) {
-	factory, ok := r[name]
+	entry, ok := r[name]
 	if !ok {
 		return nil, fmt.Errorf(
 			"workload %q not found; available: %s; %w",
@@ -226,7 +219,50 @@ func (r Registry) Get(name string, cfg config.WorkloadConfig, opts ...Option) (W
 		opt(resolved)
 	}
 
-	return factory(cfg, resolved), nil
+	return entry.Factory(cfg, resolved), nil
+}
+
+// ValidateParams checks that all param keys are declared in the workload's
+// schema and that values conform to their declared types. Returns an error
+// with "did you mean?" suggestions for unknown keys.
+func (r Registry) ValidateParams(workload string, params map[string]string) error {
+	entry, ok := r[workload]
+	if !ok {
+		return fmt.Errorf("unknown workload %q; %w", workload, ErrWorkloadUnknown)
+	}
+	schema := entry.ParamSchema
+	for key, val := range params {
+		def := schema.Find(key)
+		if def == nil {
+			keys := make([]string, len(schema))
+			for i, d := range schema {
+				keys[i] = d.Key
+			}
+			suggestion := closestMatch(key, keys)
+			if suggestion != "" {
+				return fmt.Errorf(
+					"unknown param %q for workload %q (did you mean %q?)",
+					key, workload, suggestion,
+				)
+			}
+			return fmt.Errorf("unknown param %q for workload %q", key, workload)
+		}
+		if err := def.Validate(val); err != nil {
+			return fmt.Errorf("param %q for workload %q: %w", key, workload, err)
+		}
+	}
+	return nil
+}
+
+// AllParamSchemas returns the param schema for every registered workload.
+func (r Registry) AllParamSchemas() map[string]ParamSchema {
+	schemas := make(map[string]ParamSchema, len(r))
+	for name, entry := range r {
+		if len(entry.ParamSchema) > 0 {
+			schemas[name] = entry.ParamSchema
+		}
+	}
+	return schemas
 }
 
 // List returns all registered workload names in sorted order.
