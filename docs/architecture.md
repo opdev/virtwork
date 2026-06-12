@@ -258,9 +258,11 @@ classDiagram
 
     class BaseWorkload {
         +Config WorkloadConfig
+        +ParamSchema ParamSchema
         +SSHUser string
         +SSHPassword string
         +SSHAuthorizedKeys []string
+        +GetParam(key) string
         +VMResources() VMResourceSpec
         +ExtraVolumes() []Volume
         +ExtraDisks() []Disk
@@ -352,7 +354,7 @@ classDiagram
 
 `BaseWorkload` is an embedded struct that provides default implementations for optional interface methods. Concrete workloads embed `BaseWorkload` and override only the methods they need — idiomatic Go composition over inheritance.
 
-`BaseWorkload` also stores SSH credential fields and exposes a `BuildCloudConfig(opts)` helper method that injects SSH user/password/keys into the cloud-init output. Workload subclasses call `w.BuildCloudConfig(opts)` instead of `cloudinit.BuildCloudConfig(opts)` directly, keeping SSH injection as a single cross-cutting concern on the base struct.
+`BaseWorkload` also stores SSH credential fields and exposes a `BuildCloudConfig(opts)` helper method that injects SSH user/password/keys into the cloud-init output. Workload subclasses call `w.BuildCloudConfig(opts)` instead of `cloudinit.BuildCloudConfig(opts)` directly, keeping SSH injection as a single cross-cutting concern on the base struct. `BaseWorkload` also stores a `ParamSchema` and provides `GetParam(key)` for schema-driven param lookup — it returns the user's override from `Config.Params` if set, otherwise the schema default.
 
 ### Workload Comparison
 

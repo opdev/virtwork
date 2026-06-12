@@ -29,7 +29,7 @@ sequenceDiagram
     Note over Registry, Cluster: Single-VM workload flow (e.g. cpu, memory, disk, chaos-*)
     CLI ->> Orch: Run(workloadNames, runID)
     Orch ->> Registry: DefaultRegistry()
-    Registry -->> Orch: Registry map[name] → factory
+    Registry -->> Orch: Registry map[name] → RegistryEntry{factory, ParamSchema}
 
     Orch ->> Registry: Get("cpu", workloadConfig, opts...)
     Registry -->> Orch: *CPUWorkload (implements Workload)
@@ -123,6 +123,6 @@ sequenceDiagram
 
     Note over Workload: Embed BaseWorkload for defaults:<br/>─ VMResources, VMCount, ExtraVolumes,<br/>  ExtraDisks, DataVolumeTemplates,<br/>  RequiresService, ServiceSpec all have<br/>  sensible default implementations
 
-    Note over Registry: Register in DefaultRegistry():<br/>"my-workload": func(cfg, opts) Workload {<br/>    return NewMyWorkload(cfg, opts.SSHUser, ...)<br/>}
+    Note over Registry: Register in DefaultRegistry():<br/>"my-workload": RegistryEntry{<br/>    Factory: func(cfg, opts) Workload { ... },<br/>    ParamSchema: MyParamSchema,<br/>}
 
     Note over CloudInit: Build cloud-init via BaseWorkload.BuildCloudConfig:<br/>─ Specify packages to install<br/>─ Write systemd unit files<br/>─ Run commands to enable services<br/>─ SSH credentials are injected automatically

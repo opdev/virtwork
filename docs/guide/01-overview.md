@@ -25,19 +25,20 @@ The result is a single `Config` struct that every downstream component reads. Se
 
 ### 2. The Workload Registry Resolves Your Request
 
-The string `"cpu"` needs to become executable code. Virtwork maintains a **registry** — a map from workload names to factory functions:
+The string `"cpu"` needs to become executable code. Virtwork maintains a **registry** — a map from workload names to `RegistryEntry` structs, each pairing a factory function with a typed param schema:
 
 ```go
 registry := workloads.DefaultRegistry()
-// registry["cpu"] → func(cfg, opts) → NewCPUWorkload(...)
-// registry["memory"] → func(cfg, opts) → NewMemoryWorkload(...)
+// registry["cpu"] → RegistryEntry{Factory: ..., ParamSchema: CPUParamSchema}
+// registry["memory"] → RegistryEntry{Factory: ..., ParamSchema: MemoryParamSchema}
 // ...
 ```
 
 When the orchestrator calls `registry.Get("cpu", cfg, opts...)`, it:
-1. Looks up the factory function for `"cpu"`
-2. Applies functional options (namespace, SSH credentials, disk size)
-3. Returns a `Workload` instance — a **pure data producer** with no I/O
+1. Looks up the `RegistryEntry` for `"cpu"`
+2. Validates user-supplied params against the entry's schema (rejecting unknown keys and type mismatches)
+3. Applies functional options (namespace, SSH credentials, disk size)
+4. Returns a `Workload` instance — a **pure data producer** with no I/O
 
 ### 3. Cloud-Init Is Generated
 
