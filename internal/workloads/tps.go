@@ -50,6 +50,13 @@ var ErrInvalidFileSize = errors.New(
 	"invalid file-size format: must be a positive integer followed by K, M, or G (e.g. '10M')",
 )
 
+// TPSParamSchema declares the configurable params for the TPS workload.
+var TPSParamSchema = ParamSchema{
+	{Key: "file-size", Type: ParamString, Default: "10M", Desc: "Size of the test file for HTTP transfer (e.g. 10M, 1G)"},
+	{Key: "iterations", Type: ParamInt, Default: "30", Desc: "Number of test iterations per cycle"},
+	{Key: "duration", Type: ParamInt, Default: "60", Desc: "Duration in seconds per netperf test (-l)"},
+}
+
 // TPSWorkload generates cloud-init userdata for a combined TPS benchmark.
 // It creates server/client VM pairs. The server runs netserver and python3
 // http.server. The client runs TCP_RR tests and HTTP GET download loops,
@@ -69,6 +76,7 @@ func NewTPSWorkload(
 	return &TPSWorkload{
 		BaseWorkload: BaseWorkload{
 			Config:            cfg,
+			ParamSchema:       TPSParamSchema,
 			SSHUser:           sshUser,
 			SSHPassword:       sshPassword,
 			SSHAuthorizedKeys: sshKeys,
@@ -170,33 +178,6 @@ func (w *TPSWorkload) serverDNSName(namespace string) string {
 	return fmt.Sprintf("virtwork-tps-server.%s.svc.cluster.local", namespace)
 }
 
-func (w *TPSWorkload) fileSize() string {
-	if w.Config.Params != nil {
-		if size, ok := w.Config.Params["file-size"]; ok && size != "" {
-			return size
-		}
-	}
-	return "10M"
-}
-
-func (w *TPSWorkload) iterations() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["iterations"]; ok && val != "" {
-			return val
-		}
-	}
-	return "30"
-}
-
-func (w *TPSWorkload) duration() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["duration"]; ok && val != "" {
-			return val
-		}
-	}
-	return "60"
-}
-
 func parseFileSize(raw string) (num int, suffix string, err error) {
 	raw = strings.TrimSpace(raw)
 	if len(raw) < 2 {
@@ -223,7 +204,7 @@ func parseFileSize(raw string) (num int, suffix string, err error) {
 }
 
 func (w *TPSWorkload) fileSizeBytes() (string, error) {
-	num, suffix, err := parseFileSize(w.fileSize())
+	num, suffix, err := parseFileSize(w.GetParam("file-size"))
 	if err != nil {
 		return "", err
 	}
@@ -235,12 +216,12 @@ func (w *TPSWorkload) fileSizeBytes() (string, error) {
 	case "K":
 		return strconv.Itoa(num * 1024), nil
 	default:
-		return "", fmt.Errorf("%w: %q", ErrInvalidFileSize, w.fileSize())
+		return "", fmt.Errorf("%w: %q", ErrInvalidFileSize, w.GetParam("file-size"))
 	}
 }
 
 func (w *TPSWorkload) fileSizeMBCount() (string, error) {
-	num, suffix, err := parseFileSize(w.fileSize())
+	num, suffix, err := parseFileSize(w.GetParam("file-size"))
 	if err != nil {
 		return "", err
 	}
@@ -252,7 +233,7 @@ func (w *TPSWorkload) fileSizeMBCount() (string, error) {
 	case "K":
 		return "1", nil
 	default:
-		return "", fmt.Errorf("%w: %q", ErrInvalidFileSize, w.fileSize())
+		return "", fmt.Errorf("%w: %q", ErrInvalidFileSize, w.GetParam("file-size"))
 	}
 }
 
@@ -284,7 +265,7 @@ echo "  HTTP:     port 8080  (pid $HTTP_PID)"
 echo "  testfile: /srv/virtwork/testfile (%s)"
 
 wait
-`, w.fileSize(), mbCount, w.fileSize())
+`, w.GetParam("file-size"), mbCount, w.GetParam("file-size"))
 
 	return w.BuildCloudConfig(CloudConfigOpts{
 		Packages: []string{"netperf", "python3"},
@@ -401,7 +382,7 @@ done
 echo "=========================================="
 echo "  TPS testing complete"
 echo "=========================================="
-`, dnsName, w.iterations(), w.duration(), fileSizeBytes, w.fileSize())
+`, dnsName, w.GetParam("iterations"), w.GetParam("duration"), fileSizeBytes, w.GetParam("file-size"))
 
 	return w.BuildCloudConfig(CloudConfigOpts{
 		Packages: []string{"netperf", "curl"},

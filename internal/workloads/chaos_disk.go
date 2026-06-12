@@ -54,6 +54,14 @@ RestartSec=10
 WantedBy=multi-user.target
 `
 
+// ChaosDiskParamSchema declares the configurable params for the chaos-disk workload.
+var ChaosDiskParamSchema = ParamSchema{
+	{Key: "mount", Type: ParamString, Default: "/mnt/data", Desc: "Mount point for the data disk"},
+	{Key: "fill-percent", Type: ParamInt, Default: "90", Desc: "Target fill percentage of the data disk"},
+	{Key: "fill-sleep", Type: ParamInt, Default: "60", Desc: "Seconds to hold disk at fill level before releasing"},
+	{Key: "release-sleep", Type: ParamInt, Default: "30", Desc: "Seconds to wait after releasing before re-filling"},
+}
+
 // ChaosDiskWorkload generates cloud-init userdata for a disk fill/release chaos
 // workload using fallocate and dd.
 type ChaosDiskWorkload struct {
@@ -71,48 +79,13 @@ func NewChaosDiskWorkload(
 	return &ChaosDiskWorkload{
 		BaseWorkload: BaseWorkload{
 			Config:            cfg,
+			ParamSchema:       ChaosDiskParamSchema,
 			SSHUser:           sshUser,
 			SSHPassword:       sshPassword,
 			SSHAuthorizedKeys: sshKeys,
 		},
 		DataDiskSize: dataDiskSize,
 	}
-}
-
-func (w *ChaosDiskWorkload) mount() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["mount"]; ok && val != "" {
-			return val
-		}
-	}
-	return "/mnt/data"
-}
-
-func (w *ChaosDiskWorkload) fillPercent() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["fill-percent"]; ok && val != "" {
-			return val
-		}
-	}
-	return "90"
-}
-
-func (w *ChaosDiskWorkload) fillSleep() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["fill-sleep"]; ok && val != "" {
-			return val
-		}
-	}
-	return "60"
-}
-
-func (w *ChaosDiskWorkload) releaseSleep() string {
-	if w.Config.Params != nil {
-		if val, ok := w.Config.Params["release-sleep"]; ok && val != "" {
-			return val
-		}
-	}
-	return "30"
 }
 
 // Name returns "chaos-disk".
@@ -123,12 +96,12 @@ func (w *ChaosDiskWorkload) Name() string {
 // CloudInitUserdata returns cloud-init YAML that writes a fill/release script
 // and a systemd service that runs it in a loop.
 func (w *ChaosDiskWorkload) CloudInitUserdata() (string, error) {
-	mountPoint := w.mount()
+	mountPoint := w.GetParam("mount")
 	script := fmt.Sprintf(chaosDiskScriptTemplate,
 		mountPoint,
-		w.fillPercent(),
-		w.releaseSleep(),
-		w.fillSleep())
+		w.GetParam("fill-percent"),
+		w.GetParam("release-sleep"),
+		w.GetParam("fill-sleep"))
 	unit := chaosDiskSystemdUnit
 
 	return w.BuildCloudConfig(CloudConfigOpts{
