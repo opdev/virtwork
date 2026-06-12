@@ -100,4 +100,103 @@ var _ = Describe("DiskWorkload", func() {
 		Expect(w.RequiresService()).To(BeFalse())
 		Expect(w.ServiceSpec()).To(BeNil())
 	})
+
+	Context("param wiring", func() {
+		It("should use default param values when Params is nil", func() {
+			result, err := w.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+
+			filesByPath := map[string]string{}
+			for _, f := range files {
+				fm := f.(map[string]interface{})
+				filesByPath[fm["path"].(string)] = fm["content"].(string)
+			}
+
+			mixedRW := filesByPath["/etc/fio/mixed-rw.fio"]
+			Expect(mixedRW).To(ContainSubstring("bs=4k"))
+			Expect(mixedRW).To(ContainSubstring("rwmixread=70"))
+			Expect(mixedRW).To(ContainSubstring("numjobs=4"))
+			Expect(mixedRW).To(ContainSubstring("runtime=300"))
+
+			seqWrite := filesByPath["/etc/fio/seq-write.fio"]
+			Expect(seqWrite).To(ContainSubstring("bs=128k"))
+			Expect(seqWrite).To(ContainSubstring("runtime=300"))
+		})
+
+		It("should wire custom params from WorkloadConfig.Params", func() {
+			custom := workloads.NewDiskWorkload(config.WorkloadConfig{
+				Enabled:  new(true),
+				VMCount:  1,
+				CPUCores: 2,
+				Memory:   "2Gi",
+				Params: map[string]string{
+					"block-size-rw":  "8k",
+					"block-size-seq": "256k",
+					"rwmixread":      "50",
+					"numjobs":        "8",
+					"runtime":        "600",
+				},
+			}, "10Gi", "virtwork", "", nil)
+
+			result, err := custom.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+
+			filesByPath := map[string]string{}
+			for _, f := range files {
+				fm := f.(map[string]interface{})
+				filesByPath[fm["path"].(string)] = fm["content"].(string)
+			}
+
+			mixedRW := filesByPath["/etc/fio/mixed-rw.fio"]
+			Expect(mixedRW).To(ContainSubstring("bs=8k"))
+			Expect(mixedRW).To(ContainSubstring("rwmixread=50"))
+			Expect(mixedRW).To(ContainSubstring("numjobs=8"))
+			Expect(mixedRW).To(ContainSubstring("runtime=600"))
+
+			seqWrite := filesByPath["/etc/fio/seq-write.fio"]
+			Expect(seqWrite).To(ContainSubstring("bs=256k"))
+			Expect(seqWrite).To(ContainSubstring("runtime=600"))
+		})
+
+		It("should use defaults for missing individual params", func() {
+			partial := workloads.NewDiskWorkload(config.WorkloadConfig{
+				Enabled:  new(true),
+				VMCount:  1,
+				CPUCores: 2,
+				Memory:   "2Gi",
+				Params: map[string]string{
+					"block-size-rw": "16k",
+					"runtime":       "120",
+				},
+			}, "10Gi", "virtwork", "", nil)
+
+			result, err := partial.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+
+			filesByPath := map[string]string{}
+			for _, f := range files {
+				fm := f.(map[string]interface{})
+				filesByPath[fm["path"].(string)] = fm["content"].(string)
+			}
+
+			mixedRW := filesByPath["/etc/fio/mixed-rw.fio"]
+			Expect(mixedRW).To(ContainSubstring("bs=16k"))
+			Expect(mixedRW).To(ContainSubstring("rwmixread=70"))
+			Expect(mixedRW).To(ContainSubstring("numjobs=4"))
+			Expect(mixedRW).To(ContainSubstring("runtime=120"))
+
+			seqWrite := filesByPath["/etc/fio/seq-write.fio"]
+			Expect(seqWrite).To(ContainSubstring("bs=128k"))
+			Expect(seqWrite).To(ContainSubstring("runtime=120"))
+		})
+	})
 })
