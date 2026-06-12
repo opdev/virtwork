@@ -4,6 +4,8 @@
 package workloads
 
 import (
+	"fmt"
+
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	"github.com/opdev/virtwork/internal/config"
@@ -11,7 +13,7 @@ import (
 	"github.com/opdev/virtwork/internal/vm"
 )
 
-const fioMixedRWProfile = `[global]
+const fioMixedRWProfileTemplate = `[global]
 ioengine=libaio
 direct=1
 directory=/mnt/data
@@ -19,15 +21,15 @@ size=1G
 
 [mixed-rw]
 rw=randrw
-rwmixread=70
-bs=4k
-numjobs=4
-runtime=300
+rwmixread=%s
+bs=%s
+numjobs=%s
+runtime=%s
 time_based
 group_reporting
 `
 
-const fioSeqWriteProfile = `[global]
+const fioSeqWriteProfileTemplate = `[global]
 ioengine=libaio
 direct=1
 directory=/mnt/data
@@ -35,9 +37,9 @@ size=1G
 
 [seq-write]
 rw=write
-bs=128k
+bs=%s
 numjobs=2
-runtime=300
+runtime=%s
 time_based
 group_reporting
 `
@@ -81,6 +83,51 @@ func NewDiskWorkload(
 	}
 }
 
+func (w *DiskWorkload) blockSizeRW() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["block-size-rw"]; ok && val != "" {
+			return val
+		}
+	}
+	return "4k"
+}
+
+func (w *DiskWorkload) blockSizeSeq() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["block-size-seq"]; ok && val != "" {
+			return val
+		}
+	}
+	return "128k"
+}
+
+func (w *DiskWorkload) rwMixRead() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["rwmixread"]; ok && val != "" {
+			return val
+		}
+	}
+	return "70"
+}
+
+func (w *DiskWorkload) numJobs() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["numjobs"]; ok && val != "" {
+			return val
+		}
+	}
+	return "4"
+}
+
+func (w *DiskWorkload) fioRuntime() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["runtime"]; ok && val != "" {
+			return val
+		}
+	}
+	return "300"
+}
+
 // Name returns "disk".
 func (w *DiskWorkload) Name() string {
 	return "disk"
@@ -89,6 +136,10 @@ func (w *DiskWorkload) Name() string {
 // CloudInitUserdata returns cloud-init YAML that installs fio, writes two job
 // profiles, and creates a systemd service that alternates between them.
 func (w *DiskWorkload) CloudInitUserdata() (string, error) {
+	mixedRW := fmt.Sprintf(fioMixedRWProfileTemplate,
+		w.rwMixRead(), w.blockSizeRW(), w.numJobs(), w.fioRuntime())
+	seqWrite := fmt.Sprintf(fioSeqWriteProfileTemplate,
+		w.blockSizeSeq(), w.fioRuntime())
 	return w.BuildCloudConfig(CloudConfigOpts{
 		Packages: []string{"fio"},
 		WriteFiles: []WriteFile{
@@ -99,12 +150,12 @@ func (w *DiskWorkload) CloudInitUserdata() (string, error) {
 			},
 			{
 				Path:        "/etc/fio/mixed-rw.fio",
-				Content:     fioMixedRWProfile,
+				Content:     mixedRW,
 				Permissions: "0644",
 			},
 			{
 				Path:        "/etc/fio/seq-write.fio",
-				Content:     fioSeqWriteProfile,
+				Content:     seqWrite,
 				Permissions: "0644",
 			},
 			{
