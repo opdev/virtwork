@@ -4,9 +4,17 @@
 package workloads
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+)
+
+var (
+	ErrParamEmpty          = errors.New("param must not be empty")
+	ErrParamNotInt         = errors.New("param must be an integer")
+	ErrParamNotBool        = errors.New("param must be \"true\" or \"false\"")
+	ErrParamInvalidElement = errors.New("param has invalid element")
 )
 
 // ParamType identifies the expected value category for a workload param.
@@ -33,32 +41,47 @@ func (d *ParamDef) Validate(value string) error {
 	switch d.Type {
 	case ParamString:
 		if value == "" {
-			return fmt.Errorf("param %q must not be empty", d.Key)
+			return fmt.Errorf("param %q: %w", d.Key, ErrParamEmpty)
 		}
 	case ParamInt:
 		if _, err := strconv.Atoi(value); err != nil {
-			return fmt.Errorf("param %q must be an integer, got %q", d.Key, value)
+			return fmt.Errorf("param %q value %q: %w", d.Key, value, ErrParamNotInt)
 		}
 	case ParamBool:
 		lower := strings.ToLower(value)
 		if lower != "true" && lower != "false" {
-			return fmt.Errorf("param %q must be \"true\" or \"false\", got %q", d.Key, value)
+			return fmt.Errorf("param %q value %q: %w", d.Key, value, ErrParamNotBool)
 		}
 	case ParamList:
 		parts := strings.Split(value, ";")
 		for i, p := range parts {
 			if p == "" {
-				return fmt.Errorf("param %q: empty element at position %d", d.Key, i)
+				return fmt.Errorf(
+					"param %q position %d empty element: %w",
+					d.Key,
+					i,
+					ErrParamInvalidElement,
+				)
 			}
 		}
 	case ParamDict:
 		parts := strings.Split(value, ";")
 		for i, p := range parts {
 			if p == "" {
-				return fmt.Errorf("param %q: empty element at position %d", d.Key, i)
+				return fmt.Errorf(
+					"param %q position %d empty element: %w",
+					d.Key,
+					i,
+					ErrParamInvalidElement,
+				)
 			}
 			if !strings.Contains(p, "=") {
-				return fmt.Errorf("param %q: entry %q must contain \"=\"", d.Key, p)
+				return fmt.Errorf(
+					"param %q entry %q must contain \"=\": %w",
+					d.Key,
+					p,
+					ErrParamInvalidElement,
+				)
 			}
 		}
 	}
