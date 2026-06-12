@@ -4,6 +4,8 @@
 package workloads
 
 import (
+	"fmt"
+
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	"github.com/opdev/virtwork/internal/config"
@@ -11,7 +13,7 @@ import (
 	"github.com/opdev/virtwork/internal/vm"
 )
 
-const dbSetupScript = `#!/bin/bash
+const dbSetupScriptTemplate = `#!/bin/bash
 set -euo pipefail
 
 DATA_DIR="/var/lib/pgsql/data"
@@ -55,9 +57,9 @@ postgresql-setup --initdb
 # Start PostgreSQL temporarily for pgbench init
 systemctl start postgresql
 
-# Create pgbench database with scale factor 50
+# Create pgbench database with configured scale factor
 sudo -u postgres createdb pgbench
-sudo -u postgres pgbench -i -s 50 pgbench
+sudo -u postgres pgbench -i -s %s pgbench
 
 # Stop PostgreSQL (systemd will manage it)
 systemctl stop postgresql
@@ -67,7 +69,7 @@ touch "${MARKER}"
 chown postgres:postgres "${MARKER}"
 `
 
-const dbSystemdUnit = `[Unit]
+const dbSystemdUnitTemplate = `[Unit]
 Description=Virtwork database benchmark workload
 After=network.target local-fs.target postgresql.service
 Requires=postgresql.service
@@ -76,7 +78,7 @@ Requires=postgresql.service
 Type=simple
 User=postgres
 ExecStartPre=/usr/local/bin/virtwork-db-setup.sh
-ExecStart=/bin/bash -c 'while true; do pgbench -c 10 -j 2 -T 300 pgbench; sleep 10; done'
+ExecStart=/bin/bash -c 'while true; do pgbench -c %s -j 2 -T %s pgbench; sleep 10; done'
 Restart=always
 RestartSec=10
 
@@ -111,6 +113,33 @@ func NewDatabaseWorkload(
 	}
 }
 
+func (w *DatabaseWorkload) scaleFactor() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["scale-factor"]; ok && val != "" {
+			return val
+		}
+	}
+	return "50"
+}
+
+func (w *DatabaseWorkload) clients() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["clients"]; ok && val != "" {
+			return val
+		}
+	}
+	return "10"
+}
+
+func (w *DatabaseWorkload) duration() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["duration"]; ok && val != "" {
+			return val
+		}
+	}
+	return "300"
+}
+
 // Name returns "database".
 func (w *DatabaseWorkload) Name() string {
 	return "database"
@@ -120,17 +149,19 @@ func (w *DatabaseWorkload) Name() string {
 // a setup script for one-time database initialization, and creates a systemd
 // service that runs continuous pgbench benchmarks.
 func (w *DatabaseWorkload) CloudInitUserdata() (string, error) {
+	setupScript := fmt.Sprintf(dbSetupScriptTemplate, w.scaleFactor())
+	serviceUnit := fmt.Sprintf(dbSystemdUnitTemplate, w.clients(), w.duration())
 	return w.BuildCloudConfig(CloudConfigOpts{
 		Packages: []string{"postgresql-server"},
 		WriteFiles: []WriteFile{
 			{
 				Path:        "/usr/local/bin/virtwork-db-setup.sh",
-				Content:     dbSetupScript,
+				Content:     setupScript,
 				Permissions: "0755",
 			},
 			{
 				Path:        "/etc/systemd/system/virtwork-database.service",
-				Content:     dbSystemdUnit,
+				Content:     serviceUnit,
 				Permissions: "0644",
 			},
 		},

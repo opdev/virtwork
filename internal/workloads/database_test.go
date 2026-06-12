@@ -165,4 +165,91 @@ var _ = Describe("DatabaseWorkload", func() {
 		Expect(res.CPUCores).To(Equal(2))
 		Expect(res.Memory).To(Equal("4Gi"))
 	})
+
+	Context("param wiring", func() {
+		It("should use default param values when Params is nil", func() {
+			result, err := w.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+
+			filesByPath := map[string]string{}
+			for _, f := range files {
+				fm := f.(map[string]interface{})
+				filesByPath[fm["path"].(string)] = fm["content"].(string)
+			}
+
+			setupScript := filesByPath["/usr/local/bin/virtwork-db-setup.sh"]
+			Expect(setupScript).To(ContainSubstring("pgbench -i -s 50"))
+
+			serviceUnit := filesByPath["/etc/systemd/system/virtwork-database.service"]
+			Expect(serviceUnit).To(ContainSubstring("-c 10"))
+			Expect(serviceUnit).To(ContainSubstring("-T 300"))
+		})
+
+		It("should wire custom params from WorkloadConfig.Params", func() {
+			custom := workloads.NewDatabaseWorkload(config.WorkloadConfig{
+				Enabled:  new(true),
+				VMCount:  1,
+				CPUCores: 2,
+				Memory:   "4Gi",
+				Params: map[string]string{
+					"scale-factor": "100",
+					"clients":      "20",
+					"duration":     "600",
+				},
+			}, "10Gi", "virtwork", "", nil)
+
+			result, err := custom.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+
+			filesByPath := map[string]string{}
+			for _, f := range files {
+				fm := f.(map[string]interface{})
+				filesByPath[fm["path"].(string)] = fm["content"].(string)
+			}
+
+			setupScript := filesByPath["/usr/local/bin/virtwork-db-setup.sh"]
+			Expect(setupScript).To(ContainSubstring("pgbench -i -s 100"))
+
+			serviceUnit := filesByPath["/etc/systemd/system/virtwork-database.service"]
+			Expect(serviceUnit).To(ContainSubstring("-c 20"))
+			Expect(serviceUnit).To(ContainSubstring("-T 600"))
+		})
+
+		It("should use defaults for missing individual params", func() {
+			partial := workloads.NewDatabaseWorkload(config.WorkloadConfig{
+				Enabled:  new(true),
+				VMCount:  1,
+				CPUCores: 2,
+				Memory:   "4Gi",
+				Params: map[string]string{
+					"clients": "16",
+				},
+			}, "10Gi", "virtwork", "", nil)
+
+			result, err := partial.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+
+			filesByPath := map[string]string{}
+			for _, f := range files {
+				fm := f.(map[string]interface{})
+				filesByPath[fm["path"].(string)] = fm["content"].(string)
+			}
+
+			setupScript := filesByPath["/usr/local/bin/virtwork-db-setup.sh"]
+			Expect(setupScript).To(ContainSubstring("pgbench -i -s 50"))
+
+			serviceUnit := filesByPath["/etc/systemd/system/virtwork-database.service"]
+			Expect(serviceUnit).To(ContainSubstring("-c 16"))
+			Expect(serviceUnit).To(ContainSubstring("-T 300"))
+		})
+	})
 })
