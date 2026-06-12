@@ -13,7 +13,10 @@ import (
 	"github.com/opdev/virtwork/internal/constants"
 )
 
-var ErrWorkloadUnknown = errors.New("workload not found")
+var (
+	ErrWorkloadUnknown = errors.New("workload not found")
+	ErrParamUnknown    = errors.New("unknown param")
+)
 
 // RegistryOpts holds optional parameters for workload construction.
 // Fields are populated via functional Option values.
@@ -70,13 +73,23 @@ func DefaultRegistry() Registry {
 	return Registry{
 		"chaos-process": {
 			Factory: func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-				return NewChaosProcessWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+				return NewChaosProcessWorkload(
+					cfg,
+					opts.SSHUser,
+					opts.SSHPassword,
+					opts.SSHAuthorizedKeys,
+				)
 			},
 			ParamSchema: ChaosProcessParamSchema,
 		},
 		"chaos-network": {
 			Factory: func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-				return NewChaosNetworkWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+				return NewChaosNetworkWorkload(
+					cfg,
+					opts.SSHUser,
+					opts.SSHPassword,
+					opts.SSHAuthorizedKeys,
+				)
 			},
 			ParamSchema: ChaosNetworkParamSchema,
 		},
@@ -100,13 +113,24 @@ func DefaultRegistry() Registry {
 		},
 		"memory": {
 			Factory: func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-				return NewMemoryWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+				return NewMemoryWorkload(
+					cfg,
+					opts.SSHUser,
+					opts.SSHPassword,
+					opts.SSHAuthorizedKeys,
+				)
 			},
 			ParamSchema: MemoryParamSchema,
 		},
 		"disk": {
 			Factory: func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-				return NewDiskWorkload(cfg, opts.DataDiskSize, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+				return NewDiskWorkload(
+					cfg,
+					opts.DataDiskSize,
+					opts.SSHUser,
+					opts.SSHPassword,
+					opts.SSHAuthorizedKeys,
+				)
 			},
 			ParamSchema: DiskParamSchema,
 		},
@@ -124,13 +148,25 @@ func DefaultRegistry() Registry {
 		},
 		"network": {
 			Factory: func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-				return NewNetworkWorkload(cfg, opts.Namespace, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+				return NewNetworkWorkload(
+					cfg,
+					opts.Namespace,
+					opts.SSHUser,
+					opts.SSHPassword,
+					opts.SSHAuthorizedKeys,
+				)
 			},
 			ParamSchema: NetworkParamSchema,
 		},
 		"tps": {
 			Factory: func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-				return NewTPSWorkload(cfg, opts.Namespace, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+				return NewTPSWorkload(
+					cfg,
+					opts.Namespace,
+					opts.SSHUser,
+					opts.SSHPassword,
+					opts.SSHAuthorizedKeys,
+				)
 			},
 			ParamSchema: TPSParamSchema,
 		},
@@ -253,11 +289,11 @@ func (r Registry) ValidateParams(workload string, params map[string]string) erro
 			suggestion := closestMatch(key, keys)
 			if suggestion != "" {
 				return fmt.Errorf(
-					"unknown param %q for workload %q (did you mean %q?)",
-					key, workload, suggestion,
+					"%w %q for workload %q (did you mean %q?)",
+					ErrParamUnknown, key, workload, suggestion,
 				)
 			}
-			return fmt.Errorf("unknown param %q for workload %q", key, workload)
+			return fmt.Errorf("%w %q for workload %q", ErrParamUnknown, key, workload)
 		}
 		if err := def.Validate(val); err != nil {
 			return fmt.Errorf("param %q for workload %q: %w", key, workload, err)
