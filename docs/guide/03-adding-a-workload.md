@@ -552,10 +552,10 @@ Before submitting a new workload, verify:
 - [ ] Packages used are available in Fedora's default repos (or pre-installed in the golden image, if applicable)
 - [ ] Systemd unit has `Restart=always` and `WantedBy=multi-user.target`
 - [ ] Tests cover: Name, packages, systemd unit content, valid YAML, VMResources, defaults for optional methods
-- [ ] Tunable values exposed as `params` with getter-with-default methods (see [development.md](../development.md#going-further-configurable-params))
+- [ ] Tunable values declared as a `ParamSchema` with `GetParam()` lookup (see [development.md](../development.md#going-further-configurable-params))
 - [ ] Param wiring tests: nil params → defaults, full override, partial override
 - [ ] New param keys documented in `docs/configuration.md` (YAML example + params table)
-- [ ] Registered in `DefaultRegistry()` (`internal/workloads/registry.go`) with a factory function
+- [ ] Registered in `DefaultRegistry()` (`internal/workloads/registry.go`) with a `RegistryEntry` pairing factory and `ParamSchema`
 - [ ] Existing registry/orchestration test counts updated
 - [ ] `go test ./...` passes
 - [ ] `go test -race ./...` passes

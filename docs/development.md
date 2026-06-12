@@ -591,7 +591,7 @@ Pattern:
 5. Set `RequiresService()` to `true` and provide a `ServiceSpec()` selecting server VMs by the `virtwork/role: server` label that the orchestrator applies automatically.
 6. Clients reach servers via the in-cluster DNS name `<service-name>.<namespace>.svc.cluster.local` — never poll for pod IPs.
 
-The canonical references are `internal/workloads/network.go` (simplest — one port, iperf3) and `internal/workloads/tps.go` (multi-port Service). All workloads support configurable `Params` via the getter-with-default pattern (see [Configurable Params](#going-further-configurable-params) below).
+The canonical references are `internal/workloads/network.go` (simplest — one port, iperf3) and `internal/workloads/tps.go` (multi-port Service). All workloads support configurable `Params` via a typed param schema (see [Configurable Params](#going-further-configurable-params) below).
 
 ### Going Further: Storage-Backed Workloads
 
@@ -606,38 +606,35 @@ Reference workloads: `disk.go` (single fio mount), `database.go` (PostgreSQL dat
 
 ### Going Further: Configurable Params
 
-All workloads expose tunable knobs through `WorkloadConfig.Params map[string]string`. Users set these in YAML config under `workloads.<name>.params`. The standard pattern is a nil-safe getter method with a hardcoded default:
+All workloads expose tunable knobs through `WorkloadConfig.Params map[string]string`. Users set these in YAML config under `workloads.<name>.params`. Each workload declares a typed **param schema** — a slice of `ParamDef` entries that define the key, type, default, and description for every supported param:
 
 ```go
-func (w *MyWorkload) concurrency() string {
-    if w.Config.Params != nil {
-        if val, ok := w.Config.Params["concurrency"]; ok && val != "" {
-            return val
-        }
-    }
-    return "10"
+var CPUParamSchema = ParamSchema{
+    {Key: "cpu-load-percent", Type: ParamInt, Default: "100", Desc: "Target CPU load percentage for stress-ng (--cpu-load)"},
+    {Key: "cpu-method", Type: ParamString, Default: "all", Desc: "CPU stressor method for stress-ng (--cpu-method)"},
 }
 ```
 
-Then use the getter when building cloud-init content. Convert your systemd unit constant to a template with `%s` placeholders and interpolate with `fmt.Sprintf`:
+Set the schema in your constructor on the embedded `BaseWorkload`:
 
 ```go
-const mySystemdUnitTemplate = `[Unit]
-Description=My workload
+func NewMyWorkload(cfg config.WorkloadConfig, sshUser, sshPassword string, sshKeys []string) *MyWorkload {
+    return &MyWorkload{
+        BaseWorkload: BaseWorkload{
+            Config:      cfg,
+            ParamSchema: MyParamSchema,
+            SSHUser:     sshUser, SSHPassword: sshPassword, SSHAuthorizedKeys: sshKeys,
+        },
+    }
+}
+```
 
-[Service]
-Type=simple
-ExecStart=/usr/bin/my-tool --concurrency %s --duration %s
-Restart=always
+Then call `w.GetParam("key")` to retrieve the value — it returns the user's override if set, otherwise the schema default:
 
-[Install]
-WantedBy=multi-user.target
-`
-
+```go
 func (w *MyWorkload) CloudInitUserdata() (string, error) {
-    unit := fmt.Sprintf(mySystemdUnitTemplate, w.concurrency(), w.duration())
+    unit := fmt.Sprintf(mySystemdUnitTemplate, w.GetParam("concurrency"), w.GetParam("duration"))
     return w.BuildCloudConfig(CloudConfigOpts{
-        // ...
         WriteFiles: []WriteFile{{
             Path: "/etc/systemd/system/virtwork-my-workload.service",
             Content: unit,
@@ -645,6 +642,10 @@ func (w *MyWorkload) CloudInitUserdata() (string, error) {
     })
 }
 ```
+
+`GetParam` panics on unknown keys — this is intentional; it catches typos in workload code at test time. The orchestrator calls `registry.ValidateParams()` before constructing workloads, rejecting unknown keys (with "did you mean?" suggestions) and type-mismatched values at deploy time.
+
+Five param types are available: `ParamString`, `ParamInt`, `ParamBool`, `ParamList` (semicolon-separated), and `ParamDict` (semicolon-separated `key=value` pairs). Register your workload in `DefaultRegistry()` as a `RegistryEntry` pairing the factory with the schema so validation applies automatically.
 
 Every workload should have a `Context("param wiring")` test block with three cases:
 

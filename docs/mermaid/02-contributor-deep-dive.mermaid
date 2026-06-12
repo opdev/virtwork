@@ -53,7 +53,7 @@ sequenceDiagram
             RO ->> Aud: RecordEvent(execID, "workload_skipped")
         else Workload enabled
             RO ->> Reg: Get(name, workloadConfig, opts...)
-            Reg ->> Reg: Resolve WorkloadFactory
+            Reg ->> Reg: Resolve RegistryEntry
             Reg ->> Reg: Build RegistryOpts from functional options<br/>(WithNamespace, WithSSHCredentials, WithDataDiskSize)
             Reg ->> WL: factory(cfg, registryOpts)
             WL -->> Reg: Workload instance

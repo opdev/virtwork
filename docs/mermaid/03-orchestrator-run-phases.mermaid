@@ -24,7 +24,7 @@ sequenceDiagram
     RO ->> Plan: planVMs(ctx, execID, runID, names, vmCount, registry, opts)
 
     Plan ->> Reg: DefaultRegistry()
-    Note right of Reg: map[string]WorkloadFactory with 9 workload types
+    Note right of Reg: map[string]RegistryEntry with 9 workload types
 
     loop For each workload name
         Plan ->> Plan: Check config: workload disabled?
