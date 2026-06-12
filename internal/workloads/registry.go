@@ -82,7 +82,13 @@ func DefaultRegistry() Registry {
 		},
 		"chaos-disk": {
 			Factory: func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-				return NewChaosDiskWorkload(cfg, opts.DataDiskSize, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+				return NewChaosDiskWorkload(
+					cfg,
+					opts.DataDiskSize,
+					opts.SSHUser,
+					opts.SSHPassword,
+					opts.SSHAuthorizedKeys,
+				)
 			},
 			ParamSchema: ChaosDiskParamSchema,
 		},
@@ -106,7 +112,13 @@ func DefaultRegistry() Registry {
 		},
 		"database": {
 			Factory: func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-				return NewDatabaseWorkload(cfg, opts.DataDiskSize, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+				return NewDatabaseWorkload(
+					cfg,
+					opts.DataDiskSize,
+					opts.SSHUser,
+					opts.SSHPassword,
+					opts.SSHAuthorizedKeys,
+				)
 			},
 			ParamSchema: DatabaseParamSchema,
 		},
