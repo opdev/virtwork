@@ -217,6 +217,12 @@ func (ro *RunOrchestrator) planVMs(
 			}
 		}
 
+		if len(wlCfg.Params) > 0 {
+			if err := registry.ValidateParams(name, wlCfg.Params); err != nil {
+				return nil, nil, nil, nil, fmt.Errorf("invalid params for workload %q: %w", name, err)
+			}
+		}
+
 		w, err := registry.Get(name, wlCfg, registryOpts...)
 		if err != nil {
 			return nil, nil, nil, nil, fmt.Errorf("creating workload %q: %w", name, err)
