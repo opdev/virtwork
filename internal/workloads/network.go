@@ -58,6 +58,24 @@ func NewNetworkWorkload(
 	}
 }
 
+func (w *NetworkWorkload) parallelStreams() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["parallel-streams"]; ok && val != "" {
+			return val
+		}
+	}
+	return "4"
+}
+
+func (w *NetworkWorkload) testDuration() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["test-duration"]; ok && val != "" {
+			return val
+		}
+	}
+	return "60"
+}
+
 // Name returns "network".
 func (w *NetworkWorkload) Name() string {
 	return "network"
@@ -161,13 +179,13 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/bin/bash -c 'while true; do iperf3 -c %s -t 60 -P 4 --bidir; sleep 10; done'
+ExecStart=/bin/bash -c 'while true; do iperf3 -c %s -t %s -P %s --bidir; sleep 10; done'
 Restart=always
 RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
-`, dnsName)
+`, dnsName, w.testDuration(), w.parallelStreams())
 
 	return w.BuildCloudConfig(CloudConfigOpts{
 		Packages: []string{"iperf3"},
