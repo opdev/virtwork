@@ -140,15 +140,35 @@ workloads:
     vm_count: 2
     cpu_cores: 4
     memory: 4Gi
+    params:
+      cpu-load-percent: "50"   # default 100
+      cpu-method: "matrixprod" # default all
   memory:
     vm_count: 1                # enabled by default when not specified
+    params:
+      memory-percent: "60"     # default 80
+      vm-stressors: "2"        # default 1
+      vm-method: "flip"        # default all
   disk:
     enabled: false             # skip this workload entirely
+    params:
+      block-size-rw: "8k"     # default 4k
+      block-size-seq: "256k"  # default 128k
+      rwmixread: "50"         # default 70
+      numjobs: "8"            # default 4
+      runtime: "600"          # default 300
   database:
     cpu_cores: 2
     memory: 4Gi
+    params:
+      scale-factor: "100"      # default 50
+      clients: "20"            # default 10
+      duration: "600"          # default 300
   network:
     vm_count: 1                # creates 1 server + 1 client = 2 VMs
+    params:
+      parallel-streams: "8"   # default 4
+      test-duration: "120"    # default 60
   tps:
     vm_count: 1                # creates 1 server + 1 client = 2 VMs
     params:
@@ -215,8 +235,21 @@ Each workload's `params` block accepts string-valued keys. The current parameter
 | **chaos-process** | `signal` | `SIGTERM` | Signal sent to victims |
 | **chaos-process** | `interval` | `30` | Seconds between kills |
 | **chaos-process** | `min-pid` | `1000` | Minimum PID considered eligible |
-
-Workloads without entries above accept no per-workload `params` today (cpu, memory, disk, database, network).
+| **cpu** | `cpu-load-percent` | `100` | Target CPU load percentage for stress-ng (`--cpu-load`) |
+| **cpu** | `cpu-method` | `all` | CPU stressor method for stress-ng (`--cpu-method`) |
+| **memory** | `memory-percent` | `80` | Target memory usage percentage (`--vm-bytes`) |
+| **memory** | `vm-stressors` | `1` | Number of VM worker stressors (`--vm`) |
+| **memory** | `vm-method` | `all` | Memory stressor method for stress-ng (`--vm-method`) |
+| **disk** | `block-size-rw` | `4k` | Block size for the random read/write fio profile |
+| **disk** | `block-size-seq` | `128k` | Block size for the sequential write fio profile |
+| **disk** | `rwmixread` | `70` | Read percentage in the mixed read/write fio profile |
+| **disk** | `numjobs` | `4` | Number of parallel fio jobs for the mixed read/write profile |
+| **disk** | `runtime` | `300` | Runtime in seconds for each fio profile |
+| **database** | `scale-factor` | `50` | pgbench initialization scale factor (`-s`) |
+| **database** | `clients` | `10` | Number of concurrent pgbench clients (`-c`) |
+| **database** | `duration` | `300` | Seconds per pgbench benchmark run (`-T`) |
+| **network** | `parallel-streams` | `4` | Number of parallel iperf3 streams (`-P`) |
+| **network** | `test-duration` | `60` | Seconds per iperf3 test run (`-t`) |
 
 ---
 
@@ -293,7 +326,7 @@ The `--no-audit` flag is checked separately by `initAuditor` in `cmd/virtwork/ma
 
 - All config field definitions live in `internal/config/config.go` — `WorkloadConfig` struct, `Config` struct, `SetDefaults`, `BindFlags`, `LoadConfig`.
 - The mapstructure tag on each field is the YAML key name (e.g., `mapstructure:"data-disk-size"` → YAML key `data_disk_size` after the `_`/`-` replacement). Match this convention when adding new fields.
-- Per-workload `params` are surfaced into the workload as `WorkloadConfig.Params map[string]string`. New chaos / multi-VM knobs go here so they're uniformly addressable from YAML.
+- Per-workload `params` are surfaced into the workload as `WorkloadConfig.Params map[string]string`. All workloads use this mechanism for tunable knobs so they're uniformly addressable from YAML.
 - When adding a new env var, prefer letting Viper bind it automatically rather than hand-rolling `os.Getenv` (see `VIRTWORK_SSH_AUTHORIZED_KEYS` in `resolveSSHKeys` for the one current exception, driven by the comma-split list semantics).
 - Update this document, the ConfigMap default list, and the per-workload `params` table whenever you add a new knob.
 
