@@ -4,16 +4,18 @@
 package workloads
 
 import (
+	"fmt"
+
 	"github.com/opdev/virtwork/internal/config"
 )
 
-const cpuSystemdUnit = `[Unit]
+const cpuSystemdUnitTemplate = `[Unit]
 Description=Virtwork CPU stress workload
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/stress-ng --cpu 0 --cpu-method all --timeout 0
+ExecStart=/usr/bin/stress-ng --cpu 0 --cpu-load %s --cpu-method %s --timeout 0
 Restart=always
 RestartSec=10
 
@@ -28,7 +30,11 @@ type CPUWorkload struct {
 }
 
 // NewCPUWorkload creates a CPUWorkload with the given configuration and SSH credentials.
-func NewCPUWorkload(cfg config.WorkloadConfig, sshUser, sshPassword string, sshKeys []string) *CPUWorkload {
+func NewCPUWorkload(
+	cfg config.WorkloadConfig,
+	sshUser, sshPassword string,
+	sshKeys []string,
+) *CPUWorkload {
 	return &CPUWorkload{
 		BaseWorkload: BaseWorkload{
 			Config:            cfg,
@@ -39,6 +45,24 @@ func NewCPUWorkload(cfg config.WorkloadConfig, sshUser, sshPassword string, sshK
 	}
 }
 
+func (w *CPUWorkload) cpuLoadPercent() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["cpu-load-percent"]; ok && val != "" {
+			return val
+		}
+	}
+	return "100"
+}
+
+func (w *CPUWorkload) cpuMethod() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["cpu-method"]; ok && val != "" {
+			return val
+		}
+	}
+	return "all"
+}
+
 // Name returns "cpu".
 func (w *CPUWorkload) Name() string {
 	return "cpu"
@@ -47,12 +71,13 @@ func (w *CPUWorkload) Name() string {
 // CloudInitUserdata returns cloud-init YAML that installs stress-ng and runs a
 // continuous CPU stress workload via systemd.
 func (w *CPUWorkload) CloudInitUserdata() (string, error) {
+	unit := fmt.Sprintf(cpuSystemdUnitTemplate, w.cpuLoadPercent(), w.cpuMethod())
 	return w.BuildCloudConfig(CloudConfigOpts{
 		Packages: []string{"stress-ng"},
 		WriteFiles: []WriteFile{
 			{
 				Path:        "/etc/systemd/system/virtwork-cpu.service",
-				Content:     cpuSystemdUnit,
+				Content:     unit,
 				Permissions: "0644",
 			},
 		},

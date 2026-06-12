@@ -52,6 +52,7 @@ var _ = Describe("CPUWorkload", func() {
 		content := file["content"].(string)
 		Expect(content).To(ContainSubstring("stress-ng"))
 		Expect(content).To(ContainSubstring("--cpu 0"))
+		Expect(content).To(ContainSubstring("--cpu-load 100"))
 		Expect(content).To(ContainSubstring("--cpu-method all"))
 		Expect(content).To(ContainSubstring("--timeout 0"))
 	})
@@ -78,5 +79,67 @@ var _ = Describe("CPUWorkload", func() {
 		res := w.VMResources()
 		Expect(res.CPUCores).To(Equal(2))
 		Expect(res.Memory).To(Equal("2Gi"))
+	})
+
+	Context("param wiring", func() {
+		It("should use default param values when Params is nil", func() {
+			result, err := w.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+			file := files[0].(map[string]interface{})
+			content := file["content"].(string)
+
+			Expect(content).To(ContainSubstring("--cpu-load 100"))
+			Expect(content).To(ContainSubstring("--cpu-method all"))
+		})
+
+		It("should wire custom params from WorkloadConfig.Params", func() {
+			custom := workloads.NewCPUWorkload(config.WorkloadConfig{
+				Enabled:  new(true),
+				VMCount:  1,
+				CPUCores: 2,
+				Memory:   "2Gi",
+				Params: map[string]string{
+					"cpu-load-percent": "50",
+					"cpu-method":       "matrixprod",
+				},
+			}, "virtwork", "", nil)
+
+			result, err := custom.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+			file := files[0].(map[string]interface{})
+			content := file["content"].(string)
+
+			Expect(content).To(ContainSubstring("--cpu-load 50"))
+			Expect(content).To(ContainSubstring("--cpu-method matrixprod"))
+		})
+
+		It("should use defaults for missing individual params", func() {
+			partial := workloads.NewCPUWorkload(config.WorkloadConfig{
+				Enabled:  new(true),
+				VMCount:  1,
+				CPUCores: 2,
+				Memory:   "2Gi",
+				Params: map[string]string{
+					"cpu-load-percent": "75",
+				},
+			}, "virtwork", "", nil)
+
+			result, err := partial.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+			file := files[0].(map[string]interface{})
+			content := file["content"].(string)
+
+			Expect(content).To(ContainSubstring("--cpu-load 75"))
+			Expect(content).To(ContainSubstring("--cpu-method all"))
+		})
 	})
 })
