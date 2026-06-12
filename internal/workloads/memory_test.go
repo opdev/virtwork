@@ -101,4 +101,70 @@ var _ = Describe("MemoryWorkload", func() {
 		Expect(res.CPUCores).To(Equal(2))
 		Expect(res.Memory).To(Equal("4Gi"))
 	})
+
+	Context("param wiring", func() {
+		It("should use default param values when Params is nil", func() {
+			result, err := w.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+			file := files[0].(map[string]interface{})
+			content := file["content"].(string)
+
+			Expect(content).To(ContainSubstring("--vm 1"))
+			Expect(content).To(ContainSubstring("--vm-bytes 80%"))
+			Expect(content).To(ContainSubstring("--vm-method all"))
+		})
+
+		It("should wire custom params from WorkloadConfig.Params", func() {
+			custom := workloads.NewMemoryWorkload(config.WorkloadConfig{
+				Enabled:  new(true),
+				VMCount:  1,
+				CPUCores: 2,
+				Memory:   "4Gi",
+				Params: map[string]string{
+					"memory-percent": "60",
+					"vm-stressors":   "2",
+					"vm-method":      "flip",
+				},
+			}, "virtwork", "", nil)
+
+			result, err := custom.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+			file := files[0].(map[string]interface{})
+			content := file["content"].(string)
+
+			Expect(content).To(ContainSubstring("--vm 2"))
+			Expect(content).To(ContainSubstring("--vm-bytes 60%"))
+			Expect(content).To(ContainSubstring("--vm-method flip"))
+		})
+
+		It("should use defaults for missing individual params", func() {
+			partial := workloads.NewMemoryWorkload(config.WorkloadConfig{
+				Enabled:  new(true),
+				VMCount:  1,
+				CPUCores: 2,
+				Memory:   "4Gi",
+				Params: map[string]string{
+					"memory-percent": "50",
+				},
+			}, "virtwork", "", nil)
+
+			result, err := partial.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+			file := files[0].(map[string]interface{})
+			content := file["content"].(string)
+
+			Expect(content).To(ContainSubstring("--vm 1"))
+			Expect(content).To(ContainSubstring("--vm-bytes 50%"))
+			Expect(content).To(ContainSubstring("--vm-method all"))
+		})
+	})
 })
