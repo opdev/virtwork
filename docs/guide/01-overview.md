@@ -56,7 +56,7 @@ write_files:
 
       [Service]
       Type=simple
-      ExecStart=/usr/bin/stress-ng --cpu 0 --cpu-method all --timeout 0
+      ExecStart=/usr/bin/stress-ng --cpu 0 --cpu-load 100 --cpu-method all --timeout 0
       Restart=always
       RestartSec=10
 
@@ -72,7 +72,7 @@ runcmd:
     - virtwork-cpu.service
 ```
 
-This is a standard [cloud-init](https://cloudinit.readthedocs.io/) configuration. When the VM boots, cloud-init will install `stress-ng` from the package manager, write the systemd unit file, and enable the service. The workload starts automatically.
+This is a standard [cloud-init](https://cloudinit.readthedocs.io/) configuration. When the VM boots, cloud-init will install `stress-ng` from the package manager, write the systemd unit file, and enable the service. The workload starts automatically. The values shown above are defaults — all core workloads accept per-workload `params` to override them (see [configuration.md](../configuration.md#per-workload-params-keys)).
 
 If SSH credentials were configured, a `users` section is appended with the SSH public keys and/or password.
 

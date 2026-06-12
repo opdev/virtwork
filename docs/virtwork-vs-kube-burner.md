@@ -62,10 +62,10 @@ Workloads deployed inside VMs:
 
 | Workload | Tool | What It Generates |
 |---|---|---|
-| `cpu` | `stress-ng --cpu 0 --cpu-method all` | Continuous CPU pressure across all cores |
-| `memory` | `stress-ng --vm 1 --vm-bytes 80%` | Sustained memory pressure at 80% |
-| `database` | PostgreSQL + `pgbench -c 10 -j 2 -T 300` | Realistic OLTP database transactions |
-| `network` | `iperf3 --bidir` (server + client VM pairs) | Bidirectional throughput between VMs |
+| `cpu` | `stress-ng --cpu 0 --cpu-load 100 --cpu-method all` | Continuous CPU pressure across all cores (configurable via `params`) |
+| `memory` | `stress-ng --vm 1 --vm-bytes 80% --vm-method all` | Sustained memory pressure (configurable via `params`) |
+| `database` | PostgreSQL + `pgbench -c 10 -j 2 -T 300` | Realistic OLTP database transactions (configurable via `params`) |
+| `network` | `iperf3 -P 4 -t 60 --bidir` (server + client VM pairs) | Bidirectional throughput between VMs (configurable via `params`) |
 | `tps` | `netperf` + `curl` (server + client VM pairs) | Multi-port HTTP throughput with configurable file size, iterations, and duration |
 | `disk` | `fio` with mixed random + sequential profiles | Mixed I/O patterns on a dedicated data disk |
 | `chaos-disk` | `fallocate`/`dd` fill-release loop | Sustained disk-pressure events on a data disk |
