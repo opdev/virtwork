@@ -106,16 +106,16 @@ virtwork ships nine built-in workloads, grouped by purpose. With `--vm-count 1` 
 
 | Workload | VMs | Description | Tools |
 |----------|-----|-------------|-------|
-| **cpu** | N | Continuous CPU stress | `stress-ng --cpu 0 --cpu-method all` |
-| **memory** | N | Memory pressure at 80% | `stress-ng --vm 1 --vm-bytes 80%` |
-| **disk** | N | Mixed random and sequential I/O on a data disk | `fio` with multiple profiles |
-| **database** | N | PostgreSQL with pgbench loop on a data disk | `pgbench -c 10 -j 2 -T 300` |
+| **cpu** | N | Continuous CPU stress | `stress-ng --cpu 0 --cpu-load 100 --cpu-method all` (configurable via `params`) |
+| **memory** | N | Memory pressure | `stress-ng --vm 1 --vm-bytes 80% --vm-method all` (configurable via `params`) |
+| **disk** | N | Mixed random and sequential I/O on a data disk | `fio` with multiple profiles (configurable via `params`) |
+| **database** | N | PostgreSQL with pgbench loop on a data disk | `pgbench -c 10 -j 2 -T 300` (configurable via `params`) |
 
 **Multi-VM benchmarks** — server/client pairs coordinated via a ClusterIP Service:
 
 | Workload | VMs | Description | Tools |
 |----------|-----|-------------|-------|
-| **network** | N × 2 | Bidirectional throughput | `iperf3 --bidir` on port 5201 |
+| **network** | N × 2 | Bidirectional throughput | `iperf3 -P 4 -t 60 --bidir` on port 5201 (configurable via `params`) |
 | **tps** | N × 2 | TCP request/response + HTTP file transfer | `netperf` (12865/12866) + Python HTTP server (8080) |
 
 **Chaos engineering** — inject failures inside the VM to test resilience. ⚠️ See [docs/chaos-workloads.md](docs/chaos-workloads.md) before deploying:
