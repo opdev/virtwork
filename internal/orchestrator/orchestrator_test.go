@@ -175,6 +175,44 @@ var _ = Describe("RunOrchestrator", func() {
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("nonexistent"))
 			})
+
+			It("should return error for invalid params", func() {
+				cfg.DryRun = true
+				cfg.Workloads = map[string]config.WorkloadConfig{
+					"cpu": {
+						Params: map[string]string{
+							"cpu-load-percent": "banana",
+						},
+					},
+				}
+
+				logger := logging.NewLogger(buf, false)
+				ro := orchestrator.NewRunOrchestrator(logger, nil, cfg, auditor, buf)
+
+				_, err := ro.Run(ctx, 0, "test-run-id", []string{"cpu"}, 1)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("invalid params"))
+				Expect(err.Error()).To(ContainSubstring("must be an integer"))
+			})
+
+			It("should return error for unknown param keys", func() {
+				cfg.DryRun = true
+				cfg.Workloads = map[string]config.WorkloadConfig{
+					"cpu": {
+						Params: map[string]string{
+							"bogus-key": "42",
+						},
+					},
+				}
+
+				logger := logging.NewLogger(buf, false)
+				ro := orchestrator.NewRunOrchestrator(logger, nil, cfg, auditor, buf)
+
+				_, err := ro.Run(ctx, 0, "test-run-id", []string{"cpu"}, 1)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("unknown param"))
+				Expect(err.Error()).To(ContainSubstring("bogus-key"))
+			})
 		})
 
 		Context("normal mode with fake client", func() {
