@@ -4,16 +4,18 @@
 package workloads
 
 import (
+	"fmt"
+
 	"github.com/opdev/virtwork/internal/config"
 )
 
-const memorySystemdUnit = `[Unit]
+const memorySystemdUnitTemplate = `[Unit]
 Description=Virtwork memory stress workload
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/stress-ng --vm 1 --vm-bytes 80% --vm-method all --timeout 0
+ExecStart=/usr/bin/stress-ng --vm %s --vm-bytes %s%% --vm-method %s --timeout 0
 Restart=always
 RestartSec=10
 
@@ -29,7 +31,11 @@ type MemoryWorkload struct {
 }
 
 // NewMemoryWorkload creates a MemoryWorkload with the given configuration and SSH credentials.
-func NewMemoryWorkload(cfg config.WorkloadConfig, sshUser, sshPassword string, sshKeys []string) *MemoryWorkload {
+func NewMemoryWorkload(
+	cfg config.WorkloadConfig,
+	sshUser, sshPassword string,
+	sshKeys []string,
+) *MemoryWorkload {
 	return &MemoryWorkload{
 		BaseWorkload: BaseWorkload{
 			Config:            cfg,
@@ -40,6 +46,33 @@ func NewMemoryWorkload(cfg config.WorkloadConfig, sshUser, sshPassword string, s
 	}
 }
 
+func (w *MemoryWorkload) memoryPercent() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["memory-percent"]; ok && val != "" {
+			return val
+		}
+	}
+	return "80"
+}
+
+func (w *MemoryWorkload) vmStressors() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["vm-stressors"]; ok && val != "" {
+			return val
+		}
+	}
+	return "1"
+}
+
+func (w *MemoryWorkload) vmMethod() string {
+	if w.Config.Params != nil {
+		if val, ok := w.Config.Params["vm-method"]; ok && val != "" {
+			return val
+		}
+	}
+	return "all"
+}
+
 // Name returns "memory".
 func (w *MemoryWorkload) Name() string {
 	return "memory"
@@ -48,12 +81,13 @@ func (w *MemoryWorkload) Name() string {
 // CloudInitUserdata returns cloud-init YAML that installs stress-ng and runs a
 // continuous memory pressure workload via systemd.
 func (w *MemoryWorkload) CloudInitUserdata() (string, error) {
+	unit := fmt.Sprintf(memorySystemdUnitTemplate, w.vmStressors(), w.memoryPercent(), w.vmMethod())
 	return w.BuildCloudConfig(CloudConfigOpts{
 		Packages: []string{"stress-ng"},
 		WriteFiles: []WriteFile{
 			{
 				Path:        "/etc/systemd/system/virtwork-memory.service",
-				Content:     memorySystemdUnit,
+				Content:     unit,
 				Permissions: "0644",
 			},
 		},
