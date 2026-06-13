@@ -83,6 +83,8 @@ type Config struct {
 	AuditEnabled        bool                      `mapstructure:"audit"`
 	AuditDBPath         string                    `mapstructure:"audit-db"`
 	VMConcurrency       int                       `mapstructure:"vm-concurrency"`
+	CatalogDir          string                    `mapstructure:"catalog-dir"`
+	FromCatalog         []string                  `mapstructure:"from-catalog"`
 }
 
 // SetDefaults registers Viper defaults.
@@ -136,6 +138,8 @@ func BindRunFlags(cmd *cobra.Command, defaultWorkloads []string) {
 	f.StringSlice("ssh-key-file", nil, "SSH key file path (repeatable)")
 	f.Int("vm-concurrency", constants.DefaultVMConcurrency, "Max concurrent VM creation operations")
 	f.String("params", "", "Per-workload params (comma-separated workload.key=value pairs)")
+	f.String("catalog-dir", "", "Path to catalog directory (default ~/.virtwork/catalog)")
+	f.StringSlice("from-catalog", nil, "Catalog entries to load (comma-separated)")
 }
 
 // BindCleanupFlags registers flags specific to the "cleanup" subcommand.
@@ -221,6 +225,23 @@ func LoadConfig(cmd *cobra.Command) (*Config, error) {
 	cfg.AuditEnabled = v.GetBool("audit")
 	cfg.AuditDBPath = v.GetString("audit-db")
 	cfg.VMConcurrency = v.GetInt("vm-concurrency")
+
+	// Catalog settings
+	bindFlagIfSet(v, cmd, "catalog-dir")
+	cfg.CatalogDir = v.GetString("catalog-dir")
+	if cfg.CatalogDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("resolving home directory for catalog-dir: %w", err)
+		}
+		cfg.CatalogDir = filepath.Join(home, ".virtwork", "catalog")
+	}
+
+	if cmd.Flags().Changed("from-catalog") {
+		cfg.FromCatalog, _ = cmd.Flags().GetStringSlice("from-catalog")
+	} else {
+		cfg.FromCatalog = v.GetStringSlice("from-catalog")
+	}
 
 	// Handle SSH authorized keys: CLI flags, env var (comma-split), or YAML list
 	sshKeys, err := resolveSSHKeys(v, cmd)

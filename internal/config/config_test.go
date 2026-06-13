@@ -809,3 +809,75 @@ workloads:
 		})
 	})
 })
+
+var _ = Describe("Catalog config", func() {
+	var cmd *cobra.Command
+
+	BeforeEach(func() {
+		for _, env := range os.Environ() {
+			if strings.HasPrefix(env, "VIRTWORK_") {
+				_ = os.Unsetenv(strings.Split(env, "=")[0])
+			}
+		}
+		cmd = newTestCommand()
+	})
+
+	It("should default CatalogDir to ~/.virtwork/catalog", func() {
+		cfg, err := config.LoadConfig(cmd)
+		Expect(err).NotTo(HaveOccurred())
+		home, err := os.UserHomeDir()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cfg.CatalogDir).To(Equal(filepath.Join(home, ".virtwork", "catalog")))
+	})
+
+	It("should accept --catalog-dir flag", func() {
+		Expect(cmd.Flags().Set("catalog-dir", "/tmp/my-catalog")).To(Succeed())
+		cfg, err := config.LoadConfig(cmd)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cfg.CatalogDir).To(Equal("/tmp/my-catalog"))
+	})
+
+	It("should accept VIRTWORK_CATALOG_DIR env var", func() {
+		_ = os.Setenv("VIRTWORK_CATALOG_DIR", "/opt/catalog")
+		defer func() {
+			_ = os.Unsetenv("VIRTWORK_CATALOG_DIR")
+		}()
+
+		cfg, err := config.LoadConfig(cmd)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cfg.CatalogDir).To(Equal("/opt/catalog"))
+	})
+
+	It("should default FromCatalog to empty", func() {
+		cfg, err := config.LoadConfig(cmd)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cfg.FromCatalog).To(BeEmpty())
+	})
+
+	It("should accept --from-catalog flag", func() {
+		Expect(cmd.Flags().Set("from-catalog", "my-stress,my-bench")).To(Succeed())
+		cfg, err := config.LoadConfig(cmd)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cfg.FromCatalog).To(ConsistOf("my-stress", "my-bench"))
+	})
+
+	It("should load from-catalog from YAML config", func() {
+		tmpDir, err := os.MkdirTemp("", "virtwork-config-test-*")
+		Expect(err).NotTo(HaveOccurred())
+		defer func() {
+			_ = os.RemoveAll(tmpDir)
+		}()
+
+		path := writeConfigFile(tmpDir, `
+from-catalog:
+  - entry-a
+  - entry-b
+catalog-dir: /custom/catalog
+`)
+		Expect(cmd.Flags().Set("config", path)).To(Succeed())
+		cfg, err := config.LoadConfig(cmd)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cfg.FromCatalog).To(ConsistOf("entry-a", "entry-b"))
+		Expect(cfg.CatalogDir).To(Equal("/custom/catalog"))
+	})
+})

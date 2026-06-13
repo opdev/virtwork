@@ -215,6 +215,12 @@ var _ = Describe("Registry", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(dvts).NotTo(BeEmpty())
 	})
+
+	It("should set CatalogDir via WithCatalogDir option", func() {
+		opts := &workloads.RegistryOpts{}
+		workloads.WithCatalogDir("/tmp/my-catalog")(opts)
+		Expect(opts.CatalogDir).To(Equal("/tmp/my-catalog"))
+	})
 })
 
 var _ = Describe("AllWorkloadNames", func() {
