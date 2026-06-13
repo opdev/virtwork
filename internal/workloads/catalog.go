@@ -11,9 +11,14 @@ import (
 	"sort"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"gopkg.in/yaml.v3"
 
 	"github.com/opdev/virtwork/internal/config"
+	"github.com/opdev/virtwork/internal/constants"
 )
 
 var (
@@ -21,12 +26,44 @@ var (
 	ErrCatalogNoServices         = errors.New("catalog entry has no .service files")
 	ErrCatalogManifestRequired   = errors.New("workload.yaml is required for multi-role catalog entries")
 	ErrCatalogMissingRoleService = errors.New("missing .service file for declared role")
+
+	ErrStorageNameEmpty      = errors.New("storage name must not be empty")
+	ErrStorageNameReserved   = errors.New("storage name conflicts with reserved disk name")
+	ErrStorageNameDuplicate  = errors.New("duplicate storage name")
+	ErrStorageSizeInvalid    = errors.New("storage size must be a valid quantity")
+	ErrStorageSerialEmpty    = errors.New("storage serial must not be empty")
+	ErrStorageSerialTooLong  = errors.New("storage serial must be at most 20 characters")
+	ErrStorageMountNotAbsolute = errors.New("storage mount must be an absolute path")
+	ErrServicePortsEmpty     = errors.New("service must declare at least one port")
+	ErrServicePortRange      = errors.New("service port must be between 1 and 65535")
+	ErrServiceProtocol       = errors.New("service protocol must be TCP or UDP")
 )
 
 // RoleDefinition declares a role and its default VM count in a catalog manifest.
 type RoleDefinition struct {
 	Name    string `yaml:"name"`
 	VMCount int    `yaml:"vm-count"`
+}
+
+// StorageDefinition declares a persistent storage volume in a catalog manifest.
+type StorageDefinition struct {
+	Name   string `yaml:"name"`
+	Size   string `yaml:"size"`
+	Serial string `yaml:"serial"`
+	Mount  string `yaml:"mount"`
+}
+
+// ServicePort declares a port for a K8s Service in a catalog manifest.
+type ServicePort struct {
+	Name     string `yaml:"name"`
+	Port     int32  `yaml:"port"`
+	Protocol string `yaml:"protocol"`
+}
+
+// ServiceDefinition declares a K8s Service in a catalog manifest.
+type ServiceDefinition struct {
+	Ports        []ServicePort `yaml:"ports"`
+	SelectorRole string        `yaml:"selector-role"`
 }
 
 // catalogParamDef mirrors ParamDef for YAML unmarshaling with string type names.
@@ -39,10 +76,12 @@ type catalogParamDef struct {
 
 // CatalogManifest holds the parsed workload.yaml from a catalog entry.
 type CatalogManifest struct {
-	Description string            `yaml:"description"`
-	Packages    []string          `yaml:"packages"`
-	Params      []catalogParamDef `yaml:"params"`
-	Roles       []RoleDefinition  `yaml:"roles"`
+	Description string              `yaml:"description"`
+	Packages    []string            `yaml:"packages"`
+	Params      []catalogParamDef   `yaml:"params"`
+	Roles       []RoleDefinition    `yaml:"roles"`
+	Storage     []StorageDefinition `yaml:"storage"`
+	Service     *ServiceDefinition  `yaml:"service"`
 }
 
 // CatalogEntry represents a loaded catalog workload entry.
@@ -101,8 +140,104 @@ func (e *CatalogEntry) Factory() WorkloadFactory {
 		}
 	}
 	return func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-		return NewGenericWorkload(cfg, entry,
+		return NewGenericWorkload(cfg, entry, opts.Namespace,
 			opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+	}
+}
+
+var reservedDiskNames = map[string]bool{
+	"containerdisk": true,
+	"cloudinitdisk":  true,
+	"datadisk":       true,
+}
+
+func validateManifest(m *CatalogManifest) error {
+	seen := make(map[string]bool, len(m.Storage))
+	for _, s := range m.Storage {
+		if s.Name == "" {
+			return ErrStorageNameEmpty
+		}
+		if reservedDiskNames[s.Name] {
+			return fmt.Errorf("%q: %w", s.Name, ErrStorageNameReserved)
+		}
+		if seen[s.Name] {
+			return fmt.Errorf("%q: %w", s.Name, ErrStorageNameDuplicate)
+		}
+		if _, err := resource.ParseQuantity(s.Size); err != nil {
+			return fmt.Errorf("%q: %w", s.Size, ErrStorageSizeInvalid)
+		}
+		if s.Serial == "" {
+			return ErrStorageSerialEmpty
+		}
+		if len(s.Serial) > 20 {
+			return fmt.Errorf("%q: %w", s.Serial, ErrStorageSerialTooLong)
+		}
+		if !filepath.IsAbs(s.Mount) {
+			return fmt.Errorf("%q: %w", s.Mount, ErrStorageMountNotAbsolute)
+		}
+		seen[s.Name] = true
+	}
+
+	if m.Service != nil {
+		if len(m.Service.Ports) == 0 {
+			return ErrServicePortsEmpty
+		}
+		for _, p := range m.Service.Ports {
+			if p.Port < 1 || p.Port > 65535 {
+				return fmt.Errorf("%d: %w", p.Port, ErrServicePortRange)
+			}
+			proto := strings.ToUpper(p.Protocol)
+			if proto != "" && proto != "TCP" && proto != "UDP" {
+				return fmt.Errorf("%q: %w", p.Protocol, ErrServiceProtocol)
+			}
+		}
+	}
+	return nil
+}
+
+func convertServicePorts(ports []ServicePort) []corev1.ServicePort {
+	result := make([]corev1.ServicePort, len(ports))
+	for i, p := range ports {
+		proto := corev1.ProtocolTCP
+		if strings.ToUpper(p.Protocol) == "UDP" {
+			proto = corev1.ProtocolUDP
+		}
+		result[i] = corev1.ServicePort{
+			Name:       p.Name,
+			Port:       p.Port,
+			TargetPort: intstr.FromInt32(p.Port),
+			Protocol:   proto,
+		}
+	}
+	return result
+}
+
+func buildCatalogServiceSpec(name, namespace string, def *ServiceDefinition) *corev1.Service {
+	if def == nil {
+		return nil
+	}
+	selector := map[string]string{
+		constants.LabelAppName: "virtwork-" + name,
+	}
+	if def.SelectorRole != "" {
+		selector = map[string]string{
+			"virtwork/role": def.SelectorRole,
+		}
+	}
+	return &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "virtwork-" + name,
+			Namespace: namespace,
+			Labels: map[string]string{
+				constants.LabelAppName:   constants.ManagedByValue,
+				constants.LabelManagedBy: constants.ManagedByValue,
+				constants.LabelComponent: name,
+			},
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: selector,
+			Ports:    convertServicePorts(def.Ports),
+		},
 	}
 }
 
@@ -127,6 +262,9 @@ func LoadCatalogEntry(catalogDir, entryName string) (*CatalogEntry, error) {
 	if data, err := os.ReadFile(manifestPath); err == nil {
 		if err := yaml.Unmarshal(data, &entry.Manifest); err != nil {
 			return nil, fmt.Errorf("parsing workload.yaml for %q: %w", entryName, err)
+		}
+		if err := validateManifest(&entry.Manifest); err != nil {
+			return nil, fmt.Errorf("validating manifest for %q: %w", entryName, err)
 		}
 	}
 
