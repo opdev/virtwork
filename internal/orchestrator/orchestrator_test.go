@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -351,6 +353,109 @@ var _ = Describe("RunOrchestrator", func() {
 				result, err := ro.Run(ctx, 0, "expected-run-id", []string{"cpu"}, 1)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result.RunID).To(Equal("expected-run-id"))
+			})
+		})
+
+		Context("catalog workloads", func() {
+			var catalogDir string
+
+			writeFile := func(dir, name, content string) {
+				err := os.MkdirAll(dir, 0o750)
+				ExpectWithOffset(1, err).NotTo(HaveOccurred())
+				err = os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600)
+				ExpectWithOffset(1, err).NotTo(HaveOccurred())
+			}
+
+			BeforeEach(func() {
+				var err error
+				catalogDir, err = os.MkdirTemp("", "virtwork-orch-catalog-*")
+				Expect(err).NotTo(HaveOccurred())
+
+				cfg.DryRun = true
+			})
+
+			AfterEach(func() {
+				Expect(os.RemoveAll(catalogDir)).To(Succeed())
+			})
+
+			It("should plan VMs for a single-role catalog entry", func() {
+				entryDir := filepath.Join(catalogDir, "my-stress")
+				writeFile(entryDir, "workload.service", "[Service]\nExecStart=/usr/bin/stress-ng\n")
+
+				cfg.CatalogDir = catalogDir
+				cfg.FromCatalog = []string{"my-stress"}
+
+				logger := logging.NewLogger(buf, false)
+				ro := orchestrator.NewRunOrchestrator(logger, nil, cfg, auditor, buf)
+
+				result, err := ro.Run(ctx, 0, "cat-run", nil, 1)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.VMCount).To(Equal(1))
+				Expect(buf.String()).To(ContainSubstring("my-stress"))
+			})
+
+			It("should plan VMs for catalog + built-in workloads together", func() {
+				entryDir := filepath.Join(catalogDir, "my-stress")
+				writeFile(entryDir, "workload.service", "[Service]\nExecStart=/usr/bin/stress-ng\n")
+
+				cfg.CatalogDir = catalogDir
+				cfg.FromCatalog = []string{"my-stress"}
+
+				logger := logging.NewLogger(buf, false)
+				ro := orchestrator.NewRunOrchestrator(logger, nil, cfg, auditor, buf)
+
+				result, err := ro.Run(ctx, 0, "cat-run", []string{"cpu"}, 1)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.VMCount).To(Equal(2))
+			})
+
+			It("should return error when catalog entry conflicts with built-in name", func() {
+				entryDir := filepath.Join(catalogDir, "cpu")
+				writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/fake\n")
+
+				cfg.CatalogDir = catalogDir
+				cfg.FromCatalog = []string{"cpu"}
+
+				logger := logging.NewLogger(buf, false)
+				ro := orchestrator.NewRunOrchestrator(logger, nil, cfg, auditor, buf)
+
+				_, err := ro.Run(ctx, 0, "cat-run", nil, 1)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("conflicts with built-in workload name"))
+			})
+
+			It("should return error for invalid catalog entry", func() {
+				cfg.CatalogDir = catalogDir
+				cfg.FromCatalog = []string{"nonexistent"}
+
+				logger := logging.NewLogger(buf, false)
+				ro := orchestrator.NewRunOrchestrator(logger, nil, cfg, auditor, buf)
+
+				_, err := ro.Run(ctx, 0, "cat-run", nil, 1)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("nonexistent"))
+			})
+
+			It("should plan VMs for a multi-role catalog entry", func() {
+				entryDir := filepath.Join(catalogDir, "my-bench")
+				writeFile(entryDir, "workload.yaml", `roles:
+  - name: server
+    vm-count: 1
+  - name: client
+    vm-count: 2
+`)
+				writeFile(entryDir, "server.service", "[Service]\nExecStart=/bin/s\n")
+				writeFile(entryDir, "client.service", "[Service]\nExecStart=/bin/c\n")
+
+				cfg.CatalogDir = catalogDir
+				cfg.FromCatalog = []string{"my-bench"}
+
+				logger := logging.NewLogger(buf, false)
+				ro := orchestrator.NewRunOrchestrator(logger, nil, cfg, auditor, buf)
+
+				result, err := ro.Run(ctx, 0, "cat-run", nil, 1)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.VMCount).To(Equal(3))
 			})
 		})
 	})

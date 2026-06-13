@@ -27,7 +27,10 @@ import (
 	"github.com/opdev/virtwork/internal/workloads"
 )
 
-var ErrReadinessCheck = errors.New("readiness check failed")
+var (
+	ErrReadinessCheck      = errors.New("readiness check failed")
+	ErrCatalogNameConflict = errors.New("catalog entry conflicts with built-in workload name")
+)
 
 // RunOrchestrator coordinates the "run" workflow: planning VMs, creating
 // resources, and waiting for readiness. Dependencies are injected at
@@ -75,10 +78,33 @@ func (ro *RunOrchestrator) Run(
 		workloads.WithNamespace(cfg.Namespace),
 		workloads.WithSSHCredentials(cfg.SSHUser, cfg.SSHPassword, cfg.SSHAuthorizedKeys),
 		workloads.WithDataDiskSize(cfg.DataDiskSize),
+		workloads.WithCatalogDir(cfg.CatalogDir),
 	}
 
+	for _, entryName := range cfg.FromCatalog {
+		if _, exists := registry[entryName]; exists {
+			return nil, fmt.Errorf(
+				"catalog entry %q: %w",
+				entryName,
+				ErrCatalogNameConflict,
+			)
+		}
+		entry, err := workloads.LoadCatalogEntry(cfg.CatalogDir, entryName)
+		if err != nil {
+			return nil, fmt.Errorf("loading catalog entry %q: %w", entryName, err)
+		}
+		registry[entryName] = workloads.RegistryEntry{
+			Factory:     entry.Factory(),
+			ParamSchema: entry.Schema(),
+		}
+	}
+
+	allWorkloadNames := make([]string, 0, len(workloadNames)+len(cfg.FromCatalog))
+	allWorkloadNames = append(allWorkloadNames, workloadNames...)
+	allWorkloadNames = append(allWorkloadNames, cfg.FromCatalog...)
+
 	plans, vmNames, workloadInstances, auditWorkloadIDs, err := ro.planVMs(
-		ctx, execID, runID, workloadNames, vmCountFlag, registry, registryOpts,
+		ctx, execID, runID, allWorkloadNames, vmCountFlag, registry, registryOpts,
 	)
 	if err != nil {
 		return nil, err
@@ -89,7 +115,7 @@ func (ro *RunOrchestrator) Run(
 		Message: fmt.Sprintf(
 			"Planned %d VMs across %d workloads",
 			len(plans),
-			len(workloadNames),
+			len(allWorkloadNames),
 		),
 	}); err != nil {
 		ro.logger.Warn(
