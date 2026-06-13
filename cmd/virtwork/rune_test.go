@@ -63,6 +63,78 @@ var _ = Describe("runE", func() {
 		})
 	})
 
+	Context("catalog workloads", func() {
+		var catalogDir string
+
+		writeFile := func(dir, name, content string) {
+			err := os.MkdirAll(dir, 0o750)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+			err = os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+		}
+
+		BeforeEach(func() {
+			var err error
+			catalogDir, err = os.MkdirTemp("", "virtwork-cli-catalog-*")
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			Expect(os.RemoveAll(catalogDir)).To(Succeed())
+		})
+
+		It("runs only catalog entry when --from-catalog set without --workloads", func() {
+			entryDir := filepath.Join(catalogDir, "my-svc")
+			writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/true\n")
+
+			rootCmd := newRootCmd()
+			var buf bytes.Buffer
+			rootCmd.SetOut(&buf)
+			rootCmd.SetArgs([]string{
+				"run", "--dry-run", "--no-audit",
+				"--catalog-dir", catalogDir,
+				"--from-catalog", "my-svc",
+			})
+			Expect(rootCmd.Execute()).To(Succeed())
+
+			output := buf.String()
+			Expect(output).To(ContainSubstring("my-svc"))
+			Expect(output).NotTo(ContainSubstring("virtwork-cpu"))
+		})
+
+		It("runs both catalog and built-in when both flags set", func() {
+			entryDir := filepath.Join(catalogDir, "my-svc")
+			writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/true\n")
+
+			rootCmd := newRootCmd()
+			var buf bytes.Buffer
+			rootCmd.SetOut(&buf)
+			rootCmd.SetArgs([]string{
+				"run", "--dry-run", "--no-audit",
+				"--workloads", "cpu",
+				"--catalog-dir", catalogDir,
+				"--from-catalog", "my-svc",
+			})
+			Expect(rootCmd.Execute()).To(Succeed())
+
+			output := buf.String()
+			Expect(output).To(ContainSubstring("virtwork-cpu"))
+			Expect(output).To(ContainSubstring("my-svc"))
+		})
+
+		It("returns error for invalid catalog entry", func() {
+			rootCmd := newRootCmd()
+			rootCmd.SetArgs([]string{
+				"run", "--dry-run", "--no-audit",
+				"--catalog-dir", catalogDir,
+				"--from-catalog", "nonexistent",
+			})
+			err := rootCmd.Execute()
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("nonexistent"))
+		})
+	})
+
 	Context("dry-run mode", func() {
 		It("succeeds without a cluster connection", func() {
 			rootCmd := newRootCmd()
