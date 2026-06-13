@@ -33,6 +33,8 @@ var (
 	date    = ""
 
 	clusterConnect = cluster.Connect
+
+	ErrNoWorkloads = errors.New("no workloads specified: use --workloads or --from-catalog")
 )
 
 func main() {
@@ -134,8 +136,20 @@ func runE(cmd *cobra.Command, args []string) error {
 	}
 
 	workloadNames, _ := cmd.Flags().GetStringSlice("workloads")
-	if err := workloads.ValidateWorkloadNames(workloadNames); err != nil {
-		return err
+	fromCatalog := cfg.FromCatalog
+
+	if len(fromCatalog) > 0 && !cmd.Flags().Changed("workloads") {
+		workloadNames = nil
+	}
+
+	if len(workloadNames) > 0 {
+		if err := workloads.ValidateWorkloadNames(workloadNames); err != nil {
+			return err
+		}
+	}
+
+	if len(workloadNames) == 0 && len(fromCatalog) == 0 {
+		return ErrNoWorkloads
 	}
 
 	//nolint:dupl
