@@ -270,4 +270,270 @@ packages:
 			))
 		})
 	})
+
+	Context("entry with storage declared", func() {
+		BeforeEach(func() {
+			entryDir := filepath.Join(catalogDir, "with-storage")
+			writeFile(entryDir, "workload.yaml", `description: "Storage workload"
+storage:
+  - name: data
+    size: 10Gi
+    serial: vw-data
+    mount: /mnt/data
+`)
+			writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/app\n")
+			entry, err := workloads.LoadCatalogEntry(catalogDir, "with-storage")
+			Expect(err).NotTo(HaveOccurred())
+			w = workloads.NewGenericWorkload(
+				config.WorkloadConfig{CPUCores: 2, Memory: "2Gi"},
+				entry, "test-ns", "", "", nil,
+			)
+		})
+
+		It("should return DataVolumeTemplates for declared storage", func() {
+			dvts, err := w.DataVolumeTemplates()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dvts).To(HaveLen(1))
+			Expect(dvts[0].Name).To(Equal("data"))
+		})
+
+		It("should return ExtraDisks with correct serial and bus", func() {
+			disks := w.ExtraDisks()
+			Expect(disks).To(HaveLen(1))
+			Expect(disks[0].Name).To(Equal("data"))
+			Expect(disks[0].Serial).To(Equal("vw-data"))
+			Expect(disks[0].DiskDevice.Disk).NotTo(BeNil())
+			Expect(string(disks[0].DiskDevice.Disk.Bus)).To(Equal("virtio"))
+		})
+
+		It("should return ExtraVolumes referencing the DataVolume", func() {
+			volumes := w.ExtraVolumes()
+			Expect(volumes).To(HaveLen(1))
+			Expect(volumes[0].Name).To(Equal("data"))
+			Expect(volumes[0].DataVolume).NotTo(BeNil())
+			Expect(volumes[0].DataVolume.Name).To(Equal("data"))
+		})
+
+		It("should inject disk setup script into cloud-init write_files", func() {
+			result, err := w.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+			parsed := parseYAML(result)
+			files := parsed["write_files"].([]interface{})
+			var setupScript map[string]interface{}
+			for _, f := range files {
+				fm := f.(map[string]interface{})
+				if fm["path"] == "/usr/local/bin/virtwork-disk-setup-data.sh" {
+					setupScript = fm
+				}
+			}
+			Expect(setupScript).NotTo(BeNil(), "expected disk setup script in write_files")
+			Expect(setupScript["permissions"]).To(Equal("0755"))
+			Expect(setupScript["content"]).To(ContainSubstring("vw-data"))
+			Expect(setupScript["content"]).To(ContainSubstring("/mnt/data"))
+		})
+
+		It("should run disk setup script before daemon-reload in runcmd", func() {
+			result, err := w.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+			parsed := parseYAML(result)
+			runcmd := parsed["runcmd"].([]interface{})
+
+			var setupIdx, reloadIdx int
+			for i, cmd := range runcmd {
+				arr := cmd.([]interface{})
+				if len(arr) == 1 && arr[0] == "/usr/local/bin/virtwork-disk-setup-data.sh" {
+					setupIdx = i
+				}
+				if len(arr) == 2 && arr[0] == "systemctl" && arr[1] == "daemon-reload" {
+					reloadIdx = i
+				}
+			}
+			Expect(setupIdx).To(BeNumerically("<", reloadIdx),
+				"disk setup script should run before daemon-reload")
+		})
+	})
+
+	Context("entry with multiple storage definitions", func() {
+		BeforeEach(func() {
+			entryDir := filepath.Join(catalogDir, "multi-storage")
+			writeFile(entryDir, "workload.yaml", `storage:
+  - name: data
+    size: 10Gi
+    serial: vw-data
+    mount: /mnt/data
+  - name: logs
+    size: 5Gi
+    serial: vw-logs
+    mount: /var/log/app
+`)
+			writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/app\n")
+			entry, err := workloads.LoadCatalogEntry(catalogDir, "multi-storage")
+			Expect(err).NotTo(HaveOccurred())
+			w = workloads.NewGenericWorkload(
+				config.WorkloadConfig{CPUCores: 2, Memory: "2Gi"},
+				entry, "test-ns", "", "", nil,
+			)
+		})
+
+		It("should return DataVolumeTemplates for all storage entries", func() {
+			dvts, err := w.DataVolumeTemplates()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dvts).To(HaveLen(2))
+			Expect(dvts[0].Name).To(Equal("data"))
+			Expect(dvts[1].Name).To(Equal("logs"))
+		})
+
+		It("should return ExtraDisks for all storage entries", func() {
+			disks := w.ExtraDisks()
+			Expect(disks).To(HaveLen(2))
+			Expect(disks[0].Serial).To(Equal("vw-data"))
+			Expect(disks[1].Serial).To(Equal("vw-logs"))
+		})
+
+		It("should return ExtraVolumes for all storage entries", func() {
+			volumes := w.ExtraVolumes()
+			Expect(volumes).To(HaveLen(2))
+			Expect(volumes[0].Name).To(Equal("data"))
+			Expect(volumes[1].Name).To(Equal("logs"))
+		})
+
+		It("should inject disk setup scripts for each storage entry", func() {
+			result, err := w.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(ContainSubstring("virtwork-disk-setup-data.sh"))
+			Expect(result).To(ContainSubstring("virtwork-disk-setup-logs.sh"))
+		})
+	})
+
+	Context("entry with service declared", func() {
+		BeforeEach(func() {
+			entryDir := filepath.Join(catalogDir, "with-svc-def")
+			writeFile(entryDir, "workload.yaml", `description: "Service workload"
+service:
+  ports:
+    - name: http
+      port: 8080
+      protocol: TCP
+    - name: metrics
+      port: 9090
+      protocol: UDP
+`)
+			writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/app\n")
+			entry, err := workloads.LoadCatalogEntry(catalogDir, "with-svc-def")
+			Expect(err).NotTo(HaveOccurred())
+			w = workloads.NewGenericWorkload(
+				config.WorkloadConfig{CPUCores: 2, Memory: "2Gi"},
+				entry, "test-ns", "", "", nil,
+			)
+		})
+
+		It("should require a service", func() {
+			Expect(w.RequiresService()).To(BeTrue())
+		})
+
+		It("should return a ServiceSpec with correct name and namespace", func() {
+			svc := w.ServiceSpec()
+			Expect(svc).NotTo(BeNil())
+			Expect(svc.Name).To(Equal("virtwork-with-svc-def"))
+			Expect(svc.Namespace).To(Equal("test-ns"))
+		})
+
+		It("should set standard labels on the service", func() {
+			svc := w.ServiceSpec()
+			Expect(svc.Labels).To(HaveKeyWithValue("app.kubernetes.io/name", "virtwork"))
+			Expect(svc.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "virtwork"))
+			Expect(svc.Labels).To(HaveKeyWithValue("app.kubernetes.io/component", "with-svc-def"))
+		})
+
+		It("should use app label as selector for single-role", func() {
+			svc := w.ServiceSpec()
+			Expect(svc.Spec.Selector).To(HaveKeyWithValue(
+				"app.kubernetes.io/name", "virtwork-with-svc-def"))
+		})
+
+		It("should include all declared ports", func() {
+			svc := w.ServiceSpec()
+			Expect(svc.Spec.Ports).To(HaveLen(2))
+			Expect(svc.Spec.Ports[0].Name).To(Equal("http"))
+			Expect(svc.Spec.Ports[0].Port).To(Equal(int32(8080)))
+			Expect(string(svc.Spec.Ports[0].Protocol)).To(Equal("TCP"))
+			Expect(svc.Spec.Ports[1].Name).To(Equal("metrics"))
+			Expect(svc.Spec.Ports[1].Port).To(Equal(int32(9090)))
+			Expect(string(svc.Spec.Ports[1].Protocol)).To(Equal("UDP"))
+		})
+	})
+
+	Context("entry without service or storage", func() {
+		BeforeEach(func() {
+			entryDir := filepath.Join(catalogDir, "plain")
+			writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/app\n")
+			entry, err := workloads.LoadCatalogEntry(catalogDir, "plain")
+			Expect(err).NotTo(HaveOccurred())
+			w = workloads.NewGenericWorkload(
+				config.WorkloadConfig{CPUCores: 2, Memory: "2Gi"},
+				entry, "test-ns", "", "", nil,
+			)
+		})
+
+		It("should not require a service", func() {
+			Expect(w.RequiresService()).To(BeFalse())
+		})
+
+		It("should return nil ServiceSpec", func() {
+			Expect(w.ServiceSpec()).To(BeNil())
+		})
+
+		It("should return nil for all storage methods", func() {
+			Expect(w.ExtraVolumes()).To(BeNil())
+			Expect(w.ExtraDisks()).To(BeNil())
+			dvts, err := w.DataVolumeTemplates()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dvts).To(BeNil())
+		})
+	})
+
+	Context("entry with both storage and service", func() {
+		BeforeEach(func() {
+			entryDir := filepath.Join(catalogDir, "full")
+			writeFile(entryDir, "workload.yaml", `description: "Full featured"
+packages:
+  - postgresql
+storage:
+  - name: pgdata
+    size: 20Gi
+    serial: vw-pgdata
+    mount: /var/lib/pgsql
+service:
+  ports:
+    - name: postgres
+      port: 5432
+      protocol: TCP
+`)
+			writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/pg\n")
+			entry, err := workloads.LoadCatalogEntry(catalogDir, "full")
+			Expect(err).NotTo(HaveOccurred())
+			w = workloads.NewGenericWorkload(
+				config.WorkloadConfig{CPUCores: 4, Memory: "4Gi"},
+				entry, "test-ns", "", "", nil,
+			)
+		})
+
+		It("should support both storage and service simultaneously", func() {
+			dvts, err := w.DataVolumeTemplates()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dvts).To(HaveLen(1))
+
+			Expect(w.RequiresService()).To(BeTrue())
+			svc := w.ServiceSpec()
+			Expect(svc.Spec.Ports).To(HaveLen(1))
+			Expect(svc.Spec.Ports[0].Port).To(Equal(int32(5432)))
+		})
+
+		It("should include both disk setup and service in cloud-init", func() {
+			result, err := w.CloudInitUserdata()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(ContainSubstring("virtwork-disk-setup-pgdata.sh"))
+			Expect(result).To(ContainSubstring("postgresql"))
+		})
+	})
 })

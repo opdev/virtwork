@@ -11,11 +11,11 @@ import (
 	"sort"
 	"strings"
 
+	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"gopkg.in/yaml.v3"
 
 	"github.com/opdev/virtwork/internal/config"
 	"github.com/opdev/virtwork/internal/constants"
@@ -27,16 +27,16 @@ var (
 	ErrCatalogManifestRequired   = errors.New("workload.yaml is required for multi-role catalog entries")
 	ErrCatalogMissingRoleService = errors.New("missing .service file for declared role")
 
-	ErrStorageNameEmpty      = errors.New("storage name must not be empty")
-	ErrStorageNameReserved   = errors.New("storage name conflicts with reserved disk name")
-	ErrStorageNameDuplicate  = errors.New("duplicate storage name")
-	ErrStorageSizeInvalid    = errors.New("storage size must be a valid quantity")
-	ErrStorageSerialEmpty    = errors.New("storage serial must not be empty")
-	ErrStorageSerialTooLong  = errors.New("storage serial must be at most 20 characters")
+	ErrStorageNameEmpty        = errors.New("storage name must not be empty")
+	ErrStorageNameReserved     = errors.New("storage name conflicts with reserved disk name")
+	ErrStorageNameDuplicate    = errors.New("duplicate storage name")
+	ErrStorageSizeInvalid      = errors.New("storage size must be a valid quantity")
+	ErrStorageSerialEmpty      = errors.New("storage serial must not be empty")
+	ErrStorageSerialTooLong    = errors.New("storage serial must be at most 20 characters")
 	ErrStorageMountNotAbsolute = errors.New("storage mount must be an absolute path")
-	ErrServicePortsEmpty     = errors.New("service must declare at least one port")
-	ErrServicePortRange      = errors.New("service port must be between 1 and 65535")
-	ErrServiceProtocol       = errors.New("service protocol must be TCP or UDP")
+	ErrServicePortsEmpty       = errors.New("service must declare at least one port")
+	ErrServicePortRange        = errors.New("service port must be between 1 and 65535")
+	ErrServiceProtocol         = errors.New("service protocol must be TCP or UDP")
 )
 
 // RoleDefinition declares a role and its default VM count in a catalog manifest.
@@ -147,8 +147,8 @@ func (e *CatalogEntry) Factory() WorkloadFactory {
 
 var reservedDiskNames = map[string]bool{
 	"containerdisk": true,
-	"cloudinitdisk":  true,
-	"datadisk":       true,
+	"cloudinitdisk": true,
+	"datadisk":      true,
 }
 
 func validateManifest(m *CatalogManifest) error {
