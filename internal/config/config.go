@@ -6,6 +6,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -134,6 +135,7 @@ func BindRunFlags(cmd *cobra.Command, defaultWorkloads []string) {
 	f.StringSlice("ssh-key", nil, "SSH authorized key (repeatable)")
 	f.StringSlice("ssh-key-file", nil, "SSH key file path (repeatable)")
 	f.Int("vm-concurrency", constants.DefaultVMConcurrency, "Max concurrent VM creation operations")
+	f.String("params", "", "Per-workload params (comma-separated workload.key=value pairs)")
 }
 
 // BindCleanupFlags registers flags specific to the "cleanup" subcommand.
@@ -236,6 +238,23 @@ func LoadConfig(cmd *cobra.Command) (*Config, error) {
 	}
 	cfg.Workloads = workloads
 
+	// Merge CLI/env params into workload configs (CLI flag > env var > YAML)
+	rawParams := resolveRawParams(cmd)
+	if rawParams != "" {
+		parsed, err := ParseParams(rawParams)
+		if err != nil {
+			return nil, fmt.Errorf("parsing --params: %w", err)
+		}
+		for wl, params := range parsed {
+			wlCfg := cfg.Workloads[wl]
+			if wlCfg.Params == nil {
+				wlCfg.Params = make(map[string]string)
+			}
+			maps.Copy(wlCfg.Params, params)
+			cfg.Workloads[wl] = wlCfg
+		}
+	}
+
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -248,38 +267,32 @@ func LoadConfig(cmd *cobra.Command) (*Config, error) {
 func ParseParams(raw string) (map[string]map[string]string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return nil, nil
+		return make(map[string]map[string]string), nil
 	}
 
 	result := make(map[string]map[string]string)
-	for _, pair := range strings.Split(raw, ",") {
+	for pair := range strings.SplitSeq(raw, ",") {
 		pair = strings.TrimSpace(pair)
 		if pair == "" {
 			continue
 		}
 
-		dotIdx := strings.Index(pair, ".")
-		if dotIdx < 0 {
+		workload, rest, hasDot := strings.Cut(pair, ".")
+		if !hasDot {
 			return nil, fmt.Errorf("%w: %q", ErrParamMissingWorkload, pair)
 		}
-
-		workload := pair[:dotIdx]
 		if workload == "" {
 			return nil, fmt.Errorf("%w in %q", ErrParamEmptyWorkload, pair)
 		}
 
-		rest := pair[dotIdx+1:]
-		eqIdx := strings.Index(rest, "=")
-		if eqIdx < 0 {
+		key, value, hasEq := strings.Cut(rest, "=")
+		if !hasEq {
 			return nil, fmt.Errorf("%w: %q", ErrParamMissingEquals, pair)
 		}
-
-		key := rest[:eqIdx]
 		if key == "" {
 			return nil, fmt.Errorf("%w in %q", ErrParamEmptyKey, pair)
 		}
 
-		value := rest[eqIdx+1:]
 		if result[workload] == nil {
 			result[workload] = make(map[string]string)
 		}
@@ -345,4 +358,14 @@ func resolveSSHKeys(v *viper.Viper, cmd *cobra.Command) ([]string, error) {
 
 	// Fall back to YAML config list
 	return v.GetStringSlice("ssh-authorized-keys"), nil
+}
+
+// resolveRawParams returns the raw params string from CLI flag or env var.
+// Priority: CLI --params flag > VIRTWORK_PARAMS env var.
+func resolveRawParams(cmd *cobra.Command) string {
+	if cmd.Flags().Changed("params") {
+		val, _ := cmd.Flags().GetString("params")
+		return val
+	}
+	return os.Getenv("VIRTWORK_PARAMS")
 }
