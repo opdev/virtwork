@@ -31,12 +31,12 @@ var _ = Describe("BuildVMSpec", func() {
 
 	BeforeEach(func() {
 		opts = vm.VMSpecOpts{
-			Name:               "test-vm",
-			Namespace:          "test-ns",
-			ContainerDiskImage: "quay.io/containerdisks/fedora:41",
-			CloudInitUserdata:  "#cloud-config\n",
-			CPUCores:           2,
-			Memory:             "2Gi",
+			Name:                "test-vm",
+			Namespace:           "test-ns",
+			ContainerDiskImage:  "quay.io/containerdisks/fedora:41",
+			CloudInitSecretName: "test-vm-cloudinit",
+			CPUCores:            2,
+			Memory:              "2Gi",
 			Labels: map[string]string{
 				"app.kubernetes.io/managed-by": "virtwork",
 				"app.kubernetes.io/name":       "cpu",
@@ -82,7 +82,8 @@ var _ = Describe("BuildVMSpec", func() {
 		}
 		Expect(cloudInit).NotTo(BeNil())
 		Expect(cloudInit.CloudInitNoCloud).NotTo(BeNil())
-		Expect(cloudInit.CloudInitNoCloud.UserData).To(Equal("#cloud-config\n"))
+		Expect(cloudInit.CloudInitNoCloud.UserDataSecretRef).NotTo(BeNil())
+		Expect(cloudInit.CloudInitNoCloud.UserDataSecretRef.Name).To(Equal("test-vm-cloudinit"))
 	})
 
 	It("should set labels", func() {
@@ -120,8 +121,7 @@ var _ = Describe("BuildVMSpec", func() {
 		Expect(networks[0].Pod).NotTo(BeNil())
 	})
 
-	It("should use UserDataSecretRef when CloudInitSecretName is set", func() {
-		opts.CloudInitSecretName = "my-vm-cloudinit"
+	It("should use UserDataSecretRef from CloudInitSecretName", func() {
 		var err error
 		result, err = vm.BuildVMSpec(opts)
 		Expect(err).NotTo(HaveOccurred())
@@ -137,28 +137,14 @@ var _ = Describe("BuildVMSpec", func() {
 		Expect(cloudInit).NotTo(BeNil())
 		Expect(cloudInit.CloudInitNoCloud).NotTo(BeNil())
 		Expect(cloudInit.CloudInitNoCloud.UserDataSecretRef).NotTo(BeNil())
-		Expect(cloudInit.CloudInitNoCloud.UserDataSecretRef.Name).To(Equal("my-vm-cloudinit"))
+		Expect(cloudInit.CloudInitNoCloud.UserDataSecretRef.Name).To(Equal("test-vm-cloudinit"))
 		Expect(cloudInit.CloudInitNoCloud.UserData).To(BeEmpty())
 	})
 
-	It("should use inline UserData when CloudInitSecretName is empty", func() {
+	It("should return error when CloudInitSecretName is empty", func() {
 		opts.CloudInitSecretName = ""
-		var err error
-		result, err = vm.BuildVMSpec(opts)
-		Expect(err).NotTo(HaveOccurred())
-
-		volumes := result.Spec.Template.Spec.Volumes
-		var cloudInit *kubevirtv1.Volume
-		for i := range volumes {
-			if volumes[i].Name == "cloudinitdisk" {
-				cloudInit = &volumes[i]
-				break
-			}
-		}
-		Expect(cloudInit).NotTo(BeNil())
-		Expect(cloudInit.CloudInitNoCloud).NotTo(BeNil())
-		Expect(cloudInit.CloudInitNoCloud.UserData).To(Equal("#cloud-config\n"))
-		Expect(cloudInit.CloudInitNoCloud.UserDataSecretRef).To(BeNil())
+		_, err := vm.BuildVMSpec(opts)
+		Expect(err).To(MatchError(vm.ErrInvalidCloudInitSecretName))
 	})
 
 	It("should include extra disks when provided", func() {
@@ -209,13 +195,13 @@ var _ = Describe("BuildVMSpec", func() {
 			"should reject invalid inputs",
 			func(mutate func(*vm.VMSpecOpts), substr string) {
 				good := vm.VMSpecOpts{
-					Name:               "test-vm",
-					Namespace:          "test-ns",
-					ContainerDiskImage: "quay.io/containerdisks/fedora:41",
-					CloudInitUserdata:  "#cloud-config\n",
-					CPUCores:           2,
-					Memory:             "2Gi",
-					Labels:             map[string]string{"test": "true"},
+					Name:                "test-vm",
+					Namespace:           "test-ns",
+					ContainerDiskImage:  "quay.io/containerdisks/fedora:41",
+					CloudInitSecretName: "test-cloudinit",
+					CPUCores:            2,
+					Memory:              "2Gi",
+					Labels:              map[string]string{"test": "true"},
 				}
 				mutate(&good)
 				_, err := vm.BuildVMSpec(good)
@@ -230,6 +216,11 @@ var _ = Describe("BuildVMSpec", func() {
 				"empty container disk image",
 				func(o *vm.VMSpecOpts) { o.ContainerDiskImage = "" },
 				"containerDiskImage",
+			),
+			Entry(
+				"empty cloud init secret name",
+				func(o *vm.VMSpecOpts) { o.CloudInitSecretName = "" },
+				"cloudInitSecretName",
 			),
 		)
 	})
@@ -279,13 +270,13 @@ var _ = Describe("CreateVM", func() {
 
 	newTestVM := func(name string) *kubevirtv1.VirtualMachine {
 		v, err := vm.BuildVMSpec(vm.VMSpecOpts{
-			Name:               name,
-			Namespace:          "default",
-			ContainerDiskImage: "test-image",
-			CloudInitUserdata:  "#cloud-config\n",
-			CPUCores:           1,
-			Memory:             "1Gi",
-			Labels:             map[string]string{"test": "true"},
+			Name:                name,
+			Namespace:           "default",
+			ContainerDiskImage:  "test-image",
+			CloudInitSecretName: "test-cloudinit",
+			CPUCores:            1,
+			Memory:              "1Gi",
+			Labels:              map[string]string{"test": "true"},
 		})
 		Expect(err).NotTo(HaveOccurred())
 		return v
@@ -293,12 +284,12 @@ var _ = Describe("CreateVM", func() {
 
 	It("should return error for invalid memory", func() {
 		_, err := vm.BuildVMSpec(vm.VMSpecOpts{
-			Name:               "bad-mem",
-			Namespace:          "default",
-			ContainerDiskImage: "test-image",
-			CloudInitUserdata:  "#cloud-config\n",
-			CPUCores:           1,
-			Memory:             "not-a-quantity",
+			Name:                "bad-mem",
+			Namespace:           "default",
+			ContainerDiskImage:  "test-image",
+			CloudInitSecretName: "test-cloudinit",
+			CPUCores:            1,
+			Memory:              "not-a-quantity",
 		})
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("invalid memory"))
@@ -398,12 +389,12 @@ var _ = Describe("DeleteVM", func() {
 
 	It("should delete VM successfully", func() {
 		testVM, err := vm.BuildVMSpec(vm.VMSpecOpts{
-			Name:               "delete-me",
-			Namespace:          "default",
-			ContainerDiskImage: "test-image",
-			CloudInitUserdata:  "#cloud-config\n",
-			CPUCores:           1,
-			Memory:             "1Gi",
+			Name:                "delete-me",
+			Namespace:           "default",
+			ContainerDiskImage:  "test-image",
+			CloudInitSecretName: "test-cloudinit",
+			CPUCores:            1,
+			Memory:              "1Gi",
 		})
 		Expect(err).NotTo(HaveOccurred())
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(testVM).Build()
@@ -436,23 +427,23 @@ var _ = Describe("ListVMs", func() {
 
 	It("should list VMs by labels", func() {
 		vm1, err := vm.BuildVMSpec(vm.VMSpecOpts{
-			Name:               "vm-1",
-			Namespace:          "default",
-			ContainerDiskImage: "test-image",
-			CloudInitUserdata:  "#cloud-config\n",
-			CPUCores:           1,
-			Memory:             "1Gi",
-			Labels:             map[string]string{"app.kubernetes.io/managed-by": "virtwork"},
+			Name:                "vm-1",
+			Namespace:           "default",
+			ContainerDiskImage:  "test-image",
+			CloudInitSecretName: "test-cloudinit",
+			CPUCores:            1,
+			Memory:              "1Gi",
+			Labels:              map[string]string{"app.kubernetes.io/managed-by": "virtwork"},
 		})
 		Expect(err).NotTo(HaveOccurred())
 		vm2, err := vm.BuildVMSpec(vm.VMSpecOpts{
-			Name:               "vm-2",
-			Namespace:          "default",
-			ContainerDiskImage: "test-image",
-			CloudInitUserdata:  "#cloud-config\n",
-			CPUCores:           1,
-			Memory:             "1Gi",
-			Labels:             map[string]string{"app.kubernetes.io/managed-by": "other"},
+			Name:                "vm-2",
+			Namespace:           "default",
+			ContainerDiskImage:  "test-image",
+			CloudInitSecretName: "test-cloudinit",
+			CPUCores:            1,
+			Memory:              "1Gi",
+			Labels:              map[string]string{"app.kubernetes.io/managed-by": "other"},
 		})
 		Expect(err).NotTo(HaveOccurred())
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(vm1, vm2).Build()

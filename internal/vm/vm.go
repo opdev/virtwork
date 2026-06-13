@@ -25,10 +25,11 @@ const defaultMaxRetries = 5
 var baseRetryBackoff = time.Second
 
 var (
-	ErrInvalidName               = errors.New("invalid name: must not be empty")
-	ErrInvalidNamespace          = errors.New("invalid namespace: must not be empty")
-	ErrInvalidCPUCores           = errors.New("invalid cpuCores: must be a positive integer")
-	ErrInvalidContainerDiskImage = errors.New("invalid containerDiskImage: must not be empty")
+	ErrInvalidName                = errors.New("invalid name: must not be empty")
+	ErrInvalidNamespace           = errors.New("invalid namespace: must not be empty")
+	ErrInvalidCPUCores            = errors.New("invalid cpuCores: must be a positive integer")
+	ErrInvalidContainerDiskImage  = errors.New("invalid containerDiskImage: must not be empty")
+	ErrInvalidCloudInitSecretName = errors.New("invalid cloudInitSecretName: must not be empty")
 )
 
 // VMSpecOpts contains all parameters needed to construct a VirtualMachine spec.
@@ -36,8 +37,7 @@ type VMSpecOpts struct {
 	Name                string
 	Namespace           string
 	ContainerDiskImage  string
-	CloudInitUserdata   string
-	CloudInitSecretName string // When set, use UserDataSecretRef instead of inline
+	CloudInitSecretName string
 	CPUCores            int
 	Memory              string
 	Labels              map[string]string
@@ -62,6 +62,9 @@ func BuildVMSpec(opts VMSpecOpts) (*kubevirtv1.VirtualMachine, error) {
 	if opts.ContainerDiskImage == "" {
 		return nil, ErrInvalidContainerDiskImage
 	}
+	if opts.CloudInitSecretName == "" {
+		return nil, ErrInvalidCloudInitSecretName
+	}
 
 	runStrategy := kubevirtv1.RunStrategyAlways
 
@@ -85,27 +88,15 @@ func BuildVMSpec(opts VMSpecOpts) (*kubevirtv1.VirtualMachine, error) {
 	}
 	disks = append(disks, opts.ExtraDisks...)
 
-	var cloudInitVolume kubevirtv1.Volume
-	if opts.CloudInitSecretName != "" {
-		cloudInitVolume = kubevirtv1.Volume{
-			Name: constants.DiskNameCloudInit,
-			VolumeSource: kubevirtv1.VolumeSource{
-				CloudInitNoCloud: &kubevirtv1.CloudInitNoCloudSource{
-					UserDataSecretRef: &corev1.LocalObjectReference{
-						Name: opts.CloudInitSecretName,
-					},
+	cloudInitVolume := kubevirtv1.Volume{
+		Name: constants.DiskNameCloudInit,
+		VolumeSource: kubevirtv1.VolumeSource{
+			CloudInitNoCloud: &kubevirtv1.CloudInitNoCloudSource{
+				UserDataSecretRef: &corev1.LocalObjectReference{
+					Name: opts.CloudInitSecretName,
 				},
 			},
-		}
-	} else {
-		cloudInitVolume = kubevirtv1.Volume{
-			Name: constants.DiskNameCloudInit,
-			VolumeSource: kubevirtv1.VolumeSource{
-				CloudInitNoCloud: &kubevirtv1.CloudInitNoCloudSource{
-					UserData: opts.CloudInitUserdata,
-				},
-			},
-		}
+		},
 	}
 
 	volumes := []kubevirtv1.Volume{
