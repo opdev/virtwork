@@ -8,13 +8,12 @@ import (
 	"sort"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	"github.com/opdev/virtwork/internal/config"
 	"github.com/opdev/virtwork/internal/constants"
 	"github.com/opdev/virtwork/internal/vm"
-
-	corev1 "k8s.io/api/core/v1"
 )
 
 // GenericWorkload implements Workload for single-role catalog entries.
