@@ -25,6 +25,10 @@ var (
 	ErrInvalidTimeout   = errors.New(
 		"invalid config: timeout must be at least 1 when wait-for-ready is enabled, got",
 	)
+	ErrParamMissingWorkload = errors.New("missing workload prefix (expected workload.key=value)")
+	ErrParamEmptyWorkload   = errors.New("empty workload name")
+	ErrParamMissingEquals   = errors.New("missing '=' in param (expected workload.key=value)")
+	ErrParamEmptyKey        = errors.New("empty param key")
 )
 
 // WorkloadConfig holds per-workload configuration.
@@ -237,6 +241,51 @@ func LoadConfig(cmd *cobra.Command) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// ParseParams parses a comma-separated string of "workload.key=value" pairs
+// into a per-workload param map.
+func ParseParams(raw string) (map[string]map[string]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+
+	result := make(map[string]map[string]string)
+	for _, pair := range strings.Split(raw, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+
+		dotIdx := strings.Index(pair, ".")
+		if dotIdx < 0 {
+			return nil, fmt.Errorf("%w: %q", ErrParamMissingWorkload, pair)
+		}
+
+		workload := pair[:dotIdx]
+		if workload == "" {
+			return nil, fmt.Errorf("%w in %q", ErrParamEmptyWorkload, pair)
+		}
+
+		rest := pair[dotIdx+1:]
+		eqIdx := strings.Index(rest, "=")
+		if eqIdx < 0 {
+			return nil, fmt.Errorf("%w: %q", ErrParamMissingEquals, pair)
+		}
+
+		key := rest[:eqIdx]
+		if key == "" {
+			return nil, fmt.Errorf("%w in %q", ErrParamEmptyKey, pair)
+		}
+
+		value := rest[eqIdx+1:]
+		if result[workload] == nil {
+			result[workload] = make(map[string]string)
+		}
+		result[workload][key] = value
+	}
+	return result, nil
 }
 
 // bindFlagIfSet sets a Viper key from a Cobra flag only when the flag was explicitly provided.

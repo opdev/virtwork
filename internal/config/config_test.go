@@ -610,6 +610,7 @@ var _ = Describe("Config Validation", func() {
 		})
 	})
 
+	//nolint:dupl
 	Context("timeout", func() {
 		It("should reject zero timeout when wait-for-ready is enabled", func() {
 			Expect(cmd.Flags().Set("timeout", "0")).To(Succeed())
@@ -638,6 +639,173 @@ var _ = Describe("Config Validation", func() {
 			cfg, err := config.LoadConfig(cmd)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(cfg.WaitForReady).To(BeFalse())
+		})
+	})
+})
+
+var _ = Describe("ParseParams", func() {
+	Context("happy paths", func() {
+		It("should parse a single workload.key=value pair", func() {
+			result, err := config.ParseParams("cpu.cpu-load-percent=50")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(HaveLen(1))
+			Expect(result["cpu"]).To(HaveKeyWithValue("cpu-load-percent", "50"))
+		})
+
+		It("should parse multiple pairs for the same workload", func() {
+			result, err := config.ParseParams("cpu.cpu-load-percent=50,cpu.cpu-method=matrixprod")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(HaveLen(1))
+			Expect(result["cpu"]).To(HaveKeyWithValue("cpu-load-percent", "50"))
+			Expect(result["cpu"]).To(HaveKeyWithValue("cpu-method", "matrixprod"))
+		})
+
+		It("should parse pairs across different workloads", func() {
+			result, err := config.ParseParams("cpu.cpu-load-percent=50,memory.vm-bytes=1G")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(HaveLen(2))
+			Expect(result["cpu"]).To(HaveKeyWithValue("cpu-load-percent", "50"))
+			Expect(result["memory"]).To(HaveKeyWithValue("vm-bytes", "1G"))
+		})
+
+		It("should return empty map for empty string", func() {
+			result, err := config.ParseParams("")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(BeEmpty())
+		})
+
+		It("should handle values containing equals signs", func() {
+			result, err := config.ParseParams("tps.extra-args=--flag=true")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result["tps"]).To(HaveKeyWithValue("extra-args", "--flag=true"))
+		})
+
+		It("should trim whitespace around pairs", func() {
+			result, err := config.ParseParams(" cpu.cpu-load-percent=50 , cpu.cpu-method=matrixprod ")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result["cpu"]).To(HaveKeyWithValue("cpu-load-percent", "50"))
+			Expect(result["cpu"]).To(HaveKeyWithValue("cpu-method", "matrixprod"))
+		})
+	})
+
+	Context("error cases", func() {
+		It("should reject a pair with no dot separator", func() {
+			_, err := config.ParseParams("key=value")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("missing workload prefix"))
+		})
+
+		It("should reject a pair with empty workload name", func() {
+			_, err := config.ParseParams(".key=value")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("empty workload name"))
+		})
+
+		It("should reject a pair with no equals sign", func() {
+			_, err := config.ParseParams("cpu.key")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("missing '='"))
+		})
+
+		It("should reject a pair with empty key", func() {
+			_, err := config.ParseParams("cpu.=value")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("empty param key"))
+		})
+	})
+})
+
+var _ = Describe("--params flag integration", func() {
+	var cmd *cobra.Command
+
+	BeforeEach(func() {
+		for _, env := range os.Environ() {
+			if strings.HasPrefix(env, "VIRTWORK_") {
+				_ = os.Unsetenv(strings.Split(env, "=")[0])
+			}
+		}
+		cmd = newTestCommand()
+	})
+
+	It("should parse --params flag into workload configs", func() {
+		Expect(cmd.Flags().Set("params", "cpu.cpu-load-percent=50,cpu.cpu-method=matrixprod")).To(Succeed())
+
+		cfg, err := config.LoadConfig(cmd)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cfg.Workloads).To(HaveKey("cpu"))
+		Expect(cfg.Workloads["cpu"].Params).To(HaveKeyWithValue("cpu-load-percent", "50"))
+		Expect(cfg.Workloads["cpu"].Params).To(HaveKeyWithValue("cpu-method", "matrixprod"))
+	})
+
+	It("should parse VIRTWORK_PARAMS env var", func() {
+		_ = os.Setenv("VIRTWORK_PARAMS", "memory.vm-bytes=2G")
+		defer func() {
+			_ = os.Unsetenv("VIRTWORK_PARAMS")
+		}()
+
+		cfg, err := config.LoadConfig(cmd)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cfg.Workloads).To(HaveKey("memory"))
+		Expect(cfg.Workloads["memory"].Params).To(HaveKeyWithValue("vm-bytes", "2G"))
+	})
+
+	It("should prefer --params flag over VIRTWORK_PARAMS env var", func() {
+		_ = os.Setenv("VIRTWORK_PARAMS", "cpu.cpu-load-percent=25")
+		defer func() {
+			_ = os.Unsetenv("VIRTWORK_PARAMS")
+		}()
+
+		Expect(cmd.Flags().Set("params", "cpu.cpu-load-percent=75")).To(Succeed())
+
+		cfg, err := config.LoadConfig(cmd)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cfg.Workloads["cpu"].Params).To(HaveKeyWithValue("cpu-load-percent", "75"))
+	})
+
+	Context("CLI params merge with YAML params", func() {
+		var tmpDir string
+
+		BeforeEach(func() {
+			var err error
+			tmpDir, err = os.MkdirTemp("", "virtwork-config-test-*")
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		AfterEach(func() {
+			_ = os.RemoveAll(tmpDir)
+		})
+
+		It("should override matching YAML keys and preserve others", func() {
+			path := writeConfigFile(tmpDir, `
+workloads:
+  cpu:
+    enabled: true
+    params:
+      cpu-load-percent: "80"
+      cpu-method: all
+`)
+			Expect(cmd.Flags().Set("config", path)).To(Succeed())
+			Expect(cmd.Flags().Set("params", "cpu.cpu-load-percent=50")).To(Succeed())
+
+			cfg, err := config.LoadConfig(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.Workloads["cpu"].Params).To(HaveKeyWithValue("cpu-load-percent", "50"))
+			Expect(cfg.Workloads["cpu"].Params).To(HaveKeyWithValue("cpu-method", "all"))
+		})
+
+		It("should add CLI params for workloads not in YAML", func() {
+			path := writeConfigFile(tmpDir, `
+workloads:
+  cpu:
+    enabled: true
+`)
+			Expect(cmd.Flags().Set("config", path)).To(Succeed())
+			Expect(cmd.Flags().Set("params", "memory.vm-bytes=1G")).To(Succeed())
+
+			cfg, err := config.LoadConfig(cmd)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.Workloads["memory"].Params).To(HaveKeyWithValue("vm-bytes", "1G"))
+			Expect(cfg.Workloads).To(HaveKey("cpu"))
 		})
 	})
 })
