@@ -4,6 +4,9 @@
 package workloads
 
 import (
+	"sort"
+	"strings"
+
 	"github.com/opdev/virtwork/internal/config"
 )
 
@@ -43,5 +46,35 @@ func (w *GenericWorkload) Name() string {
 
 // CloudInitUserdata returns cloud-init YAML with the entry's service files installed.
 func (w *GenericWorkload) CloudInitUserdata() (string, error) {
-	return "", nil // stub — implemented in Phase 2
+	names := make([]string, 0, len(w.serviceFiles))
+	for name := range w.serviceFiles {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	writeFiles := make([]WriteFile, 0, len(names))
+	runcmd := [][]string{{"systemctl", "daemon-reload"}}
+
+	for _, name := range names {
+		content := w.substituteParams(w.serviceFiles[name])
+		writeFiles = append(writeFiles, WriteFile{
+			Path:        "/etc/systemd/system/" + name,
+			Content:     content,
+			Permissions: "0644",
+		})
+		runcmd = append(runcmd, []string{"systemctl", "enable", "--now", name})
+	}
+
+	return w.BuildCloudConfig(CloudConfigOpts{
+		Packages:   w.packages,
+		WriteFiles: writeFiles,
+		RunCmd:     runcmd,
+	})
+}
+
+func (w *GenericWorkload) substituteParams(content string) string {
+	for _, p := range w.ParamSchema {
+		content = strings.ReplaceAll(content, "{{"+p.Key+"}}", w.GetParam(p.Key))
+	}
+	return content
 }
