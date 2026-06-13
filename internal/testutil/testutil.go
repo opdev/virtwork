@@ -119,12 +119,12 @@ func CleanupNamespace(ctx context.Context, c client.Client, namespace string) {
 // vm.CreateVM(). Modify the returned options as needed for specific tests.
 func DefaultVMOpts(name, namespace string) vm.VMSpecOpts {
 	return vm.VMSpecOpts{
-		Name:               name,
-		Namespace:          namespace,
-		ContainerDiskImage: constants.DefaultContainerDiskImage,
-		CloudInitUserdata:  "#cloud-config\n",
-		CPUCores:           1,
-		Memory:             "512Mi",
+		Name:                name,
+		Namespace:           namespace,
+		ContainerDiskImage:  constants.DefaultContainerDiskImage,
+		CloudInitSecretName: "test-cloudinit",
+		CPUCores:            1,
+		Memory:              "512Mi",
 		Labels: map[string]string{
 			constants.LabelManagedBy: constants.ManagedByValue,
 			constants.LabelAppName:   "virtwork",

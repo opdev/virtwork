@@ -114,9 +114,9 @@ var _ = Describe("DefaultVMOpts", func() {
 			Expect(opts.Labels).To(HaveKeyWithValue(constants.LabelComponent, "test"))
 		})
 
-		It("should have a simple cloud-init userdata", func() {
+		It("should have a cloud-init secret name", func() {
 			opts := testutil.DefaultVMOpts(vmName, vmNamespace)
-			Expect(opts.CloudInitUserdata).To(Equal("#cloud-config\n"))
+			Expect(opts.CloudInitSecretName).To(Equal("test-cloudinit"))
 		})
 	})
 })

@@ -49,13 +49,13 @@ var _ = Describe("PreviewCleanup", func() {
 			maps.Copy(l, el)
 		}
 		v, err := vm.BuildVMSpec(vm.VMSpecOpts{
-			Name:               name,
-			Namespace:          namespace,
-			ContainerDiskImage: "test-image",
-			CloudInitUserdata:  "#cloud-config\n",
-			CPUCores:           1,
-			Memory:             "1Gi",
-			Labels:             l,
+			Name:                name,
+			Namespace:           namespace,
+			ContainerDiskImage:  "test-image",
+			CloudInitSecretName: "test-cloudinit",
+			CPUCores:            1,
+			Memory:              "1Gi",
+			Labels:              l,
 		})
 		Expect(err).NotTo(HaveOccurred())
 		return v
@@ -168,12 +168,12 @@ var _ = Describe("PreviewCleanup", func() {
 	It("should not count unmanaged resources", func() {
 		managedVM := newManagedVM("managed-vm")
 		unmanagedVM, err := vm.BuildVMSpec(vm.VMSpecOpts{
-			Name:               "unmanaged-vm",
-			Namespace:          namespace,
-			ContainerDiskImage: "test-image",
-			CloudInitUserdata:  "#cloud-config\n",
-			CPUCores:           1,
-			Memory:             "1Gi",
+			Name:                "unmanaged-vm",
+			Namespace:           namespace,
+			ContainerDiskImage:  "test-image",
+			CloudInitSecretName: "test-cloudinit",
+			CPUCores:            1,
+			Memory:              "1Gi",
 			Labels: map[string]string{
 				constants.LabelManagedBy: "other-tool",
 			},
@@ -329,13 +329,13 @@ var _ = Describe("CleanupAll", func() {
 
 	newManagedVM := func(name string) *kubevirtv1.VirtualMachine {
 		v, err := vm.BuildVMSpec(vm.VMSpecOpts{
-			Name:               name,
-			Namespace:          namespace,
-			ContainerDiskImage: "test-image",
-			CloudInitUserdata:  "#cloud-config\n",
-			CPUCores:           1,
-			Memory:             "1Gi",
-			Labels:             labels,
+			Name:                name,
+			Namespace:           namespace,
+			ContainerDiskImage:  "test-image",
+			CloudInitSecretName: "test-cloudinit",
+			CPUCores:            1,
+			Memory:              "1Gi",
+			Labels:              labels,
 		})
 		Expect(err).NotTo(HaveOccurred())
 		return v
@@ -745,12 +745,12 @@ var _ = Describe("CleanupAll", func() {
 		// Create a managed VM and an unmanaged VM
 		managedVM := newManagedVM("managed-vm")
 		unmanagedVM, err := vm.BuildVMSpec(vm.VMSpecOpts{
-			Name:               "unmanaged-vm",
-			Namespace:          namespace,
-			ContainerDiskImage: "test-image",
-			CloudInitUserdata:  "#cloud-config\n",
-			CPUCores:           1,
-			Memory:             "1Gi",
+			Name:                "unmanaged-vm",
+			Namespace:           namespace,
+			ContainerDiskImage:  "test-image",
+			CloudInitSecretName: "test-cloudinit",
+			CPUCores:            1,
+			Memory:              "1Gi",
 			Labels: map[string]string{
 				constants.LabelManagedBy: "other-tool",
 			},
