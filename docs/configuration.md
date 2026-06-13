@@ -55,6 +55,7 @@ These apply to both `virtwork run` and `virtwork cleanup`.
 | `--ssh-key` | — | `ssh_authorized_keys` (YAML list) | _empty_ | Inline SSH public key; repeatable |
 | `--ssh-key-file` | — | _(handled as inline key after reading)_ | _empty_ | Path to a public key file; repeatable |
 | `--vm-concurrency` | `VIRTWORK_VM_CONCURRENCY` | `vm-concurrency` | `10` | Max concurrent VM creation operations |
+| `--params` | `VIRTWORK_PARAMS` | — | _empty_ | Comma-separated per-workload params (`workload.key=value`); merged on top of YAML `params` blocks |
 | _(env only)_ | `VIRTWORK_SSH_AUTHORIZED_KEYS` | `ssh_authorized_keys` | _empty_ | Comma-separated list of inline keys (env-var form) |
 
 > **Note:** `--ssh-key-file` is a CLI-only convenience that reads a public-key file from disk at runtime and merges its content into the `ssh_authorized_keys` list. There is no YAML or environment-variable equivalent — to configure SSH keys via YAML or `VIRTWORK_SSH_AUTHORIZED_KEYS`, supply the fully-realized public-key strings directly.
@@ -92,6 +93,7 @@ Global flags (`--namespace`, `--kubeconfig`, `--audit`, `--no-audit`, `--audit-d
 | `VIRTWORK_SSH_USER` | string | `virtwork` | flag-bound | SSH username |
 | `VIRTWORK_TIMEOUT` | int | `600` | flag-bound | Readiness timeout seconds |
 | `VIRTWORK_VERBOSE` | bool | `false` | flag-bound | Verbose logging |
+| `VIRTWORK_PARAMS` | string | _empty_ | env-only | Comma-separated per-workload params (`workload.key=value`); merged on top of YAML `params` |
 | `VIRTWORK_VM_CONCURRENCY` | int | `10` | flag-bound | Max concurrent VM creation operations |
 | `VIRTWORK_WAIT_FOR_READY` | bool | `true` | flag-bound | Inverse of `--no-wait` |
 | `VIRTWORK_COMMAND` | string | _empty_ | deployment only | In-pod auto-run command: `run`, `cleanup`, or empty (sleep). Read by `entrypoint.sh`, not Viper. |
@@ -316,7 +318,7 @@ How it works in code (`internal/config/config.go` → `LoadConfig`):
 4. `bindFlagIfSet(...)` walks each known flag and copies the value into Viper *only if* the flag was explicitly set on the command line. This makes CLI flags the top of the stack without clobbering env/YAML values from defaults.
 5. The `Config` struct is populated from Viper's effective view.
 
-Workload-specific config (`workloads.<name>.*`) is parsed as a separate map in step 5 via `v.UnmarshalKey("workloads", ...)` — it only exists in YAML; there is no env-var or flag form.
+Workload-specific config (`workloads.<name>.*`) is parsed as a separate map in step 5 via `v.UnmarshalKey("workloads", ...)`. Per-workload `params` can also be set via the `--params` flag or `VIRTWORK_PARAMS` env var using `workload.key=value` syntax — these are merged on top of YAML params after step 5, so `--params` wins over YAML `params` blocks.
 
 The `--no-audit` flag is checked separately by `initAuditor` in `cmd/virtwork/main.go` and short-circuits the standard chain.
 
@@ -326,8 +328,8 @@ The `--no-audit` flag is checked separately by `initAuditor` in `cmd/virtwork/ma
 
 - All config field definitions live in `internal/config/config.go` — `WorkloadConfig` struct, `Config` struct, `SetDefaults`, `BindFlags`, `LoadConfig`.
 - The mapstructure tag on each field is the YAML key name (e.g., `mapstructure:"data-disk-size"` → YAML key `data_disk_size` after the `_`/`-` replacement). Match this convention when adding new fields.
-- Per-workload `params` are surfaced into the workload as `WorkloadConfig.Params map[string]string`. All workloads use this mechanism for tunable knobs so they're uniformly addressable from YAML.
-- When adding a new env var, prefer letting Viper bind it automatically rather than hand-rolling `os.Getenv` (see `VIRTWORK_SSH_AUTHORIZED_KEYS` in `resolveSSHKeys` for the one current exception, driven by the comma-split list semantics).
+- Per-workload `params` are surfaced into the workload as `WorkloadConfig.Params map[string]string`. Each workload declares a typed `ParamSchema` (a slice of `ParamDef` entries with key, type, default, and description). The orchestrator calls `registry.ValidateParams()` before constructing workloads, rejecting unknown keys (with "did you mean?" suggestions) and type-mismatched values at deploy time.
+- When adding a new env var, prefer letting Viper bind it automatically rather than hand-rolling `os.Getenv` (see `VIRTWORK_SSH_AUTHORIZED_KEYS` in `resolveSSHKeys` and `VIRTWORK_PARAMS` in `resolveRawParams` for the current exceptions, driven by their non-standard value semantics).
 - Update this document, the ConfigMap default list, and the per-workload `params` table whenever you add a new knob.
 
 ## Related Docs

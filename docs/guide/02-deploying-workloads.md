@@ -505,6 +505,12 @@ workloads:
       duration: "30"
 ```
 
+Or equivalently via the `--params` CLI flag (no config file needed):
+
+```bash
+virtwork run --workloads tps --params tps.file-size=50M,tps.iterations=10,tps.duration=30
+```
+
 ---
 
 ## Troubleshooting
