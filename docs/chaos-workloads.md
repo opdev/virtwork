@@ -271,7 +271,7 @@ Source files:
 
 All three embed `BaseWorkload` and use the standard `BuildCloudConfig(opts)` helper for SSH credential injection. chaos-disk additionally uses the shared `diskSetupScript(serial, mountPoint)` helper from `internal/workloads/workload.go` for the standard wait/format/mount/fstab pattern.
 
-The configuration knobs listed above are sourced from `WorkloadConfig.Params` — the same plumbing the tps workload uses for `file-size`, `iterations`, `duration`. See [development.md](development.md) for the multi-VM / storage-backed / configurable-params patterns.
+All three chaos workloads declare a typed `ParamSchema` and use `GetParam()` for schema-driven param lookup — the same pattern all other workloads use. The orchestrator validates params against the schema at deploy time, rejecting unknown keys and type mismatches. See [development.md](development.md) for the configurable-params pattern.
 
 ## Related Docs
 

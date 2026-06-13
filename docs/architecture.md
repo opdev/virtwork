@@ -522,7 +522,8 @@ virtwork/
 │   │   └── records.go             # WorkloadRecord, VMRecord, ResourceRecord, EventRecord
 │   ├── workloads/
 │   │   ├── workload.go            # Workload + MultiVMWorkload interfaces, BaseWorkload, diskSetupScript
-│   │   ├── registry.go            # Registry map + DefaultRegistry (nine entries)
+│   │   ├── registry.go            # Registry map + RegistryEntry (factory + ParamSchema) + ValidateParams
+│   │   ├── params.go             # ParamDef, ParamSchema, ParamType constants, GetParam
 │   │   ├── cpu.go                 # stress-ng CPU continuous workload
 │   │   ├── memory.go              # stress-ng VM memory pressure workload
 │   │   ├── disk.go                # fio mixed I/O profiles

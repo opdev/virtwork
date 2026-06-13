@@ -150,6 +150,7 @@ Flags:
       --ssh-key strings            SSH authorized key (repeatable)
       --ssh-key-file strings       SSH key file path (repeatable)
       --vm-concurrency int         Max concurrent VM creation operations
+      --params string              Per-workload params (comma-separated workload.key=value pairs)
 
 Global Flags:
       --namespace string           Kubernetes namespace for VMs
@@ -192,6 +193,7 @@ The tables below cover the common surface. For a complete reference of every fla
 | `VIRTWORK_SSH_USER` | SSH user for VMs |
 | `VIRTWORK_SSH_PASSWORD` | SSH password for VMs |
 | `VIRTWORK_SSH_AUTHORIZED_KEYS` | Comma-separated SSH public keys |
+| `VIRTWORK_PARAMS` | Per-workload params (comma-separated `workload.key=value`) |
 | `VIRTWORK_AUDIT` | Enable audit tracking (true/false) |
 | `VIRTWORK_AUDIT_DB` | Path to SQLite audit database |
 
@@ -346,7 +348,7 @@ virtwork/
 │   ├── cleanup/                   # Label-based teardown (VMs, Services, Secrets)
 │   ├── orchestrator/              # Run + cleanup orchestration logic
 │   ├── audit/                     # SQLite audit tracking (Auditor interface, schema, records)
-│   ├── workloads/                 # Workload + MultiVMWorkload interfaces, 9 implementations, registry
+│   ├── workloads/                 # Workload + MultiVMWorkload interfaces, 9 implementations, registry, param schemas
 │   └── testutil/                  # Shared test helpers for integration + E2E
 ├── tests/
 │   └── e2e/                       # E2E acceptance tests (//go:build e2e)
