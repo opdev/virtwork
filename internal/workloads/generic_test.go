@@ -59,7 +59,7 @@ WantedBy=multi-user.target
 					CPUCores: 2,
 					Memory:   "2Gi",
 				},
-				entry, "virtwork", "", nil,
+				entry, "test-ns", "virtwork", "", nil,
 			)
 		})
 
@@ -144,7 +144,7 @@ packages:
 			Expect(err).NotTo(HaveOccurred())
 			w = workloads.NewGenericWorkload(
 				config.WorkloadConfig{CPUCores: 2, Memory: "2Gi"},
-				entry, "", "", nil,
+				entry, "test-ns", "", "", nil,
 			)
 		})
 
@@ -184,7 +184,7 @@ packages:
 			Expect(err).NotTo(HaveOccurred())
 			w = workloads.NewGenericWorkload(
 				config.WorkloadConfig{CPUCores: 2, Memory: "2Gi"},
-				entry, "", "", nil,
+				entry, "test-ns", "", "", nil,
 			)
 			result, err := w.CloudInitUserdata()
 			Expect(err).NotTo(HaveOccurred())
@@ -204,7 +204,7 @@ packages:
 						"method":   "matrixprod",
 					},
 				},
-				entry, "", "", nil,
+				entry, "test-ns", "", "", nil,
 			)
 			result, err := w.CloudInitUserdata()
 			Expect(err).NotTo(HaveOccurred())
@@ -221,7 +221,7 @@ packages:
 					Memory:   "2Gi",
 					Params:   map[string]string{"cpu-load": "90"},
 				},
-				entry, "", "", nil,
+				entry, "test-ns", "", "", nil,
 			)
 			result, err := w.CloudInitUserdata()
 			Expect(err).NotTo(HaveOccurred())
@@ -239,7 +239,7 @@ packages:
 			Expect(err).NotTo(HaveOccurred())
 			w = workloads.NewGenericWorkload(
 				config.WorkloadConfig{CPUCores: 2, Memory: "2Gi"},
-				entry, "", "", nil,
+				entry, "test-ns", "", "", nil,
 			)
 		})
 

@@ -8,7 +8,13 @@ import (
 	"fmt"
 	"strings"
 
+	kubevirtv1 "kubevirt.io/api/core/v1"
+
 	"github.com/opdev/virtwork/internal/config"
+	"github.com/opdev/virtwork/internal/constants"
+	"github.com/opdev/virtwork/internal/vm"
+
+	corev1 "k8s.io/api/core/v1"
 )
 
 var ErrUnknownCatalogRole = errors.New("unknown catalog role")
@@ -21,6 +27,8 @@ type GenericMultiWorkload struct {
 	roles        []RoleDefinition
 	serviceFiles map[string]string
 	packages     []string
+	storageSpecs []StorageDefinition
+	serviceDef   *ServiceDefinition
 }
 
 // NewGenericMultiWorkload creates a GenericMultiWorkload from a loaded catalog entry.
@@ -43,6 +51,8 @@ func NewGenericMultiWorkload(
 		roles:        entry.Manifest.Roles,
 		serviceFiles: entry.ServiceFiles,
 		packages:     entry.Manifest.Packages,
+		storageSpecs: entry.Manifest.Storage,
+		serviceDef:   entry.Manifest.Service,
 	}
 }
 
@@ -91,20 +101,101 @@ func (w *GenericMultiWorkload) UserdataForRole(role string, _ string) (string, e
 	content := w.substituteParams(svcContent)
 	svcFilename := role + ".service"
 
-	return w.BuildCloudConfig(CloudConfigOpts{
-		Packages: w.packages,
-		WriteFiles: []WriteFile{
-			{
-				Path:        "/etc/systemd/system/" + svcFilename,
-				Content:     content,
-				Permissions: "0644",
-			},
-		},
-		RunCmd: [][]string{
-			{"systemctl", "daemon-reload"},
-			{"systemctl", "enable", "--now", svcFilename},
-		},
+	writeFiles := make([]WriteFile, 0, len(w.storageSpecs)+1)
+	runcmd := make([][]string, 0, len(w.storageSpecs)+2)
+
+	for _, spec := range w.storageSpecs {
+		writeFiles = append(writeFiles, WriteFile{
+			Path:        fmt.Sprintf("/usr/local/bin/virtwork-disk-setup-%s.sh", spec.Name),
+			Content:     diskSetupScript(spec.Serial, spec.Mount),
+			Permissions: "0755",
+		})
+		runcmd = append(runcmd, []string{
+			fmt.Sprintf("/usr/local/bin/virtwork-disk-setup-%s.sh", spec.Name),
+		})
+	}
+
+	writeFiles = append(writeFiles, WriteFile{
+		Path:        "/etc/systemd/system/" + svcFilename,
+		Content:     content,
+		Permissions: "0644",
 	})
+
+	runcmd = append(runcmd,
+		[]string{"systemctl", "daemon-reload"},
+		[]string{"systemctl", "enable", "--now", svcFilename},
+	)
+
+	return w.BuildCloudConfig(CloudConfigOpts{
+		Packages:   w.packages,
+		WriteFiles: writeFiles,
+		RunCmd:     runcmd,
+	})
+}
+
+// DataVolumeTemplates returns CDI DataVolumeTemplateSpecs for declared storage.
+func (w *GenericMultiWorkload) DataVolumeTemplates() ([]kubevirtv1.DataVolumeTemplateSpec, error) {
+	if len(w.storageSpecs) == 0 {
+		return nil, nil
+	}
+	dvts := make([]kubevirtv1.DataVolumeTemplateSpec, len(w.storageSpecs))
+	for i, spec := range w.storageSpecs {
+		dvt, err := vm.BuildDataVolumeTemplate(spec.Name, spec.Size)
+		if err != nil {
+			return nil, fmt.Errorf("building data volume for storage %q: %w", spec.Name, err)
+		}
+		dvts[i] = dvt
+	}
+	return dvts, nil
+}
+
+// ExtraDisks returns disk definitions for all declared storage.
+func (w *GenericMultiWorkload) ExtraDisks() []kubevirtv1.Disk {
+	if len(w.storageSpecs) == 0 {
+		return nil
+	}
+	disks := make([]kubevirtv1.Disk, len(w.storageSpecs))
+	for i, spec := range w.storageSpecs {
+		disks[i] = kubevirtv1.Disk{
+			Name:   spec.Name,
+			Serial: spec.Serial,
+			DiskDevice: kubevirtv1.DiskDevice{
+				Disk: &kubevirtv1.DiskTarget{
+					Bus: constants.DiskBusVirtio,
+				},
+			},
+		}
+	}
+	return disks
+}
+
+// ExtraVolumes returns volume definitions for all declared storage.
+func (w *GenericMultiWorkload) ExtraVolumes() []kubevirtv1.Volume {
+	if len(w.storageSpecs) == 0 {
+		return nil
+	}
+	volumes := make([]kubevirtv1.Volume, len(w.storageSpecs))
+	for i, spec := range w.storageSpecs {
+		volumes[i] = kubevirtv1.Volume{
+			Name: spec.Name,
+			VolumeSource: kubevirtv1.VolumeSource{
+				DataVolume: &kubevirtv1.DataVolumeSource{
+					Name: spec.Name,
+				},
+			},
+		}
+	}
+	return volumes
+}
+
+// RequiresService returns true if a service is declared in the manifest.
+func (w *GenericMultiWorkload) RequiresService() bool {
+	return w.serviceDef != nil
+}
+
+// ServiceSpec returns the K8s Service, or nil if not declared.
+func (w *GenericMultiWorkload) ServiceSpec() *corev1.Service {
+	return buildCatalogServiceSpec(w.Name(), w.namespace, w.serviceDef)
 }
 
 func (w *GenericMultiWorkload) substituteParams(content string) string {

@@ -277,6 +277,280 @@ roles:
 			})
 		})
 
+		Context("single-role entry with storage", func() {
+			BeforeEach(func() {
+				entryDir := filepath.Join(catalogDir, "with-storage")
+				writeFile(entryDir, "workload.yaml", `description: "Storage workload"
+storage:
+  - name: data
+    size: 10Gi
+    serial: vw-data
+    mount: /mnt/data
+  - name: logs
+    size: 5Gi
+    serial: vw-logs
+    mount: /var/log/app
+`)
+				writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/app\n")
+			})
+
+			It("should parse storage definitions", func() {
+				entry, err := workloads.LoadCatalogEntry(catalogDir, "with-storage")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(entry.Manifest.Storage).To(HaveLen(2))
+
+				Expect(entry.Manifest.Storage[0].Name).To(Equal("data"))
+				Expect(entry.Manifest.Storage[0].Size).To(Equal("10Gi"))
+				Expect(entry.Manifest.Storage[0].Serial).To(Equal("vw-data"))
+				Expect(entry.Manifest.Storage[0].Mount).To(Equal("/mnt/data"))
+
+				Expect(entry.Manifest.Storage[1].Name).To(Equal("logs"))
+				Expect(entry.Manifest.Storage[1].Size).To(Equal("5Gi"))
+				Expect(entry.Manifest.Storage[1].Serial).To(Equal("vw-logs"))
+				Expect(entry.Manifest.Storage[1].Mount).To(Equal("/var/log/app"))
+			})
+		})
+
+		Context("single-role entry with service", func() {
+			BeforeEach(func() {
+				entryDir := filepath.Join(catalogDir, "with-service")
+				writeFile(entryDir, "workload.yaml", `description: "Service workload"
+service:
+  ports:
+    - name: http
+      port: 8080
+      protocol: TCP
+    - name: metrics
+      port: 9090
+      protocol: TCP
+`)
+				writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/app\n")
+			})
+
+			It("should parse service definition", func() {
+				entry, err := workloads.LoadCatalogEntry(catalogDir, "with-service")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(entry.Manifest.Service).NotTo(BeNil())
+				Expect(entry.Manifest.Service.Ports).To(HaveLen(2))
+				Expect(entry.Manifest.Service.Ports[0].Name).To(Equal("http"))
+				Expect(entry.Manifest.Service.Ports[0].Port).To(Equal(int32(8080)))
+				Expect(entry.Manifest.Service.Ports[0].Protocol).To(Equal("TCP"))
+				Expect(entry.Manifest.Service.Ports[1].Name).To(Equal("metrics"))
+				Expect(entry.Manifest.Service.Ports[1].Port).To(Equal(int32(9090)))
+			})
+		})
+
+		Context("multi-role entry with service and selector-role", func() {
+			BeforeEach(func() {
+				entryDir := filepath.Join(catalogDir, "svc-role")
+				writeFile(entryDir, "workload.yaml", `description: "Service with role selector"
+roles:
+  - name: server
+    vm-count: 1
+  - name: client
+    vm-count: 2
+service:
+  selector-role: server
+  ports:
+    - name: iperf
+      port: 5201
+      protocol: TCP
+`)
+				writeFile(entryDir, "server.service", "[Service]\nExecStart=/bin/s\n")
+				writeFile(entryDir, "client.service", "[Service]\nExecStart=/bin/c\n")
+			})
+
+			It("should parse service with selector-role", func() {
+				entry, err := workloads.LoadCatalogEntry(catalogDir, "svc-role")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(entry.Manifest.Service).NotTo(BeNil())
+				Expect(entry.Manifest.Service.SelectorRole).To(Equal("server"))
+				Expect(entry.Manifest.Service.Ports).To(HaveLen(1))
+			})
+		})
+
+		Context("entry with storage and service combined", func() {
+			BeforeEach(func() {
+				entryDir := filepath.Join(catalogDir, "full-featured")
+				writeFile(entryDir, "workload.yaml", `description: "Full featured"
+packages:
+  - postgresql
+storage:
+  - name: pgdata
+    size: 20Gi
+    serial: vw-pgdata
+    mount: /var/lib/pgsql
+service:
+  ports:
+    - name: postgres
+      port: 5432
+      protocol: TCP
+`)
+				writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/pg\n")
+			})
+
+			It("should parse both storage and service", func() {
+				entry, err := workloads.LoadCatalogEntry(catalogDir, "full-featured")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(entry.Manifest.Storage).To(HaveLen(1))
+				Expect(entry.Manifest.Service).NotTo(BeNil())
+				Expect(entry.Manifest.Packages).To(ConsistOf("postgresql"))
+			})
+		})
+
+		Context("backward compatibility without storage or service", func() {
+			BeforeEach(func() {
+				entryDir := filepath.Join(catalogDir, "legacy")
+				writeFile(entryDir, "workload.yaml", `description: "Legacy workload"
+packages:
+  - stress-ng
+`)
+				writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/stress\n")
+			})
+
+			It("should have nil storage and service", func() {
+				entry, err := workloads.LoadCatalogEntry(catalogDir, "legacy")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(entry.Manifest.Storage).To(BeEmpty())
+				Expect(entry.Manifest.Service).To(BeNil())
+			})
+		})
+
+		Context("storage validation errors", func() {
+			It("should reject empty storage name", func() {
+				entryDir := filepath.Join(catalogDir, "bad-name")
+				writeFile(entryDir, "workload.yaml", `storage:
+  - name: ""
+    size: 10Gi
+    serial: vw-data
+    mount: /mnt/data
+`)
+				writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/app\n")
+				_, err := workloads.LoadCatalogEntry(catalogDir, "bad-name")
+				Expect(err).To(MatchError(ContainSubstring(workloads.ErrStorageNameEmpty.Error())))
+			})
+
+			It("should reject reserved disk name", func() {
+				entryDir := filepath.Join(catalogDir, "reserved-name")
+				writeFile(entryDir, "workload.yaml", `storage:
+  - name: datadisk
+    size: 10Gi
+    serial: vw-data
+    mount: /mnt/data
+`)
+				writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/app\n")
+				_, err := workloads.LoadCatalogEntry(catalogDir, "reserved-name")
+				Expect(err).To(MatchError(ContainSubstring(workloads.ErrStorageNameReserved.Error())))
+			})
+
+			It("should reject duplicate storage names", func() {
+				entryDir := filepath.Join(catalogDir, "dup-name")
+				writeFile(entryDir, "workload.yaml", `storage:
+  - name: data
+    size: 10Gi
+    serial: vw-d1
+    mount: /mnt/d1
+  - name: data
+    size: 5Gi
+    serial: vw-d2
+    mount: /mnt/d2
+`)
+				writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/app\n")
+				_, err := workloads.LoadCatalogEntry(catalogDir, "dup-name")
+				Expect(err).To(MatchError(ContainSubstring(workloads.ErrStorageNameDuplicate.Error())))
+			})
+
+			It("should reject invalid storage size", func() {
+				entryDir := filepath.Join(catalogDir, "bad-size")
+				writeFile(entryDir, "workload.yaml", `storage:
+  - name: data
+    size: not-a-quantity
+    serial: vw-data
+    mount: /mnt/data
+`)
+				writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/app\n")
+				_, err := workloads.LoadCatalogEntry(catalogDir, "bad-size")
+				Expect(err).To(MatchError(ContainSubstring(workloads.ErrStorageSizeInvalid.Error())))
+			})
+
+			It("should reject empty serial", func() {
+				entryDir := filepath.Join(catalogDir, "no-serial")
+				writeFile(entryDir, "workload.yaml", `storage:
+  - name: data
+    size: 10Gi
+    serial: ""
+    mount: /mnt/data
+`)
+				writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/app\n")
+				_, err := workloads.LoadCatalogEntry(catalogDir, "no-serial")
+				Expect(err).To(MatchError(ContainSubstring(workloads.ErrStorageSerialEmpty.Error())))
+			})
+
+			It("should reject serial longer than 20 characters", func() {
+				entryDir := filepath.Join(catalogDir, "long-serial")
+				writeFile(entryDir, "workload.yaml", `storage:
+  - name: data
+    size: 10Gi
+    serial: this-serial-is-way-too-long-for-virtio
+    mount: /mnt/data
+`)
+				writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/app\n")
+				_, err := workloads.LoadCatalogEntry(catalogDir, "long-serial")
+				Expect(err).To(MatchError(ContainSubstring(workloads.ErrStorageSerialTooLong.Error())))
+			})
+
+			It("should reject relative mount path", func() {
+				entryDir := filepath.Join(catalogDir, "rel-mount")
+				writeFile(entryDir, "workload.yaml", `storage:
+  - name: data
+    size: 10Gi
+    serial: vw-data
+    mount: data/dir
+`)
+				writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/app\n")
+				_, err := workloads.LoadCatalogEntry(catalogDir, "rel-mount")
+				Expect(err).To(MatchError(ContainSubstring(workloads.ErrStorageMountNotAbsolute.Error())))
+			})
+		})
+
+		Context("service validation errors", func() {
+			It("should reject empty ports list", func() {
+				entryDir := filepath.Join(catalogDir, "no-ports")
+				writeFile(entryDir, "workload.yaml", `service:
+  ports: []
+`)
+				writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/app\n")
+				_, err := workloads.LoadCatalogEntry(catalogDir, "no-ports")
+				Expect(err).To(MatchError(ContainSubstring(workloads.ErrServicePortsEmpty.Error())))
+			})
+
+			It("should reject port out of range", func() {
+				entryDir := filepath.Join(catalogDir, "bad-port")
+				writeFile(entryDir, "workload.yaml", `service:
+  ports:
+    - name: bad
+      port: 0
+      protocol: TCP
+`)
+				writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/app\n")
+				_, err := workloads.LoadCatalogEntry(catalogDir, "bad-port")
+				Expect(err).To(MatchError(ContainSubstring(workloads.ErrServicePortRange.Error())))
+			})
+
+			It("should reject invalid protocol", func() {
+				entryDir := filepath.Join(catalogDir, "bad-proto")
+				writeFile(entryDir, "workload.yaml", `service:
+  ports:
+    - name: app
+      port: 8080
+      protocol: SCTP
+`)
+				writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/app\n")
+				_, err := workloads.LoadCatalogEntry(catalogDir, "bad-proto")
+				Expect(err).To(MatchError(ContainSubstring(workloads.ErrServiceProtocol.Error())))
+			})
+		})
+
 		Context("error cases", func() {
 			It("should return ErrCatalogEntryNotFound for missing directory", func() {
 				_, err := workloads.LoadCatalogEntry(catalogDir, "nonexistent")
