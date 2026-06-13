@@ -26,6 +26,7 @@ type RegistryOpts struct {
 	SSHUser           string
 	SSHPassword       string
 	SSHAuthorizedKeys []string
+	CatalogDir        string
 }
 
 // Option is a functional option for workload construction.
@@ -43,6 +44,11 @@ func WithSSHCredentials(user, password string, keys []string) Option {
 		o.SSHPassword = password
 		o.SSHAuthorizedKeys = keys
 	}
+}
+
+// WithCatalogDir sets the catalog directory path for loading catalog workload entries.
+func WithCatalogDir(dir string) Option {
+	return func(o *RegistryOpts) { o.CatalogDir = dir }
 }
 
 // WithDataDiskSize sets the data disk size for workloads that use persistent storage.
