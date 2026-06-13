@@ -4,8 +4,14 @@
 package workloads
 
 import (
+	"errors"
+	"fmt"
+	"strings"
+
 	"github.com/opdev/virtwork/internal/config"
 )
+
+var ErrUnknownCatalogRole = errors.New("unknown catalog role")
 
 // GenericMultiWorkload implements MultiVMWorkload for multi-role catalog entries.
 type GenericMultiWorkload struct {
@@ -47,15 +53,63 @@ func (w *GenericMultiWorkload) Name() string {
 
 // CloudInitUserdata returns the first role's userdata as the default.
 func (w *GenericMultiWorkload) CloudInitUserdata() (string, error) {
-	return "", nil // stub — implemented in Phase 3
+	if len(w.roles) == 0 {
+		return w.BuildCloudConfig(CloudConfigOpts{})
+	}
+	return w.UserdataForRole(w.roles[0].Name, w.namespace)
 }
 
 // RoleDistribution returns per-role VM counts from the manifest.
 func (w *GenericMultiWorkload) RoleDistribution() []RoleSpec {
-	return nil // stub — implemented in Phase 3
+	specs := make([]RoleSpec, len(w.roles))
+	for i, rd := range w.roles {
+		count := rd.VMCount
+		if count < 1 {
+			count = max(1, w.Config.VMCount)
+		}
+		specs[i] = RoleSpec{Role: rd.Name, VMCount: count}
+	}
+	return specs
+}
+
+// VMCount returns the total VM count across all roles.
+func (w *GenericMultiWorkload) VMCount() int {
+	total := 0
+	for _, rs := range w.RoleDistribution() {
+		total += rs.VMCount
+	}
+	return total
 }
 
 // UserdataForRole returns cloud-init YAML for a specific role.
-func (w *GenericMultiWorkload) UserdataForRole(role string, namespace string) (string, error) {
-	return "", nil // stub — implemented in Phase 3
+func (w *GenericMultiWorkload) UserdataForRole(role string, _ string) (string, error) {
+	svcContent, ok := w.serviceFiles[role]
+	if !ok {
+		return "", fmt.Errorf("role %q: %w", role, ErrUnknownCatalogRole)
+	}
+
+	content := w.substituteParams(svcContent)
+	svcFilename := role + ".service"
+
+	return w.BuildCloudConfig(CloudConfigOpts{
+		Packages: w.packages,
+		WriteFiles: []WriteFile{
+			{
+				Path:        "/etc/systemd/system/" + svcFilename,
+				Content:     content,
+				Permissions: "0644",
+			},
+		},
+		RunCmd: [][]string{
+			{"systemctl", "daemon-reload"},
+			{"systemctl", "enable", "--now", svcFilename},
+		},
+	})
+}
+
+func (w *GenericMultiWorkload) substituteParams(content string) string {
+	for _, p := range w.ParamSchema {
+		content = strings.ReplaceAll(content, "{{"+p.Key+"}}", w.GetParam(p.Key))
+	}
+	return content
 }
