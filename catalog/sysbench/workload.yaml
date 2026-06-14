@@ -1,0 +1,22 @@
+description: "Continuous CPU benchmarking with sysbench — configurable threads, methods, and duration"
+
+packages:
+  - sysbench
+
+params:
+  - key: threads
+    type: int
+    default: "4"
+    desc: "Number of sysbench worker threads (--threads)"
+  - key: cpu-method
+    type: string
+    default: "sum"
+    desc: "CPU test method: sum, sqrt, or pi (--cpu-method)"
+  - key: test-duration
+    type: int
+    default: "60"
+    desc: "Duration per test iteration in seconds (--time)"
+  - key: loop-delay
+    type: int
+    default: "10"
+    desc: "Delay in seconds between test iterations"

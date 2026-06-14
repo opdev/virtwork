@@ -1,0 +1,14 @@
+[Unit]
+Description=Virtwork Redis server with persistent storage
+After=network-online.target local-fs.target
+Requires=local-fs.target
+
+[Service]
+Type=simple
+ExecStartPre=/bin/bash -c 'mkdir -p /var/lib/redis && chown redis:redis /var/lib/redis'
+ExecStart=/usr/bin/redis-server --bind 0.0.0.0 --port 6379 --dir /var/lib/redis --appendonly yes --appendfilename appendonly.aof --maxmemory {{maxmemory}} --maxmemory-policy allkeys-lru
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

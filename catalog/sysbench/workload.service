@@ -1,0 +1,12 @@
+[Unit]
+Description=Virtwork sysbench CPU benchmark
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/bin/bash -c 'while true; do sysbench cpu --threads={{threads}} --time={{test-duration}} --cpu-method={{cpu-method}} run; sleep {{loop-delay}}; done'
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
