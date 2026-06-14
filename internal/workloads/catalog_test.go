@@ -625,4 +625,118 @@ packages:
 			Expect(factory).NotTo(BeNil())
 		})
 	})
+
+	Describe("ValidatePlaceholders", func() {
+		writeFile := func(dir, name, content string) {
+			err := os.MkdirAll(dir, 0o750)
+			Expect(err).NotTo(HaveOccurred())
+			err = os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600)
+			Expect(err).NotTo(HaveOccurred())
+		}
+
+		It("should return no errors when all placeholders match declared params", func() {
+			entryDir := filepath.Join(catalogDir, "good")
+			writeFile(entryDir, "workload.yaml", `description: test
+params:
+  - key: threads
+    type: int
+    default: 4
+  - key: mode
+    type: string
+    default: cpu
+`)
+			writeFile(
+				entryDir,
+				"workload.service",
+				"[Service]\nExecStart=/bin/test --threads={{threads}} --mode={{mode}}\n",
+			)
+
+			entry, err := workloads.LoadCatalogEntry(catalogDir, "good")
+			Expect(err).NotTo(HaveOccurred())
+
+			errs, warnings := workloads.ValidatePlaceholders(entry)
+			Expect(errs).To(BeEmpty())
+			Expect(warnings).To(BeEmpty())
+		})
+
+		It("should return an error for a placeholder not matching any declared param", func() {
+			entryDir := filepath.Join(catalogDir, "typo")
+			writeFile(entryDir, "workload.yaml", `description: test
+params:
+  - key: threads
+    type: int
+    default: 4
+`)
+			writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/test --threads={{trhreads}}\n")
+
+			entry, err := workloads.LoadCatalogEntry(catalogDir, "typo")
+			Expect(err).NotTo(HaveOccurred())
+
+			errs, warnings := workloads.ValidatePlaceholders(entry)
+			Expect(errs).To(HaveLen(1))
+			Expect(errs[0]).To(ContainSubstring("trhreads"))
+			Expect(warnings).To(HaveLen(1))
+			Expect(warnings[0]).To(ContainSubstring("threads"))
+		})
+
+		It("should return a warning for a declared param not used in any service file", func() {
+			entryDir := filepath.Join(catalogDir, "unused")
+			writeFile(entryDir, "workload.yaml", `description: test
+params:
+  - key: threads
+    type: int
+    default: 4
+  - key: mode
+    type: string
+    default: cpu
+`)
+			writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/test --threads={{threads}}\n")
+
+			entry, err := workloads.LoadCatalogEntry(catalogDir, "unused")
+			Expect(err).NotTo(HaveOccurred())
+
+			errs, warnings := workloads.ValidatePlaceholders(entry)
+			Expect(errs).To(BeEmpty())
+			Expect(warnings).To(HaveLen(1))
+			Expect(warnings[0]).To(ContainSubstring("mode"))
+		})
+
+		It("should report multiple errors and warnings together", func() {
+			entryDir := filepath.Join(catalogDir, "mixed")
+			writeFile(entryDir, "workload.yaml", `description: test
+params:
+  - key: threads
+    type: int
+    default: 4
+  - key: unused-param
+    type: string
+    default: x
+`)
+			writeFile(
+				entryDir,
+				"workload.service",
+				"[Service]\nExecStart=/bin/test --threads={{threads}} --bad={{typo1}} --also={{typo2}}\n",
+			)
+
+			entry, err := workloads.LoadCatalogEntry(catalogDir, "mixed")
+			Expect(err).NotTo(HaveOccurred())
+
+			errs, warnings := workloads.ValidatePlaceholders(entry)
+			Expect(errs).To(HaveLen(2))
+			Expect(warnings).To(HaveLen(1))
+			Expect(warnings[0]).To(ContainSubstring("unused-param"))
+		})
+
+		It("should return nothing when entry has no params and no placeholders", func() {
+			entryDir := filepath.Join(catalogDir, "noparam")
+			writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/test\n")
+
+			entry, err := workloads.LoadCatalogEntry(catalogDir, "noparam")
+			Expect(err).NotTo(HaveOccurred())
+
+			errs, warnings := workloads.ValidatePlaceholders(entry)
+			Expect(errs).To(BeEmpty())
+			Expect(warnings).To(BeEmpty())
+		})
+	})
 })
