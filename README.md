@@ -128,6 +128,8 @@ virtwork ships nine built-in workloads, grouped by purpose. With `--vm-count 1` 
 
 All workloads run as systemd services inside the VMs, surviving reboots and auto-restarting on failure.
 
+**Custom workloads via catalog** — operators can add workloads without writing Go code by placing systemd service files and an optional YAML manifest in a catalog directory. Deploy with `--from-catalog`. See the [catalog tutorial](docs/guide/04-adding-a-catalog-workload.md) for a hands-on walkthrough.
+
 ## Usage
 
 ### `virtwork run`
@@ -151,6 +153,8 @@ Flags:
       --ssh-key-file strings       SSH key file path (repeatable)
       --vm-concurrency int         Max concurrent VM creation operations
       --params string              Per-workload params (comma-separated workload.key=value pairs)
+      --from-catalog strings      Catalog entries to load (comma-separated)
+      --catalog-dir string        Path to catalog directory (default ~/.virtwork/catalog)
 
 Global Flags:
       --namespace string           Kubernetes namespace for VMs
@@ -320,8 +324,8 @@ The codebase follows a strict layered architecture where each layer depends only
 ```
 Layer 4 — Orchestration     cmd/virtwork, orchestrator, cleanup
 Layer 3 — Workload Defs     workloads (Workload + MultiVMWorkload interfaces, registry,
-                            cpu, memory, disk, database, network, tps, chaos-disk,
-                            chaos-network, chaos-process)
+                            9 built-in + catalog system: GenericWorkload,
+                            GenericMultiWorkload for no-code extensions)
 Layer 2 — K8s Abstractions  vm, resources, wait
 Layer 1 — Infrastructure    config, cluster, cloudinit, logging, audit
 Layer 0 — Definitions       constants
@@ -348,7 +352,7 @@ virtwork/
 │   ├── cleanup/                   # Label-based teardown (VMs, Services, Secrets)
 │   ├── orchestrator/              # Run + cleanup orchestration logic
 │   ├── audit/                     # SQLite audit tracking (Auditor interface, schema, records)
-│   ├── workloads/                 # Workload + MultiVMWorkload interfaces, 9 implementations, registry, param schemas
+│   ├── workloads/                 # Workload + MultiVMWorkload interfaces, 9 built-in + catalog (generic, generic_multi), registry, param schemas
 │   └── testutil/                  # Shared test helpers for integration + E2E
 ├── tests/
 │   └── e2e/                       # E2E acceptance tests (//go:build e2e)
@@ -376,7 +380,8 @@ virtwork/
 │   ├── audit-schema.md            # SQLite audit schema reference
 │   ├── chaos-workloads.md         # Chaos engineering workload guide
 │   ├── virtwork-vs-kube-burner.md # Positioning vs kube-burner
-│   ├── guide/                     # Hands-on guides (overview, deploying, adding workloads)
+│   ├── guide/                     # Hands-on guides (overview, deploying, adding workloads, catalog workloads)
+│   ├── mermaid/                   # Standalone mermaid diagram source files
 │   ├── implementation-plan.md     # Historical: original phased build plan
 │   └── openshift-virtualization-workload-automation.md  # Historical: original design rationale
 ├── OWNERS

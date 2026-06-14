@@ -33,6 +33,9 @@ graph TD
         CDISK["internal/workloads/chaos_disk.go\nfill/release loop"]
         CNET["internal/workloads/chaos_network.go\ntc/netem latency + loss"]
         CPROC["internal/workloads/chaos_process.go\nrandom signal killer"]
+        CATALOG["internal/workloads/catalog.go\ncatalog entry loading + validation"]
+        GENERIC["internal/workloads/generic.go\nGenericWorkload (single-role catalog)"]
+        GMULTI["internal/workloads/generic_multi.go\nGenericMultiWorkload (multi-role catalog)"]
     end
 
     subgraph "Layer 2 — K8s Abstractions"
@@ -93,6 +96,12 @@ graph TD
     NET --> MULTI
     TPS --> MULTI
     MULTI --> IFACE
+
+    ORCH --> CATALOG
+    CATALOG --> GENERIC
+    CATALOG --> GMULTI
+    GENERIC --> IFACE
+    GMULTI --> MULTI
 
     VM --> CLUSTER
     VM --> CONST
@@ -193,7 +202,7 @@ flowchart TD
     CREATE_ORCH --> RUN_ORCH[ro.Run]
 
     subgraph "RunOrchestrator.Run()"
-        RUN_ORCH --> PLAN[planVMs\nresolve registry, build VMPlan list]
+        RUN_ORCH --> PLAN[planVMs\nload catalog entries if --from-catalog\nresolve registry, build VMPlan list]
         PLAN --> DRY_CHECK{--dry-run?}
 
         DRY_CHECK -->|Yes| PRINT_YAML[Print specs as YAML]
@@ -337,6 +346,35 @@ classDiagram
         +CloudInitUserdata() random kill loop with excluded patterns
     }
 
+    class GenericWorkload {
+        +entryName string
+        +namespace string
+        +serviceFiles map~string string~
+        +packages []string
+        +storageSpecs []StorageDefinition
+        +serviceDef *ServiceDefinition
+        +Name() entryName
+        +CloudInitUserdata() param-substituted service files
+        +DataVolumeTemplates() from storageSpecs
+        +ExtraDisks() with serial from storageSpecs
+        +RequiresService() serviceDef != nil
+        +ServiceSpec() ClusterIP from serviceDef
+    }
+
+    class GenericMultiWorkload {
+        +entryName string
+        +namespace string
+        +roles []RoleDefinition
+        +serviceFiles map~string string~ (by role)
+        +storageSpecs []StorageDefinition
+        +serviceDef *ServiceDefinition
+        +RoleDistribution() from roles
+        +UserdataForRole(role, ns) per-role service file
+        +VMCount() sum of role counts
+        +RequiresService() serviceDef != nil
+        +ServiceSpec() ClusterIP with selector-role
+    }
+
     Workload <|-- MultiVMWorkload
     Workload <|.. BaseWorkload
     BaseWorkload <|-- CPUWorkload
@@ -348,8 +386,11 @@ classDiagram
     BaseWorkload <|-- ChaosDiskWorkload
     BaseWorkload <|-- ChaosNetworkWorkload
     BaseWorkload <|-- ChaosProcessWorkload
+    BaseWorkload <|-- GenericWorkload
+    BaseWorkload <|-- GenericMultiWorkload
     MultiVMWorkload <|.. NetworkWorkload
     MultiVMWorkload <|.. TPSWorkload
+    MultiVMWorkload <|.. GenericMultiWorkload
 ```
 
 `BaseWorkload` is an embedded struct that provides default implementations for optional interface methods. Concrete workloads embed `BaseWorkload` and override only the methods they need — idiomatic Go composition over inheritance.
@@ -480,6 +521,8 @@ Viper's built-in priority chain handles this natively when bound to Cobra flags:
 | Audit credential policy | No SSH credentials stored | Only `ssh_auth_configured` boolean tracked. Security by design. |
 | In-VM disk discovery | `/dev/disk/by-id/virtio-<serial>` via the `Serial` field on KubeVirt `Disk` | `/dev/vdX` device ordering is not stable across VM reboots or migrations; the virtio serial provides a deterministic symlink. The shared `diskSetupScript` helper (`internal/workloads/workload.go`) waits for the symlink, formats if empty, mounts, and writes `/etc/fstab`. |
 | DataVolume names per VM | DV template names are suffixed with the VM name via `NamespaceDataVolumes` (`internal/orchestrator/types.go`) | DataVolume names are namespace-scoped; deploying multiple VMs of the same workload would otherwise collide on the template name. |
+| Catalog workload system | Directory with `.service` files + optional `workload.yaml` manifest; `LoadCatalogEntry()` validates and injects into registry as `RegistryEntry` | No-code extension for operators. Same pipeline (registry → factory → cloud-init → VM) from injection point onward. `GenericWorkload` for single-role, `GenericMultiWorkload` for multi-role. |
+| Schema-driven param validation | `ParamSchema` on every `RegistryEntry`; `ValidateParams()` at deploy time rejects unknown keys (with Levenshtein "did you mean?") and type mismatches | Catches typos before VM creation. Same validation for built-in (`GetParam()` panics on unknown) and catalog (`{{key}}` substitution) workloads. |
 | Structured logging | `log/slog` JSON via `internal/logging.NewLogger(out, verbose)` | Machine-parseable logs for pipeline consumption; `--verbose` flips the level from `INFO` to `DEBUG`. New code uses the logger; `fmt.Fprintf` calls were removed from `cmd/virtwork/main.go`. |
 | Chaos workload safety | Opt-in by name, namespace-scoped destructive behavior, no platform-level kill switch | Chaos workloads can fill a data PVC, shape egress traffic, or kill processes — all confined to the VM they run in. Namespace isolation is the safety boundary. See [chaos-workloads.md](chaos-workloads.md) for risk and operational guidance. |
 
@@ -524,6 +567,9 @@ virtwork/
 │   │   ├── workload.go            # Workload + MultiVMWorkload interfaces, BaseWorkload, diskSetupScript
 │   │   ├── registry.go            # Registry map + RegistryEntry (factory + ParamSchema) + ValidateParams
 │   │   ├── params.go             # ParamDef, ParamSchema, ParamType constants, GetParam
+│   │   ├── catalog.go             # Catalog entry loading, manifest parsing, validation
+│   │   ├── generic.go             # GenericWorkload — single-role catalog runtime
+│   │   ├── generic_multi.go       # GenericMultiWorkload — multi-role catalog runtime
 │   │   ├── cpu.go                 # stress-ng CPU continuous workload
 │   │   ├── memory.go              # stress-ng VM memory pressure workload
 │   │   ├── disk.go                # fio mixed I/O profiles
@@ -550,7 +596,8 @@ virtwork/
 │   ├── audit-schema.md            # SQLite audit schema reference
 │   ├── chaos-workloads.md         # Chaos engineering workload guide
 │   ├── virtwork-vs-kube-burner.md # Positioning vs kube-burner
-│   ├── guide/                     # Hands-on guides (overview, deploying, adding workloads)
+│   ├── guide/                     # Hands-on guides (overview, deploying, adding workloads, catalog workloads)
+│   ├── mermaid/                   # Standalone mermaid diagram source files
 │   ├── implementation-plan.md     # Historical: original phased build plan
 │   └── openshift-virtualization-workload-automation.md  # Historical: original design rationale
 ├── Dockerfile                     # Multi-stage build (Alpine builder + UBI9 runtime)

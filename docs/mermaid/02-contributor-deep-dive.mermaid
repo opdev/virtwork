@@ -47,11 +47,21 @@ sequenceDiagram
     RO ->> Reg: DefaultRegistry()
     Note right of Reg: Pre-populated map:<br/>cpu, memory, disk, database,<br/>network, tps, chaos-disk,<br/>chaos-network, chaos-process
 
+    opt --from-catalog entries configured
+        loop For each catalog entry name
+            RO ->> RO: LoadCatalogEntry(catalogDir, entryName)
+            RO ->> Reg: Inject RegistryEntry{Factory, ParamSchema}
+            Note right of Reg: Catalog entries merge into registry<br/>alongside built-in workloads
+        end
+    end
+
     loop For each workload name
         RO ->> RO: Check if disabled in config file
         alt Workload disabled
             RO ->> Aud: RecordEvent(execID, "workload_skipped")
         else Workload enabled
+            RO ->> Reg: ValidateParams(name, userParams)
+            Note right of Reg: Rejects unknown keys (with suggestions)<br/>Validates types (int, bool, list, dict)
             RO ->> Reg: Get(name, workloadConfig, opts...)
             Reg ->> Reg: Resolve RegistryEntry
             Reg ->> Reg: Build RegistryOpts from functional options<br/>(WithNamespace, WithSSHCredentials, WithDataDiskSize)

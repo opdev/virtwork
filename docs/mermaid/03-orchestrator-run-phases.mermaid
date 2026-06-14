@@ -24,7 +24,14 @@ sequenceDiagram
     RO ->> Plan: planVMs(ctx, execID, runID, names, vmCount, registry, opts)
 
     Plan ->> Reg: DefaultRegistry()
-    Note right of Reg: map[string]RegistryEntry with 9 workload types
+    Note right of Reg: map[string]RegistryEntry with 9 built-in workload types
+
+    opt cfg.FromCatalog is non-empty
+        loop For each catalog entry name
+            Plan ->> Plan: LoadCatalogEntry(catalogDir, name)
+            Plan ->> Reg: Inject RegistryEntry into registry
+        end
+    end
 
     loop For each workload name
         Plan ->> Plan: Check config: workload disabled?
@@ -32,6 +39,8 @@ sequenceDiagram
             Plan ->> Aud: RecordEvent("workload_skipped")
         else Enabled
             Plan ->> Plan: Merge global config with per-workload overrides
+            Plan ->> Reg: ValidateParams(name, cfg.Params[name])
+            Note right of Reg: Reject unknown keys, type mismatches
             Plan ->> Reg: Get(name, mergedConfig, opts...)
             Reg -->> Plan: Workload instance
 

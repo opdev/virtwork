@@ -198,6 +198,7 @@ Most workloads don't need extra disks, services, or multiple VMs. The `BaseWorkl
 ```go
 type BaseWorkload struct {
     Config            config.WorkloadConfig
+    ParamSchema       ParamSchema
     SSHUser           string
     SSHPassword       string
     SSHAuthorizedKeys []string

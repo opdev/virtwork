@@ -41,7 +41,7 @@ These apply to both `virtwork run` and `virtwork cleanup`.
 
 | Flag | Env Var | YAML Key | Default | Description |
 |---|---|---|---|---|
-| `--workloads` | — | _(handled via `workloads` map per-key)_ | All nine workloads, sorted: `chaos-disk, chaos-network, chaos-process, cpu, database, disk, memory, network, tps` | Comma-separated list of workloads to deploy |
+| `--workloads` | — | _(handled via `workloads` map per-key)_ | All nine built-in workloads, sorted: `chaos-disk, chaos-network, chaos-process, cpu, database, disk, memory, network, tps` | Comma-separated list of workloads to deploy. When `--from-catalog` is set without `--workloads`, the built-in default is cleared. |
 | `--vm-count` | — | `workloads.<name>.vm_count` | `1` | VMs per workload (multi-VM workloads sum their `RoleDistribution()` counts, so 1 becomes 2 for network and tps) |
 | `--cpu-cores` | `VIRTWORK_CPU_CORES` | `cpu_cores` / `workloads.<name>.cpu_cores` | `2` | CPU cores per VM (per-workload override beats global) |
 | `--memory` | `VIRTWORK_MEMORY` | `memory` / `workloads.<name>.memory` | `2Gi` | Memory per VM |
@@ -56,6 +56,8 @@ These apply to both `virtwork run` and `virtwork cleanup`.
 | `--ssh-key-file` | — | _(handled as inline key after reading)_ | _empty_ | Path to a public key file; repeatable |
 | `--vm-concurrency` | `VIRTWORK_VM_CONCURRENCY` | `vm-concurrency` | `10` | Max concurrent VM creation operations |
 | `--params` | `VIRTWORK_PARAMS` | — | _empty_ | Comma-separated per-workload params (`workload.key=value`); merged on top of YAML `params` blocks |
+| `--catalog-dir` | `VIRTWORK_CATALOG_DIR` | `catalog_dir` | `~/.virtwork/catalog` | Path to catalog directory containing workload entry subdirectories |
+| `--from-catalog` | `VIRTWORK_FROM_CATALOG` | `from_catalog` | _empty_ | Catalog entry names to load (comma-separated). When set without `--workloads`, built-in defaults are cleared — only catalog entries run. |
 | _(env only)_ | `VIRTWORK_SSH_AUTHORIZED_KEYS` | `ssh_authorized_keys` | _empty_ | Comma-separated list of inline keys (env-var form) |
 
 > **Note:** `--ssh-key-file` is a CLI-only convenience that reads a public-key file from disk at runtime and merges its content into the `ssh_authorized_keys` list. There is no YAML or environment-variable equivalent — to configure SSH keys via YAML or `VIRTWORK_SSH_AUTHORIZED_KEYS`, supply the fully-realized public-key strings directly.
@@ -94,6 +96,8 @@ Global flags (`--namespace`, `--kubeconfig`, `--audit`, `--no-audit`, `--audit-d
 | `VIRTWORK_TIMEOUT` | int | `600` | flag-bound | Readiness timeout seconds |
 | `VIRTWORK_VERBOSE` | bool | `false` | flag-bound | Verbose logging |
 | `VIRTWORK_PARAMS` | string | _empty_ | env-only | Comma-separated per-workload params (`workload.key=value`); merged on top of YAML `params` |
+| `VIRTWORK_CATALOG_DIR` | string | `~/.virtwork/catalog` | flag-bound | Path to catalog directory |
+| `VIRTWORK_FROM_CATALOG` | string (csv) | _empty_ | flag-bound | Catalog entry names to load |
 | `VIRTWORK_VM_CONCURRENCY` | int | `10` | flag-bound | Max concurrent VM creation operations |
 | `VIRTWORK_WAIT_FOR_READY` | bool | `true` | flag-bound | Inverse of `--no-wait` |
 | `VIRTWORK_COMMAND` | string | _empty_ | deployment only | In-pod auto-run command: `run`, `cleanup`, or empty (sleep). Read by `entrypoint.sh`, not Viper. |
@@ -134,6 +138,12 @@ ssh_authorized_keys:
 # Audit
 audit: true
 audit_db: /data/virtwork.db
+
+# Catalog workloads (optional — deploy custom workloads without Go code)
+catalog_dir: /path/to/catalog       # default: ~/.virtwork/catalog
+from_catalog:
+  - my-stress
+  - my-benchmark
 
 # Per-workload overrides (everything optional; unspecified keys inherit globals)
 workloads:

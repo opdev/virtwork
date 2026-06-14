@@ -165,7 +165,9 @@ var _ = Describe("HTTPWorkload", func() {
 	})
 
 	It("should have no data volume templates", func() {
-		Expect(w.DataVolumeTemplates()).To(BeNil())
+		dvts, err := w.DataVolumeTemplates()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(dvts).To(BeNil())
 	})
 
 	It("should not require a service", func() {
@@ -246,10 +248,15 @@ type HTTPWorkload struct {
 }
 
 // NewHTTPWorkload creates an HTTPWorkload with the given configuration and SSH credentials.
+// HTTPParamSchema declares tunable params for the HTTP workload.
+// Even simple workloads should declare an explicit (possibly empty) schema.
+var HTTPParamSchema = ParamSchema{}
+
 func NewHTTPWorkload(cfg config.WorkloadConfig, sshUser, sshPassword string, sshKeys []string) *HTTPWorkload {
 	return &HTTPWorkload{
 		BaseWorkload: BaseWorkload{
 			Config:            cfg,
+			ParamSchema:       HTTPParamSchema,
 			SSHUser:           sshUser,
 			SSHPassword:       sshPassword,
 			SSHAuthorizedKeys: sshKeys,
@@ -309,15 +316,20 @@ The workload exists but the CLI doesn't know about it yet. Add its factory to `D
 func DefaultRegistry() Registry {
 	return Registry{
 		// ... existing entries (chaos-disk, chaos-network, chaos-process, cpu, database, disk, memory, network, tps) ...
-		"http": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
-			return NewHTTPWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+		"http": {
+			Factory: func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
+				return NewHTTPWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+			},
+			ParamSchema: HTTPParamSchema,
 		},
 		// ... existing entries ...
 	}
 }
 ```
 
-That's the only change needed — `AllWorkloadNames()` is a function that derives its list from `DefaultRegistry().List()`, so adding the factory automatically includes `"http"` in the workload name list.
+Each entry is a `RegistryEntry` struct pairing a `WorkloadFactory` with a `ParamSchema`. The schema enables deploy-time validation of user-supplied `--params` values.
+
+That's the only change needed — `AllWorkloadNames()` is a function that derives its list from `DefaultRegistry().List()`, so adding the entry automatically includes `"http"` in the workload name list.
 
 ### Update affected tests
 
@@ -518,7 +530,7 @@ return w.BuildCloudConfig(CloudConfigOpts{
 
 ### Making It Multi-VM
 
-If your workload needs more than one role of VM (a server and one or more clients, for example), implement the `MultiVMWorkload` interface. The two canonical references are `internal/workloads/network.go` (simplest — one Service port, iperf3) and `internal/workloads/tps.go` (multi-port Service). All workloads support configurable `Params` via the getter-with-default pattern — see [development.md](../development.md#going-further-configurable-params).
+If your workload needs more than one role of VM (a server and one or more clients, for example), implement the `MultiVMWorkload` interface. The two canonical references are `internal/workloads/network.go` (simplest — one Service port, iperf3) and `internal/workloads/tps.go` (multi-port Service). All workloads support configurable `Params` via the getter-with-default pattern — see [development.md](../development.md#configurable-params).
 
 1. Add a `Namespace` field to your struct — the client needs it to build the server's in-cluster DNS name.
 2. Implement `RoleDistribution() []RoleSpec` — return a slice of `RoleSpec{Role: "server", VMCount: 1}` entries declaring how many VMs each role needs.
@@ -552,7 +564,7 @@ Before submitting a new workload, verify:
 - [ ] Packages used are available in Fedora's default repos (or pre-installed in the golden image, if applicable)
 - [ ] Systemd unit has `Restart=always` and `WantedBy=multi-user.target`
 - [ ] Tests cover: Name, packages, systemd unit content, valid YAML, VMResources, defaults for optional methods
-- [ ] Tunable values declared as a `ParamSchema` with `GetParam()` lookup (see [development.md](../development.md#going-further-configurable-params))
+- [ ] Tunable values declared as a `ParamSchema` with `GetParam()` lookup (see [development.md](../development.md#configurable-params))
 - [ ] Param wiring tests: nil params → defaults, full override, partial override
 - [ ] New param keys documented in `docs/configuration.md` (YAML example + params table)
 - [ ] Registered in `DefaultRegistry()` (`internal/workloads/registry.go`) with a `RegistryEntry` pairing factory and `ParamSchema`

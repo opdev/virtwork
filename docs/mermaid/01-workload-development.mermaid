@@ -126,3 +126,13 @@ sequenceDiagram
     Note over Registry: Register in DefaultRegistry():<br/>"my-workload": RegistryEntry{<br/>    Factory: func(cfg, opts) Workload { ... },<br/>    ParamSchema: MyParamSchema,<br/>}
 
     Note over CloudInit: Build cloud-init via BaseWorkload.BuildCloudConfig:<br/>─ Specify packages to install<br/>─ Write systemd unit files<br/>─ Run commands to enable services<br/>─ SSH credentials are injected automatically
+
+    %% ─── CATALOG WORKLOAD ALTERNATIVE ────────────────────────────
+
+    Note over User, Registry: Alternative: add a workload via catalog (no Go code)
+
+    Note over User: Create a catalog entry directory:<br/>~/.virtwork/catalog/my-entry/<br/>├── workload.yaml (packages, params, roles, storage, service)<br/>└── workload.service (or per-role: server.service, client.service)
+
+    Note over Registry: At deploy time:<br/>1. LoadCatalogEntry(catalogDir, name)<br/>2. CatalogEntry.Factory() →<br/>   single-role: GenericWorkload<br/>   multi-role: GenericMultiWorkload<br/>3. Injected into registry as RegistryEntry{Factory, ParamSchema}<br/>4. Same pipeline from this point on
+
+    Note over Workload: Param substitution in catalog workloads:<br/>─ Service files use {{key}} placeholders<br/>─ At deploy time: strings.ReplaceAll(content, "{{key}}", GetParam(key))<br/>─ Same ParamSchema validation as Go workloads<br/>─ Storage and Service declared in workload.yaml, not Go overrides

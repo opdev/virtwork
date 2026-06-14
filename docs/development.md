@@ -1,6 +1,42 @@
 # Development Guide
 
-## Environment Setup
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Project Layout and Architecture](#project-layout-and-architecture)
+  - [Directory Structure](#directory-structure)
+  - [Architecture Layers](#architecture-layers)
+  - [Concurrency Pattern](#concurrency-pattern)
+  - [Built-in Workload Inventory](#built-in-workload-inventory)
+- [Idempotency and Safety](#idempotency-and-safety)
+- [Testing](#testing)
+  - [Test Organization](#test-organization)
+  - [Running Unit Tests](#running-unit-tests)
+  - [testutil Package](#testutil-package)
+  - [Cluster Prerequisites](#cluster-prerequisites)
+  - [Running Integration Tests](#running-integration-tests)
+  - [Running E2E Tests](#running-e2e-tests)
+  - [Testing Patterns](#testing-patterns)
+- [Makefile Targets](#makefile-targets)
+- [CI/CD Pipeline](#cicd-pipeline)
+  - [Workflows](#workflows)
+  - [Running CI Checks Locally](#running-ci-checks-locally)
+- [Workload Development](#workload-development)
+  - [Adding a Built-in Workload](#adding-a-built-in-workload)
+  - [Multi-VM Workloads](#multi-vm-workloads)
+  - [Storage-Backed Workloads](#storage-backed-workloads)
+  - [Configurable Params](#configurable-params)
+  - [Structured Logging](#structured-logging)
+  - [Catalog Workloads](#catalog-workloads)
+  - [Writing Tests for Workloads](#writing-tests-for-workloads)
+- [SSH and Audit Quick Reference](#ssh-and-audit-quick-reference)
+- [Conventions and References](#conventions-and-references)
+  - [Commit Conventions](#commit-conventions)
+  - [Related Documentation](#related-documentation)
+
+---
+
+## Quick Start
 
 ### Prerequisites
 
@@ -19,7 +55,7 @@ go install github.com/onsi/ginkgo/v2/ginkgo@latest
 go mod download
 ```
 
-## Building
+### Building
 
 ```bash
 # Build the binary
@@ -31,47 +67,106 @@ go run ./cmd/virtwork run --dry-run
 go run ./cmd/virtwork run --dry-run --ssh-user virtwork --ssh-key-file ~/.ssh/id_ed25519.pub
 ```
 
-## Running Tests
+---
 
-```bash
-# Full unit test suite
-go test ./...
+## Project Layout and Architecture
 
-# With race detector
-go test -race ./...
+### Directory Structure
 
-# Specific package
-go test ./internal/vm/...
-
-# With verbose output
-go test -v ./...
-
-# With coverage report
-go test -coverprofile=coverage.out ./...
-go tool cover -html=coverage.out
+```
+cmd/virtwork/       # Entry point (Cobra root + subcommands)
+internal/           # Application packages (not importable externally)
+  constants/        # API coordinates, labels, defaults
+  config/           # Config struct, Viper priority chain
+  cluster/          # controller-runtime client init + scheme
+  cloudinit/        # Cloud-config YAML builder
+  logging/          # Structured slog logger (verbose -> DEBUG)
+  vm/               # VM spec construction + typed CRUD + retry
+  resources/        # Namespace + Service + Secret helpers
+  wait/             # VMI readiness polling (errgroup)
+  cleanup/          # Label-based teardown (VMs, Services, Secrets)
+  audit/            # SQLite audit tracking (Auditor interface, schema, records)
+  orchestrator/     # Run + Cleanup orchestrators (errgroup concurrency, catalog loading)
+  workloads/        # Workload + MultiVMWorkload interfaces, built-in + generic implementations, registry, catalog
+  testutil/         # Shared test helpers for integration and E2E tests
+tests/              # Tests requiring external infrastructure
+  e2e/              # E2E acceptance tests (//go:build e2e)
+build/
+  golden-image/     # Optional Fedora container disk with pre-installed tools
+deploy/             # Kustomize manifests for OpenShift deployment
+docs/               # Documentation
+  README.md         # Documentation index
+  architecture.md   # Layered architecture and mermaid diagrams
+  development.md    # This file
+  configuration.md  # Complete configuration reference
+  deployment.md     # OpenShift deployment deep-dive
+  audit-schema.md   # SQLite audit schema reference
+  chaos-workloads.md  # Chaos engineering workload guide
+  guide/            # Hands-on guides (overview, deploying, adding workloads)
 ```
 
-### Using Ginkgo
+### Architecture Layers
 
-```bash
-# Run all tests recursively
-ginkgo -r
+The codebase follows a strict layered architecture where each layer depends only on layers below it. See [architecture.md](architecture.md) for full diagrams.
 
-# Run specific package
-ginkgo ./internal/vm/
+| Layer | Packages | Goroutines | Purpose |
+|-------|----------|------------|---------|
+| 0 | `constants` | No | Pure values — API coordinates, labels, defaults |
+| 1 | `config`, `cloudinit`, `cluster`, `logging`, `audit` | No | Configuration, cloud-init YAML, K8s client init, structured logging, audit tracking |
+| 2 | `vm`, `resources`, `wait` | Yes | K8s CRUD operations with retry, readiness polling |
+| 3 | `workloads` | No | Pure data producers — cloud-init specs, resource structs |
+| 4 | `cmd/virtwork`, `orchestrator`, `cleanup` | Yes | Dependency wiring, orchestration, teardown |
 
-# Verbose with labels
-ginkgo -r -v
+### Concurrency Pattern
 
-# With race detector
-ginkgo -r -race
+Go's native concurrency is used throughout. The `internal/orchestrator` package drives parallel VM creation and readiness polling via `errgroup.Group` for structured error handling, with `context.Context` for timeouts and cancellation.
 
-# Run in parallel (multiple Ginkgo nodes)
-ginkgo -r -p
-
-# Focus on specific tests (use FDescribe/FIt in code)
-ginkgo -r --focus "BuildVMSpec"
+```go
+g, ctx := errgroup.WithContext(ctx)
+for _, vmName := range vmNames {
+    name := vmName
+    g.Go(func() error {
+        return vm.CreateVM(ctx, c, spec)
+    })
+}
+if err := g.Wait(); err != nil {
+    return err
+}
 ```
+
+### Built-in Workload Inventory
+
+The registry (`internal/workloads/registry.go`) ships 9 built-in workloads:
+
+| Name | Type | Purpose | Reference |
+|------|------|---------|-----------|
+| `cpu` | single-role | CPU stress via stress-ng | [configuration.md](configuration.md) |
+| `memory` | single-role | Memory pressure via stress-ng | [configuration.md](configuration.md) |
+| `disk` | single-role | Mixed I/O benchmark via fio | [configuration.md](configuration.md) |
+| `database` | single-role | PostgreSQL + pgbench continuous loop | [configuration.md](configuration.md) |
+| `network` | multi-role | iperf3 server/client bandwidth test | [configuration.md](configuration.md) |
+| `tps` | multi-role | Multi-protocol transactions per second | [configuration.md](configuration.md) |
+| `chaos-disk` | single-role | Disk fill/release chaos loop | [chaos-workloads.md](chaos-workloads.md) |
+| `chaos-network` | single-role | Network latency/loss injection | [chaos-workloads.md](chaos-workloads.md) |
+| `chaos-process` | single-role | Random process signal injection | [chaos-workloads.md](chaos-workloads.md) |
+
+Additional workloads can be added without modifying Go code via the [catalog system](#catalog-workloads).
+
+---
+
+## Idempotency and Safety
+
+- `apierrors.IsAlreadyExists()` responses are treated as success (resource already exists)
+- `apierrors.IsTooManyRequests()` and server errors trigger retry with exponential backoff
+- `apierrors.IsNotFound()` is fatal for CRUD (CNV not installed?)
+- `apierrors.IsUnauthorized()` / `apierrors.IsForbidden()` are fatal (auth errors)
+- All created resources are labeled with `app.kubernetes.io/managed-by: virtwork` for cleanup tracking
+- `--dry-run` prints specs without any cluster interaction
+- OpenShift HAProxy load balancers may drop the first TLS connection when connection pools are cold, causing transient failures on the first API call after an idle period. The retry logic (backoff on `IsTooManyRequests()` and server errors) covers this. If running against remote clusters and seeing intermittent first-call failures, this is expected behavior — the retry will succeed.
+
+---
+
+## Testing
 
 ### Test Organization
 
@@ -106,7 +201,49 @@ stdout, stderr, exitCode, err := testutil.RunVirtwork("run", "--dry-run", "--wor
 Expect(exitCode).To(Equal(0))
 ```
 
-#### testutil Package
+### Running Unit Tests
+
+```bash
+# Full unit test suite
+go test ./...
+
+# With race detector
+go test -race ./...
+
+# Specific package
+go test ./internal/vm/...
+
+# With verbose output
+go test -v ./...
+
+# With coverage report
+go test -coverprofile=coverage.out ./...
+go tool cover -html=coverage.out
+```
+
+#### Using Ginkgo
+
+```bash
+# Run all tests recursively
+ginkgo -r
+
+# Run specific package
+ginkgo ./internal/vm/
+
+# Verbose with labels
+ginkgo -r -v
+
+# With race detector
+ginkgo -r -race
+
+# Run in parallel (multiple Ginkgo nodes)
+ginkgo -r -p
+
+# Focus on specific tests (use FDescribe/FIt in code)
+ginkgo -r --focus "BuildVMSpec"
+```
+
+### testutil Package
 
 The `internal/testutil/` package provides shared test helpers used by integration and E2E tests. As of the test coverage improvements, it now has comprehensive unit and integration test coverage.
 
@@ -166,7 +303,7 @@ go test ./internal/testutil -coverprofile=coverage.out
 go tool cover -html=coverage.out
 ```
 
-### Cluster Prerequisites for Integration and E2E Tests
+### Cluster Prerequisites
 
 Integration and E2E tests require a live OpenShift cluster with specific operators and configurations.
 
@@ -319,6 +456,33 @@ VIRTWORK_BINARY=./virtwork go test -tags e2e ./tests/e2e/...
 go test -tags "integration e2e" ./...
 ```
 
+### Testing Patterns
+
+#### YAML Assertion Pattern
+
+When testing cloud-init or any YAML output, always parse the YAML string before asserting on values:
+
+```go
+// GOOD: Parse, then assert on structure
+userdata, err := wl.CloudInitUserdata()
+Expect(err).NotTo(HaveOccurred())
+
+var parsed map[string]interface{}
+Expect(yaml.Unmarshal([]byte(userdata), &parsed)).To(Succeed())
+Expect(parsed).To(HaveKey("packages"))
+
+// BAD: Assert on raw string (fragile — key order, whitespace, line folding)
+Expect(userdata).To(ContainSubstring("packages:\n- stress-ng"))
+```
+
+#### Workload Systemd Unit Pattern
+
+Each workload writes a systemd `.service` file via cloud-init `write_files`, then enables/starts it via `runcmd`. This ensures workloads survive VM reboots and can be managed with standard systemd tooling.
+
+For workloads with initialization (database), use `ExecStartPre` for setup and `ExecStart` for the main loop. For workloads with multiple configurations (disk/fio), write job files as separate `write_files` entries.
+
+---
+
 ## Makefile Targets
 
 A `Makefile` provides convenient shortcuts for common development tasks:
@@ -370,9 +534,11 @@ make container-build
 CONTAINER_RUNTIME=docker make container-build
 ```
 
+---
+
 ## CI/CD Pipeline
 
-The project uses GitHub Actions for automated validation on push and pull requests:
+The project uses GitHub Actions for automated validation on push and pull requests.
 
 ### Workflows
 
@@ -412,72 +578,13 @@ make test
 make lint
 ```
 
-## Project Layout
+---
 
-```
-cmd/virtwork/       # Entry point (Cobra root + subcommands)
-internal/           # Application packages (not importable externally)
-  constants/        # API coordinates, labels, defaults
-  config/           # Config struct, Viper priority chain
-  cluster/          # controller-runtime client init + scheme
-  cloudinit/        # Cloud-config YAML builder
-  logging/          # Structured slog logger (verbose -> DEBUG)
-  vm/               # VM spec construction + typed CRUD + retry
-  resources/        # Namespace + Service + Secret helpers
-  wait/             # VMI readiness polling (errgroup)
-  cleanup/          # Label-based teardown (VMs, Services, Secrets)
-  audit/            # SQLite audit tracking (Auditor interface, schema, records)
-  orchestrator/     # Run + Cleanup orchestrators (errgroup concurrency, catalog loading)
-  workloads/        # Workload + MultiVMWorkload interfaces, built-in + generic implementations, registry, catalog
-  testutil/         # Shared test helpers for integration and E2E tests
-tests/              # Tests requiring external infrastructure
-  e2e/              # E2E acceptance tests (//go:build e2e)
-build/
-  golden-image/     # Optional Fedora container disk with pre-installed tools
-deploy/             # Kustomize manifests for OpenShift deployment
-docs/               # Documentation
-  README.md         # Documentation index
-  architecture.md   # Layered architecture and mermaid diagrams
-  development.md    # This file
-  configuration.md  # Complete configuration reference
-  deployment.md     # OpenShift deployment deep-dive
-  audit-schema.md   # SQLite audit schema reference
-  chaos-workloads.md  # Chaos engineering workload guide
-  guide/            # Hands-on guides (overview, deploying, adding workloads)
-```
+## Workload Development
 
-## Architecture Layers
+### Adding a Built-in Workload
 
-The codebase follows a strict layered architecture where each layer depends only on layers below it. See [architecture.md](architecture.md) for full diagrams.
-
-| Layer | Packages | Goroutines | Purpose |
-|-------|----------|------------|---------|
-| 0 | `constants` | No | Pure values — API coordinates, labels, defaults |
-| 1 | `config`, `cloudinit`, `cluster`, `logging`, `audit` | No | Configuration, cloud-init YAML, K8s client init, structured logging, audit tracking |
-| 2 | `vm`, `resources`, `wait` | Yes | K8s CRUD operations with retry, readiness polling |
-| 3 | `workloads` | No | Pure data producers — cloud-init specs, resource structs |
-| 4 | `cmd/virtwork`, `orchestrator`, `cleanup` | Yes | Dependency wiring, orchestration, teardown |
-
-### Concurrency Pattern
-
-Go's native concurrency is used throughout. The `internal/orchestrator` package drives parallel VM creation and readiness polling via `errgroup.Group` for structured error handling, with `context.Context` for timeouts and cancellation.
-
-```go
-g, ctx := errgroup.WithContext(ctx)
-for _, vmName := range vmNames {
-    name := vmName
-    g.Go(func() error {
-        return vm.CreateVM(ctx, c, spec)
-    })
-}
-if err := g.Wait(); err != nil {
-    return err
-}
-```
-
-## Adding a New Workload
-
-### 1. Create the Workload Struct
+#### 1. Create the Workload Struct
 
 Create `internal/workloads/<name>.go`:
 
@@ -510,7 +617,7 @@ func (w *MyWorkload) CloudInitUserdata() (string, error) {
 }
 ```
 
-### 2. Override Optional Methods
+#### 2. Override Optional Methods
 
 `BaseWorkload` provides defaults via embedding. Override only what you need:
 
@@ -523,22 +630,7 @@ func (w *MyWorkload) CloudInitUserdata() (string, error) {
 | `ServiceSpec()` | `nil` | Define the Service when `RequiresService()` is true |
 | `VMCount()` | `1` | Workload needs multiple VMs (e.g., server/client) |
 
-For multi-VM workloads with per-role userdata, implement the `MultiVMWorkload` interface:
-
-```go
-func (w *MyWorkload) UserdataForRole(role string, namespace string) (string, error) {
-    switch role {
-    case "server":
-        return w.serverUserdata()
-    case "client":
-        return w.clientUserdata(namespace)
-    default:
-        return "", fmt.Errorf("unknown role: %s", role)
-    }
-}
-```
-
-### 3. Register the Workload
+#### 3. Register the Workload
 
 Add a `RegistryEntry` to `internal/workloads/registry.go`. Each entry pairs a `WorkloadFactory` with a `ParamSchema` so the registry can validate user-supplied params at deploy time. `DefaultRegistry()` currently has nine entries; add yours alongside:
 
@@ -567,7 +659,7 @@ func DefaultRegistry() Registry {
 - Orchestration BDD tests will fail (total VM count assertions)
 - Update both before considering the feature complete
 
-### Going Further: Multi-VM Workloads
+### Multi-VM Workloads
 
 If your workload needs more than one role of VM (e.g., a server and a client), implement the `MultiVMWorkload` interface in addition to `Workload`:
 
@@ -594,9 +686,9 @@ Pattern:
 5. Set `RequiresService()` to `true` and provide a `ServiceSpec()` selecting server VMs by the `virtwork/role: server` label that the orchestrator applies automatically.
 6. Clients reach servers via the in-cluster DNS name `<service-name>.<namespace>.svc.cluster.local` — never poll for pod IPs.
 
-The canonical references are `internal/workloads/network.go` (simplest — one port, iperf3) and `internal/workloads/tps.go` (multi-port Service). All workloads support configurable `Params` via a typed param schema (see [Configurable Params](#going-further-configurable-params) below).
+The canonical references are `internal/workloads/network.go` (simplest — one port, iperf3) and `internal/workloads/tps.go` (multi-port Service). All workloads support configurable `Params` via a typed param schema (see [Configurable Params](#configurable-params) below).
 
-### Going Further: Storage-Backed Workloads
+### Storage-Backed Workloads
 
 If your workload needs persistent storage inside the VM:
 
@@ -607,7 +699,7 @@ If your workload needs persistent storage inside the VM:
 
 Reference workloads: `disk.go` (single fio mount), `database.go` (PostgreSQL data dir), `chaos_disk.go` (fill/release loop). All three follow the same pattern.
 
-### Going Further: Configurable Params
+### Configurable Params
 
 All workloads expose tunable knobs through `WorkloadConfig.Params map[string]string`. Users set these in YAML config under `workloads.<name>.params`. Each workload declares a typed **param schema** — a slice of `ParamDef` entries that define the key, type, default, and description for every supported param:
 
@@ -648,7 +740,7 @@ func (w *MyWorkload) CloudInitUserdata() (string, error) {
 
 `GetParam` panics on unknown keys — this is intentional; it catches typos in workload code at test time. The orchestrator calls `registry.ValidateParams()` before constructing workloads, rejecting unknown keys (with "did you mean?" suggestions) and type-mismatched values at deploy time.
 
-Five param types are available: `ParamString`, `ParamInt`, `ParamBool`, `ParamList` (semicolon-separated), and `ParamDict` (semicolon-separated `key=value` pairs). Register your workload in `DefaultRegistry()` as a `RegistryEntry` pairing the factory with the schema so validation applies automatically. Catalog workloads declare the same param schema in `workload.yaml` and use `{{key}}` placeholders in their service files instead of `GetParam()` calls — see [Adding a Catalog Workload](#adding-a-catalog-workload) for details.
+Five param types are available: `ParamString`, `ParamInt`, `ParamBool`, `ParamList` (semicolon-separated), and `ParamDict` (semicolon-separated `key=value` pairs). Register your workload in `DefaultRegistry()` as a `RegistryEntry` pairing the factory with the schema so validation applies automatically. Catalog workloads declare the same param schema in `workload.yaml` and use `{{key}}` placeholders in their service files instead of `GetParam()` calls — see [Catalog Workloads](#catalog-workloads) for details.
 
 Every workload should have a `Context("param wiring")` test block with three cases:
 
@@ -658,7 +750,7 @@ Every workload should have a `Context("param wiring")` test block with three cas
 
 See `internal/workloads/cpu_test.go` for the simplest example, or `disk_test.go` for a workload with multiple output files to verify. Document new param keys in `docs/configuration.md` — both in the YAML example and the params table.
 
-### Going Further: Structured Logging
+### Structured Logging
 
 The `internal/logging` package provides a shared `*slog.Logger` returned by `NewLogger(w io.Writer, verbose bool)`. Use it instead of `fmt.Fprintf` or `log.Printf` in any code path under `cmd/` or in packages that perform I/O (`internal/wait` is the current example):
 
@@ -672,7 +764,7 @@ logger.Info("vm created",
 
 The output is JSON. `--verbose` flips the level from `INFO` to `DEBUG`. Workload constructors and the pure data layer (`internal/workloads`, `internal/cloudinit`) should not log — they remain pure data producers.
 
-## Adding a Catalog Workload
+### Catalog Workloads
 
 The catalog system lets users and operators add new workloads **without modifying Go code**. A catalog workload is a directory containing one or more systemd `.service` files and an optional `workload.yaml` manifest. At deploy time the orchestrator loads catalog entries, registers them alongside the built-in workloads, and creates VMs with the same cloud-init pipeline.
 
@@ -683,7 +775,7 @@ Use the catalog when:
 
 Catalog entries also support declarative [storage](#storage-backed-catalog-entries) (DataVolumes, extra disks) and [K8s Services](#service-backed-catalog-entries) via the `workload.yaml` manifest — no Go code required for these either.
 
-### Catalog Directory Layout
+#### Catalog Directory Layout
 
 ```
 ~/.virtwork/catalog/          # default catalog-dir (override with --catalog-dir)
@@ -704,7 +796,7 @@ Each subdirectory is a catalog entry. The directory name becomes the workload na
 - Multi-role entries: each declared role must have a matching `{role}.service` file
 - `workload.yaml` is optional for single-role entries, required for multi-role entries
 
-### workload.yaml Schema
+#### workload.yaml Schema
 
 ```yaml
 description: "Human-readable description of the workload"
@@ -740,7 +832,7 @@ service:                # optional — K8s Service for inter-VM communication
 
 All fields are optional for single-role entries. When `roles:` is present the entry becomes multi-role, which requires a manifest and one `{role}.service` file per declared role.
 
-### Single-Role Entry
+#### Single-Role Entry
 
 A single-role catalog entry produces a `GenericWorkload` — one VM type running all the declared service files.
 
@@ -792,7 +884,7 @@ virtwork run --from-catalog my-stress --params my-stress.cpu-load=75
 
 The generated cloud-init will install `stress-ng`, write the service file to `/etc/systemd/system/workload.service`, substitute `{{cpu-load}}` and `{{method}}` with param values, and enable the service.
 
-### Multi-Role Entry
+#### Multi-Role Entry
 
 A multi-role catalog entry produces a `GenericMultiWorkload` — multiple VM roles with per-role service files. This is the catalog equivalent of implementing the `MultiVMWorkload` interface.
 
@@ -862,7 +954,7 @@ This creates 3 VMs total (1 server + 2 clients). Each role gets its own cloud-in
 
 **VM count resolution:** If a role's `vm-count` is `0` (or omitted), the global `--vm-count` flag is used instead, with a minimum of 1 VM per role. Roles with an explicit `vm-count > 0` always use the manifest value.
 
-### Parameter Substitution
+#### Parameter Substitution
 
 Catalog workloads use `{{key}}` placeholders in service file content. At deploy time, each placeholder is replaced with:
 
@@ -871,7 +963,7 @@ Catalog workloads use `{{key}}` placeholders in service file content. At deploy 
 
 This is the catalog equivalent of calling `w.GetParam("key")` in a Go workload. The same five param types are supported: `string`, `int`, `bool`, `list` (semicolon-separated), and `dict` (semicolon-separated `key=value` pairs). The orchestrator validates param types before VM creation, rejecting unknown keys with "did you mean?" suggestions.
 
-### Storage-Backed Catalog Entries
+#### Storage-Backed Catalog Entries
 
 Catalog entries can declare persistent storage via the `storage:` field in `workload.yaml`. Each storage entry creates a CDI DataVolume, attaches it as an extra disk, and injects a `diskSetupScript` into the cloud-init userdata that waits for the device, formats it with XFS if empty, mounts it, and writes an `/etc/fstab` entry for persistence across reboots.
 
@@ -929,7 +1021,7 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
-### Service-Backed Catalog Entries
+#### Service-Backed Catalog Entries
 
 Catalog entries can declare a K8s Service via the `service:` field in `workload.yaml`. This creates a ClusterIP Service that other VMs (or pods) can reach via in-cluster DNS.
 
@@ -953,7 +1045,7 @@ service:
 
 This is the catalog equivalent of overriding `RequiresService()` and `ServiceSpec()` in a built-in workload. Clients reach the service via `<workload-name>.<namespace>.svc.cluster.local`.
 
-### Mixing Built-in and Catalog Workloads
+#### Mixing Built-in and Catalog Workloads
 
 Both `--workloads` and `--from-catalog` can be specified in the same invocation:
 
@@ -966,7 +1058,7 @@ virtwork run --workloads cpu,memory --from-catalog my-stress --dry-run
 - If both flags are set, all specified workloads (built-in + catalog) run together
 - A catalog entry **cannot** shadow a built-in workload name (e.g., naming a catalog entry `cpu` produces an error)
 
-### CLI Flags and Configuration
+#### CLI Flags and Configuration
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -985,7 +1077,7 @@ from_catalog:
   - my-benchmark
 ```
 
-### How It Works
+#### How It Works
 
 1. CLI parses `--from-catalog` and `--catalog-dir` into `Config.FromCatalog` and `Config.CatalogDir`
 2. The orchestrator starts with `DefaultRegistry()` (built-in workloads only)
@@ -994,11 +1086,11 @@ from_catalog:
 5. The entry is injected into the registry as a `RegistryEntry` with its factory and param schema
 6. From this point, catalog workloads follow the same VM planning, creation, and cloud-init pipeline as built-in workloads
 
-## Writing Tests for Workloads
+### Writing Tests for Workloads
 
 Whether adding a built-in workload or a catalog entry, write tests that cover the workload's cloud-init output and configuration.
 
-### Built-in Workload Tests
+#### Built-in Workload Tests
 
 Create `internal/workloads/my_workload_test.go` using Ginkgo:
 
@@ -1031,7 +1123,7 @@ var _ = Describe("MyWorkload", func() {
 })
 ```
 
-### Catalog Entry Tests
+#### Catalog Entry Tests
 
 Catalog entries are tested through `GenericWorkload` and `GenericMultiWorkload`. Create a temporary catalog directory in your test, write the manifest and service files, then verify loading and cloud-init output:
 
@@ -1079,106 +1171,21 @@ ExecStart=/usr/bin/curl {{url}}
 
 See `internal/workloads/catalog_test.go`, `generic_test.go`, and `generic_multi_test.go` for comprehensive examples covering error cases, multi-role entries, and param overrides.
 
-## SSH Credential Configuration
+---
 
-VMs created by virtwork can be configured with SSH access for debugging and inspection.
+## SSH and Audit Quick Reference
 
-### CLI Flags
+VMs can be configured with SSH access for debugging. Every execution is tracked in a local SQLite database for operational visibility. For the complete configuration reference (all flags, environment variables, YAML keys, and precedence rules), see [configuration.md](configuration.md).
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--ssh-user` | `virtwork` | Username for the VM user account |
-| `--ssh-password` | (none) | Password for the VM user account |
-| `--ssh-key` | (none) | Inline SSH public key (repeatable) |
-| `--ssh-key-file` | (none) | Path to SSH public key file (repeatable) |
+**SSH key flags:** `--ssh-user`, `--ssh-password`, `--ssh-key`, `--ssh-key-file`
 
-### Environment Variables
+When no SSH flags are provided, no user account is created in the VM. When any SSH credential is set, `BaseWorkload.BuildCloudConfig()` automatically injects a `users` block into the cloud-init output. Prefer SSH key-only authentication (`--ssh-key-file`) for anything beyond test/lab environments — passwords appear in plaintext in the VM spec.
 
-| Variable | Description |
-|----------|-------------|
-| `VIRTWORK_SSH_USER` | Same as `--ssh-user` |
-| `VIRTWORK_SSH_PASSWORD` | Same as `--ssh-password` |
-| `VIRTWORK_SSH_AUTHORIZED_KEYS` | Comma-separated SSH public keys |
+**Audit flags:** `--audit` (default: true), `--no-audit`, `--audit-db` (default: `virtwork.db`)
 
-### YAML Config
+Each execution gets a UUID applied as a `virtwork/run-id` label on all K8s resources. The audit database tracks execution parameters, workload details, VM details, resource details, and events across 5 tables. See [audit-schema.md](audit-schema.md) for the full schema reference.
 
-```yaml
-ssh_user: virtwork
-ssh_password: testpass
-ssh_authorized_keys:
-  - ssh-rsa AAAA...
-  - ssh-ed25519 AAAA...
-```
-
-> **Note:** `--ssh-key-file` is a CLI-only convenience; it has no YAML or env-var equivalent. To configure SSH keys via YAML, supply the full public-key strings in the `ssh_authorized_keys` list.
-
-### How It Works
-
-SSH credentials are a global, cross-cutting concern applied to all VMs:
-
-1. Config layer merges SSH fields from CLI/env/YAML with standard priority chain
-2. Orchestration passes SSH credentials to the workload registry via functional options
-3. `BaseWorkload` stores SSH fields and provides `BuildCloudConfig()` helper
-4. Each workload calls `w.BuildCloudConfig(opts)` — SSH user/password/keys are injected automatically
-5. The cloud-init output includes a `users` block with the configured credentials
-
-When no SSH flags are provided, no `users` block is emitted — backward compatible with pre-SSH behavior.
-
-## Audit Configuration
-
-Every execution is tracked in a local SQLite database for operational visibility and compliance auditing.
-
-### CLI Flags
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--audit` | `true` | Enable audit tracking (persistent flag) |
-| `--no-audit` | — | Disable audit tracking |
-| `--audit-db` | `virtwork.db` | Path to SQLite audit database file (persistent flag) |
-| `--run-id` | (none) | Target a specific run for cleanup (cleanup command only) |
-
-### Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `VIRTWORK_AUDIT` | Same as `--audit` (true/false) |
-| `VIRTWORK_AUDIT_DB` | Same as `--audit-db` |
-
-### How It Works
-
-1. Each `virtwork run` or `virtwork cleanup` generates a UUID
-2. The UUID is applied as a `virtwork/run-id` label on all K8s resources
-3. An `audit_log` row records execution parameters, timestamps, and outcome
-4. Detailed records are written to `workload_details`, `vm_details`, `resource_details`, and `events` tables
-5. During cleanup, `virtwork/run-id` labels are collected from resources and stored as a JSON array in `linked_run_ids`
-6. No SSH credentials are stored — only a `ssh_auth_configured` boolean
-
-### Querying the Audit Database
-
-```bash
-# Recent executions
-sqlite3 virtwork.db "SELECT id, run_id, command, status, started_at FROM audit_log ORDER BY id DESC LIMIT 10;"
-
-# VMs created in a specific run
-sqlite3 virtwork.db "SELECT vm_name, component, cpu_cores, memory, status FROM vm_details WHERE audit_id = 1;"
-
-# Events timeline
-sqlite3 virtwork.db "SELECT event_type, message, occurred_at FROM events WHERE audit_id = 1 ORDER BY occurred_at;"
-
-# Find cleanups that affected a specific run
-sqlite3 virtwork.db "SELECT * FROM audit_log WHERE command = 'cleanup' AND linked_run_ids LIKE '%<run-uuid>%';"
-```
-
-### Security Note
-
-SSH passwords configured via `--ssh-password` appear in two places as plaintext:
-
-1. **Process listing** — The password is visible in `ps aux` output when passed as a CLI flag. Use the `VIRTWORK_SSH_PASSWORD` environment variable or a YAML config file to avoid this.
-2. **KubeVirt VM spec** — The password appears as `plain_text_passwd` in the cloud-init userdata, which is stored in the VirtualMachine custom resource. Anyone with read access to VM objects in the namespace can see it via `oc get vm <name> -o yaml`.
-
-This is acceptable for test/lab environments. For production use, prefer SSH key-only authentication (`--ssh-key-file`) with no password.
-
-### Accessing VMs
+**Accessing VMs:**
 
 ```bash
 # Via virtctl (after deploying with --ssh-key-file)
@@ -1189,36 +1196,24 @@ oc port-forward vmi/virtwork-cpu-0 2222:22
 ssh -p 2222 virtwork@localhost
 ```
 
----
+**Querying the audit database:**
 
-## Testing Patterns
+```bash
+# Recent executions
+sqlite3 virtwork.db "SELECT id, run_id, command, status, started_at FROM audit_log ORDER BY id DESC LIMIT 10;"
 
-### YAML Assertion Pattern
+# VMs created in a specific run
+sqlite3 virtwork.db "SELECT vm_name, component, cpu_cores, memory, status FROM vm_details WHERE audit_id = 1;"
 
-When testing cloud-init or any YAML output, always parse the YAML string before asserting on values:
-
-```go
-// GOOD: Parse, then assert on structure
-userdata, err := wl.CloudInitUserdata()
-Expect(err).NotTo(HaveOccurred())
-
-var parsed map[string]interface{}
-Expect(yaml.Unmarshal([]byte(userdata), &parsed)).To(Succeed())
-Expect(parsed).To(HaveKey("packages"))
-
-// BAD: Assert on raw string (fragile — key order, whitespace, line folding)
-Expect(userdata).To(ContainSubstring("packages:\n- stress-ng"))
+# Events timeline
+sqlite3 virtwork.db "SELECT event_type, message, occurred_at FROM events WHERE audit_id = 1 ORDER BY occurred_at;"
 ```
 
-### Workload Systemd Unit Pattern
-
-Each workload writes a systemd `.service` file via cloud-init `write_files`, then enables/starts it via `runcmd`. This ensures workloads survive VM reboots and can be managed with standard systemd tooling.
-
-For workloads with initialization (database), use `ExecStartPre` for setup and `ExecStart` for the main loop. For workloads with multiple configurations (disk/fio), write job files as separate `write_files` entries.
-
 ---
 
-## Commit Conventions
+## Conventions and References
+
+### Commit Conventions
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/):
 
@@ -1233,23 +1228,27 @@ This project uses [Conventional Commits](https://www.conventionalcommits.org/):
 
 Every commit must include a DCO `Signed-off-by` trailer matching the author's identity; a `commit-msg` hook enforces this.
 
----
+### Related Documentation
 
-## Related Documentation
-
+**Architecture and Design:**
 - [architecture.md](architecture.md) — Layered architecture, mermaid diagrams, key design decisions
-- [configuration.md](configuration.md) — Complete config reference (flags, env vars, YAML keys, ConfigMap)
-- [audit-schema.md](audit-schema.md) — SQLite schema for the audit database
-- [chaos-workloads.md](chaos-workloads.md) — Operator guide for chaos-disk, chaos-network, chaos-process
+
+**Configuration:**
+- [configuration.md](configuration.md) — Complete config reference (flags, env vars, YAML keys, ConfigMap, SSH, audit)
+
+**Deployment:**
 - [deployment.md](deployment.md) — OpenShift deployment via Kustomize
-- [guide/03-adding-a-workload.md](guide/03-adding-a-workload.md) — TDD walkthrough that builds a new workload from scratch
 
-## Idempotency and Safety
+**Workloads:**
+- [chaos-workloads.md](chaos-workloads.md) — Operator guide for chaos-disk, chaos-network, chaos-process
 
-- `apierrors.IsAlreadyExists()` responses are treated as success (resource already exists)
-- `apierrors.IsTooManyRequests()` and server errors trigger retry with exponential backoff
-- `apierrors.IsNotFound()` is fatal for CRUD (CNV not installed?)
-- `apierrors.IsUnauthorized()` / `apierrors.IsForbidden()` are fatal (auth errors)
-- All created resources are labeled with `app.kubernetes.io/managed-by: virtwork` for cleanup tracking
-- `--dry-run` prints specs without any cluster interaction
-- OpenShift HAProxy load balancers may drop the first TLS connection when connection pools are cold, causing transient failures on the first API call after an idle period. The retry logic (backoff on `IsTooManyRequests()` and server errors) covers this. If running against remote clusters and seeing intermittent first-call failures, this is expected behavior — the retry will succeed.
+**Audit:**
+- [audit-schema.md](audit-schema.md) — SQLite schema for the audit database
+
+**Guides:**
+- [guide/03-adding-a-workload.md](guide/03-adding-a-workload.md) — TDD walkthrough that builds a new Go workload from scratch
+- [guide/04-adding-a-catalog-workload.md](guide/04-adding-a-catalog-workload.md) — Hands-on tutorial for creating catalog workloads without Go code
+
+**Historical (frozen — not updated piecemeal):**
+- `implementation-plan.md` — Original phased build plan
+- `openshift-virtualization-workload-automation.md` — Initial design document

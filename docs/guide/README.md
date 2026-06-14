@@ -16,8 +16,9 @@ This guide walks you through how virtwork works, how to deploy workloads with it
 ## Guide Sections
 
 1. **[How Virtwork Works](01-overview.md)** — Build a mental model of how the pieces fit together by tracing a single run through the system
-2. **[Demo: Deploying Workloads](02-deploying-workloads.md)** — Seven hands-on scenarios from dry run to SSH debugging to cleanup
+2. **[Demo: Deploying Workloads](02-deploying-workloads.md)** — Nine hands-on scenarios from dry run to SSH debugging to cleanup
 3. **[Tutorial: Building an HTTP Workload](03-adding-a-workload.md)** — Code a new workload type from scratch using TDD
+4. **[Tutorial: Adding a Catalog Workload](04-adding-a-catalog-workload.md)** — Create a custom workload without writing Go code, using systemd service files and a YAML manifest
 
 ## Reference Documentation
 

@@ -21,7 +21,7 @@ sequenceDiagram
 
     Note over Cobra: BindPersistentFlags registers:<br/>--namespace, --kubeconfig, --config,<br/>--verbose, --audit, --no-audit, --audit-db
 
-    Note over Cobra: BindRunFlags registers:<br/>--workloads, --vm-count, --cpu-cores,<br/>--memory, --disk-size, --container-disk-image,<br/>--dry-run, --no-wait, --timeout,<br/>--ssh-user, --ssh-password, --ssh-key,<br/>--ssh-key-file, --vm-concurrency
+    Note over Cobra: BindRunFlags registers:<br/>--workloads, --vm-count, --cpu-cores,<br/>--memory, --disk-size, --container-disk-image,<br/>--dry-run, --no-wait, --timeout,<br/>--ssh-user, --ssh-password, --ssh-key,<br/>--ssh-key-file, --vm-concurrency,<br/>--params, --catalog-dir, --from-catalog
 
     Cobra ->> Viper: LoadConfig(cmd) begins
 
@@ -65,7 +65,7 @@ sequenceDiagram
 
     Note over Viper, Config: Step 5 — Assemble Config struct from resolved values
     Viper ->> Config: Build Config{}
-    Note right of Config: Namespace: resolved value<br/>ContainerDiskImage: resolved value<br/>DataDiskSize: resolved value<br/>CPUCores: resolved value<br/>Memory: resolved value<br/>KubeconfigPath: resolved value<br/>SSHUser, SSHPassword<br/>WaitForReady, ReadyTimeoutSeconds<br/>DryRun, Verbose<br/>AuditEnabled, AuditDBPath<br/>VMConcurrency
+    Note right of Config: Namespace: resolved value<br/>ContainerDiskImage: resolved value<br/>DataDiskSize: resolved value<br/>CPUCores: resolved value<br/>Memory: resolved value<br/>KubeconfigPath: resolved value<br/>SSHUser, SSHPassword<br/>WaitForReady, ReadyTimeoutSeconds<br/>DryRun, Verbose<br/>AuditEnabled, AuditDBPath<br/>VMConcurrency<br/>FromCatalog: []string<br/>CatalogDir: string
 
     %% ─── STEP 6: SSH KEY RESOLUTION ─────────────────────────────
 
@@ -92,6 +92,9 @@ sequenceDiagram
 
     Viper ->> Config: Unmarshal workloads map from config file
     Note right of Config: Workloads: map[string]WorkloadConfig<br/>Each entry has: Enabled, VMCount,<br/>CPUCores, Memory, Params
+
+    Note over Cobra, Config: Params resolution (--params flag)
+    Note right of Config: --params parses workload.key=value pairs<br/>via ParseParams() into map[workload]map[key]value<br/>Merged into each WorkloadConfig.Params map<br/>Validated against ParamSchema at deploy time
 
     %% ─── STEP 8: VALIDATION ─────────────────────────────────────
 

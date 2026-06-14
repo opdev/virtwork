@@ -42,7 +42,7 @@ erDiagram
     workload_details {
         INTEGER id PK
         INTEGER audit_id FK
-        TEXT    workload_type "cpu, tps, chaos-disk, ..."
+        TEXT    workload_type "cpu, tps, chaos-disk, catalog entries, ..."
         INTEGER vm_count
         INTEGER cpu_cores
         TEXT    memory
@@ -68,7 +68,7 @@ erDiagram
     resource_details {
         INTEGER id PK
         INTEGER audit_id FK
-        TEXT    resource_type "Service | Secret"
+        TEXT    resource_type "Service | Secret | DataVolume | PVC"
         TEXT    resource_name
         TEXT    status "created | deleted"
     }
@@ -114,6 +114,8 @@ erDiagram
 | `vms_deleted` | INTEGER | Cleanup only: count from `CleanupResult` |
 | `services_deleted` | INTEGER | Cleanup only |
 | `secrets_deleted` | INTEGER | Cleanup only |
+| `dvs_deleted` | INTEGER | Cleanup only: DataVolumes deleted |
+| `pvcs_deleted` | INTEGER | Cleanup only: PersistentVolumeClaims deleted |
 | `namespace_deleted` | INTEGER | Cleanup only: 0 or 1 |
 | `started_at` | TEXT NOT NULL | ISO 8601 timestamp |
 | `completed_at` | TEXT | NULL while in flight |
@@ -127,14 +129,14 @@ Indexes: `started_at`, `namespace`, `status`, `run_id`.
 |---|---|---|
 | `id` | INTEGER PK | |
 | `audit_id` | INTEGER NOT NULL | FK → `audit_log.id` |
-| `workload_type` | TEXT NOT NULL | `cpu`, `memory`, `disk`, `database`, `network`, `tps`, `chaos-disk`, `chaos-network`, `chaos-process` |
+| `workload_type` | TEXT NOT NULL | Built-in: `cpu`, `memory`, `disk`, `database`, `network`, `tps`, `chaos-disk`, `chaos-network`, `chaos-process`. Catalog entries use their directory name (e.g., `my-stress`). |
 | `enabled` | INTEGER NOT NULL | 0 or 1 (always 1 in current orchestration) |
 | `vm_count` | INTEGER NOT NULL | Reported by `Workload.VMCount()` — `N` for single-VM, sum of `RoleDistribution()` counts for multi-VM |
 | `cpu_cores` | INTEGER NOT NULL | Effective per-VM CPU cores |
 | `memory` | TEXT NOT NULL | Effective per-VM memory (e.g., `2Gi`) |
 | `has_data_disk` | INTEGER NOT NULL | 1 when `DataVolumeTemplates()` is non-empty |
 | `data_disk_size` | TEXT | NULL when `has_data_disk = 0` |
-| `requires_service` | INTEGER NOT NULL | 1 for multi-VM workloads (network, tps) |
+| `requires_service` | INTEGER NOT NULL | 1 when the workload declares a K8s Service (built-in: network, tps; catalog: any entry with a `service:` block) |
 | `status` | TEXT NOT NULL | `pending` → `created` (after all VMs succeed) or `failed` (on VM creation or readiness error) |
 
 Indexes: `audit_id`, `workload_type`.
@@ -171,7 +173,7 @@ Tracks Services and Secrets created by orchestration. (VMs go in `vm_details`.)
 |---|---|---|
 | `id` | INTEGER PK | |
 | `audit_id` | INTEGER NOT NULL | FK → `audit_log.id` |
-| `resource_type` | TEXT NOT NULL | `Service` or `Secret` |
+| `resource_type` | TEXT NOT NULL | `Service`, `Secret`, `DataVolume`, or `PersistentVolumeClaim` |
 | `resource_name` | TEXT NOT NULL | e.g., `virtwork-iperf3-server`, `virtwork-cpu-0-cloudinit` |
 | `namespace` | TEXT NOT NULL | |
 | `status` | TEXT NOT NULL | `created` or `deleted` |

@@ -15,7 +15,7 @@ sequenceDiagram
 
     Note over User, Cluster: virtwork run
 
-    User ->> CLI: virtwork run --workloads cpu,network ...
+    User ->> CLI: virtwork run --workloads cpu --from-catalog my-stress ...
     CLI ->> Config: Load config (flags > env > file > defaults)
     Config -->> CLI: Config with workloads, VM specs, SSH creds
     CLI ->> CLI: Validate workload names against registry
@@ -31,6 +31,10 @@ sequenceDiagram
     CLI ->> Orchestrator: Run(workloads, runID)
 
     Note over Orchestrator, Cluster: Orchestration phases
+    opt --from-catalog entries configured
+        Orchestrator ->> Orchestrator: Load catalog entries
+        Note right of Orchestrator: LoadCatalogEntry() for each name<br/>Inject into registry as RegistryEntry
+    end
     Orchestrator ->> Orchestrator: Plan VMs (resolve workloads, build specs)
     Orchestrator ->> Cluster: Ensure namespace exists
     Orchestrator ->> Cluster: Create services (for multi-VM workloads)

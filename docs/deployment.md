@@ -142,7 +142,7 @@ The ClusterRole `virtwork` grants:
 | `kubevirt.io` | `virtualmachines` | `create`, `delete`, `get`, `list` | Full VM lifecycle |
 | `kubevirt.io` | `virtualmachineinstances` | `get`, `list` | Readiness polling (`GetVMIPhase`) |
 | `cdi.kubevirt.io` | `datavolumes` | `create`, `delete`, `get`, `list` | DataVolumes are created via embedded `DataVolumeTemplates` in VMs |
-| `""` (core) | `services` | `create`, `delete`, `get`, `list` | Multi-VM workloads (network, tps) need ClusterIP Services |
+| `""` (core) | `services` | `create`, `delete`, `get`, `list` | Workloads that declare a K8s Service (built-in: network, tps; catalog: any entry with a `service:` block) |
 | `""` (core) | `secrets` | `create`, `delete`, `get`, `list` | Cloud-init userdata Secrets (one per VM) |
 
 This is a ClusterRole — not a Role — because `namespaces` are cluster-scoped. Permissions are intentionally broad to support cross-namespace test setups; tighten the binding to a single namespace if your environment requires it.

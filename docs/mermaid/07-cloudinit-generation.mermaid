@@ -122,3 +122,47 @@ sequenceDiagram
 
     Note over Orch: Cloud-init delivery to VM
     Note right of Orch: Cloud-init YAML stored as K8s Secret:<br/>  Name: {vmName}-cloudinit<br/>  StringData["userdata"]: YAML content<br/>  Size limit: ≤ 1 MiB<br/><br/>VM references secret via:<br/>  CloudInitNoCloud.UserDataSecretRef<br/><br/>KubeVirt injects as NoCloud datasource<br/>at VM boot time
+
+    %% ─── CATALOG WORKLOAD: SINGLE-ROLE (GenericWorkload) ────────
+
+    Note over Orch, YAML: Catalog single-role cloud-init (GenericWorkload)
+
+    Orch ->> WL: CloudInitUserdata()
+    WL ->> WL: Sort service files alphabetically
+    WL ->> WL: For each param in schema:<br/>strings.ReplaceAll(content, "{{key}}", GetParam(key))
+    Note right of WL: {{threads}} → "4", {{time}} → "0"<br/>User overrides via --params take precedence
+
+    opt Storage declared in workload.yaml
+        WL ->> WL: Generate diskSetupScript(serial, mount) for each storage entry
+        Note right of WL: Script: wait for /dev/disk/by-id/virtio-{serial}<br/>Format with XFS if empty<br/>Mount at {mount}<br/>Write /etc/fstab entry
+    end
+
+    WL ->> Base: BuildCloudConfig(opts)
+    Note right of WL: Packages: from manifest<br/>WriteFiles: [disk setup scripts, substituted service files]<br/>RunCmd: [disk setup, daemon-reload, enable services]
+    Base ->> CI: BuildCloudConfig(opts)
+    CI -->> Orch: catalog single-role cloud-init YAML
+
+    %% ─── CATALOG WORKLOAD: MULTI-ROLE (GenericMultiWorkload) ────
+
+    Note over Orch, YAML: Catalog multi-role cloud-init (GenericMultiWorkload)
+
+    Orch ->> WL: UserdataForRole("server", namespace)
+    WL ->> WL: Look up service file by role name (not filename)
+    WL ->> WL: Substitute {{key}} params in role's service content
+    Note right of WL: Each role gets only its own .service file<br/>server → server.service content<br/>client → client.service content
+
+    opt Storage declared
+        WL ->> WL: Inject diskSetupScript for each storage entry
+    end
+
+    WL ->> Base: BuildCloudConfig(roleOpts)
+    Base ->> CI: BuildCloudConfig(opts)
+    CI -->> Orch: server cloud-init YAML
+
+    Orch ->> WL: UserdataForRole("client", namespace)
+    WL ->> WL: Same substitution flow for client role
+    WL ->> Base: BuildCloudConfig(clientOpts)
+    Base ->> CI: BuildCloudConfig(opts)
+    CI -->> Orch: client cloud-init YAML
+
+    Note over Orch: Orchestrator dispatches UserdataForRole() per role,<br/>same as built-in MultiVMWorkload (network, tps)

@@ -1,6 +1,6 @@
 # Demo: Deploying Workloads
 
-This guide walks through seven realistic scenarios, from previewing what virtwork would create to SSH debugging inside a running VM. Each scenario shows the commands and the expected output.
+This guide walks through nine realistic scenarios, from previewing what virtwork would create to SSH debugging inside a running VM. Each scenario shows the commands and the expected output.
 
 ## Prerequisites
 

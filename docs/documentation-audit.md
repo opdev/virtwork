@@ -22,6 +22,8 @@ This runbook describes how to check whether the project documentation is in sync
 | `docs/guide/01-overview.md` | Workload interface listing, complexity table, MultiVMWorkload description, "Finding Your Way" code pointers | `internal/workloads/workload.go` interfaces, actual file locations |
 | `docs/guide/02-deploying-workloads.md` | CLI output format, workload names and VM counts, troubleshooting tips | Actual `--dry-run` output, `workloads.DefaultRegistry()` |
 | `docs/guide/03-adding-a-workload.md` | Registry registration steps, interface signatures, code examples, test count references, multi-VM checklist | `internal/workloads/registry.go`, `internal/workloads/workload.go`, actual registry entry count |
+| `docs/guide/04-adding-a-catalog-workload.md` | Catalog directory layout, workload.yaml schema, param substitution, storage/service fields, validation errors | `internal/workloads/catalog.go` (`CatalogManifest`, `LoadCatalogEntry`), `internal/workloads/generic.go`, `internal/workloads/generic_multi.go` |
+| `docs/chaos-workloads.md` | Chaos workload behavior, param keys, exclusion list, dependencies | `internal/workloads/chaos_disk.go`, `internal/workloads/chaos_network.go`, `internal/workloads/chaos_process.go`, param schemas in each |
 | `docs/configuration.md` | Every CLI flag, env var, YAML key | `internal/config/config.go`, `cmd/virtwork/main.go` flag bindings |
 | `docs/deployment.md` | Kustomize manifest inventory, image references | `deploy/` directory, `Dockerfile` |
 | `docs/development.md` | Build commands, test commands, workload addition steps | `Makefile`, `go.mod`, current test patterns |
@@ -85,7 +87,7 @@ diff <(ls internal/ | sort) <(grep -ohP 'internal/\K[a-z]+' docs/architecture.md
 ### Registry and Workload Count
 
 ```bash
-# Actual workload count
+# Actual built-in workload count (catalog entries are injected at runtime and won't appear here)
 grep -c 'func(cfg config.WorkloadConfig' internal/workloads/registry.go
 
 # Counts mentioned in docs
@@ -129,6 +131,7 @@ These are the changes most likely to cause documentation drift, based on project
 | Build system change (Go version, CGO, base image) | `README.md` prerequisites + build section, `docs/architecture.md` Dockerfile entry, `docs/guide/README.md`, `docs/guide/03-adding-a-workload.md` prerequisites |
 | Orchestration refactor (who calls what) | `docs/architecture.md` flowcharts + concurrency table + dependency diagram, `docs/guide/01-overview.md` code pointer table |
 | Audit schema change | `docs/audit-schema.md`, `docs/architecture.md` project structure |
+| Catalog schema change (new `workload.yaml` field, new validation rule) | `docs/development.md` catalog section, `docs/guide/04-adding-a-catalog-workload.md`, `docs/configuration.md` |
 
 ## Workflow
 
