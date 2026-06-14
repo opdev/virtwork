@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -143,6 +144,39 @@ func (e *CatalogEntry) Factory() WorkloadFactory {
 		return NewGenericWorkload(cfg, entry, opts.Namespace,
 			opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
 	}
+}
+
+var placeholderRe = regexp.MustCompile(`\{\{([^}]+)\}\}`)
+
+func ValidatePlaceholders(entry *CatalogEntry) (errs []string, warnings []string) {
+	declaredKeys := make(map[string]bool, len(entry.Manifest.Params))
+	for _, p := range entry.Manifest.Params {
+		declaredKeys[p.Key] = true
+	}
+
+	usedKeys := make(map[string]bool)
+	for name, content := range entry.ServiceFiles {
+		for _, match := range placeholderRe.FindAllStringSubmatch(content, -1) {
+			key := match[1]
+			usedKeys[key] = true
+			if !declaredKeys[key] {
+				errs = append(
+					errs,
+					fmt.Sprintf("placeholder {{%s}} in %s does not match any declared param", key, name),
+				)
+			}
+		}
+	}
+
+	for key := range declaredKeys {
+		if !usedKeys[key] {
+			warnings = append(warnings, fmt.Sprintf("declared param %q is not used in any service file", key))
+		}
+	}
+
+	sort.Strings(errs)
+	sort.Strings(warnings)
+	return errs, warnings
 }
 
 var reservedDiskNames = map[string]bool{
