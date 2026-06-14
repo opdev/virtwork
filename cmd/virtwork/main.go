@@ -55,7 +55,7 @@ realistic CPU, memory, database, network, and disk I/O metrics.`,
 
 	config.BindPersistentFlags(rootCmd)
 
-	rootCmd.AddCommand(newRunCmd(), newCleanupCmd(), newVersionCmd())
+	rootCmd.AddCommand(newRunCmd(), newCleanupCmd(), newValidateCmd(), newVersionCmd())
 	return rootCmd
 }
 
@@ -113,6 +113,83 @@ func newCleanupCmd() *cobra.Command {
 
 	config.BindCleanupFlags(cmd)
 	return cmd
+}
+
+func newValidateCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "validate [entry-names...]",
+		Short: "Validate catalog entries",
+		Long: `Check that catalog entries conform to the expected schema and structure.
+Validates YAML parsing, service file presence, storage constraints,
+service port ranges, role-to-service alignment, and placeholder consistency.`,
+		RunE: validateE,
+	}
+
+	config.BindValidateFlags(cmd)
+
+	return cmd
+}
+
+func validateE(cmd *cobra.Command, args []string) error {
+	catalogDir, _ := cmd.Flags().GetString("catalog-dir")
+	if catalogDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("resolving home directory: %w", err)
+		}
+		catalogDir = home + "/.virtwork/catalog"
+	}
+
+	entries, err := os.ReadDir(catalogDir)
+	if err != nil {
+		return fmt.Errorf("reading catalog directory %s: %w", catalogDir, err)
+	}
+
+	var names []string
+	if len(args) > 0 {
+		names = args
+	} else {
+		for _, d := range entries {
+			if d.IsDir() {
+				names = append(names, d.Name())
+			}
+		}
+	}
+
+	if len(names) == 0 {
+		return fmt.Errorf("no catalog entries found in %s", catalogDir)
+	}
+
+	var failed int
+	for _, name := range names {
+		entry, loadErr := workloads.LoadCatalogEntry(catalogDir, name)
+		if loadErr != nil {
+			fmt.Fprintf(cmd.OutOrStdout(), "FAIL  %s: %v\n", name, loadErr)
+			failed++
+			continue
+		}
+
+		errs, warnings := workloads.ValidatePlaceholders(entry)
+
+		for _, w := range warnings {
+			fmt.Fprintf(cmd.OutOrStdout(), "WARN  %s: %s\n", name, w)
+		}
+
+		if len(errs) > 0 {
+			for _, e := range errs {
+				fmt.Fprintf(cmd.OutOrStdout(), "FAIL  %s: %s\n", name, e)
+			}
+			failed++
+			continue
+		}
+
+		fmt.Fprintf(cmd.OutOrStdout(), "OK    %s\n", name)
+	}
+
+	if failed > 0 {
+		return fmt.Errorf("%d of %d entries failed validation", failed, len(names))
+	}
+	return nil
 }
 
 func initAuditor(cmd *cobra.Command, cfg *config.Config) (audit.Auditor, error) {
