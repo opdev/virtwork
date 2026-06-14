@@ -347,5 +347,3 @@ var _ = Describe("Validate command flags", func() {
 		Expect(val).To(BeEmpty())
 	})
 })
-
-

@@ -17,7 +17,7 @@ var _ = Describe("validateE", func() {
 
 	writeFile := func(dir, name, content string) {
 		Expect(os.MkdirAll(dir, 0o750)).To(Succeed())
-		Expect(os.WriteFile(filepath.Join(dir, name), []byte(content), 0o640)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600)).To(Succeed())
 	}
 
 	BeforeEach(func() {
@@ -80,7 +80,11 @@ var _ = Describe("validateE", func() {
 
 	It("should report placeholder warnings without failing", func() {
 		entryDir := filepath.Join(catalogDir, "warn")
-		writeFile(entryDir, "workload.yaml", "description: test\nparams:\n  - key: unused\n    type: string\n    default: x\n")
+		writeFile(
+			entryDir,
+			"workload.yaml",
+			"description: test\nparams:\n  - key: unused\n    type: string\n    default: x\n",
+		)
 		writeFile(entryDir, "workload.service", "[Service]\nExecStart=/bin/test\n")
 
 		var out bytes.Buffer
