@@ -1,0 +1,53 @@
+description: "Redis server/client benchmark with persistent storage — multi-VM workload"
+
+packages:
+  - redis
+
+params:
+  - key: num-clients
+    type: int
+    default: "10"
+    desc: "Number of concurrent redis-benchmark clients (-c)"
+  - key: num-requests
+    type: int
+    default: "100000"
+    desc: "Total requests per benchmark iteration (-n)"
+  - key: pipeline-size
+    type: int
+    default: "1"
+    desc: "Pipelining factor — requests per batch (-P)"
+  - key: test-mode
+    type: string
+    default: "set,get"
+    desc: "Benchmark commands to run (-t), e.g. set,get,incr,lpush"
+  - key: data-size
+    type: int
+    default: "256"
+    desc: "Value size in bytes (-d)"
+  - key: loop-delay
+    type: int
+    default: "30"
+    desc: "Delay in seconds between benchmark iterations"
+  - key: maxmemory
+    type: string
+    default: "256mb"
+    desc: "Redis server maxmemory limit (e.g. 128mb, 1gb)"
+
+roles:
+  - name: server
+    vm-count: 1
+  - name: client
+    vm-count: 1
+
+storage:
+  - name: redis-data
+    size: 10Gi
+    serial: vw-redis
+    mount: /var/lib/redis
+
+service:
+  ports:
+    - name: redis
+      port: 6379
+      protocol: TCP
+  selector-role: server

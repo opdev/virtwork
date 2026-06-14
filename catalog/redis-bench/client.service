@@ -1,0 +1,12 @@
+[Unit]
+Description=Virtwork Redis benchmark client
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/bin/bash -c 'while true; do redis-benchmark -h virtwork-redis-bench -p 6379 -c {{num-clients}} -n {{num-requests}} -d {{data-size}} -P {{pipeline-size}} -t {{test-mode}} && sleep {{loop-delay}}; done'
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
