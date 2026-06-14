@@ -39,7 +39,16 @@ func newRootCmd() *cobra.Command {
 	}
 	config.BindCleanupFlags(cleanupCmd)
 
-	rootCmd.AddCommand(runCmd, cleanupCmd)
+	validateCmd := &cobra.Command{
+		Use:   "validate [entry-names...]",
+		Short: "Validate catalog entries",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return nil
+		},
+	}
+	config.BindValidateFlags(validateCmd)
+
+	rootCmd.AddCommand(runCmd, cleanupCmd, validateCmd)
 	return rootCmd
 }
 
@@ -310,3 +319,33 @@ var _ = Describe("Cleanup command flags", func() {
 		Expect(val).To(BeTrue())
 	})
 })
+
+var _ = Describe("Validate command flags", func() {
+	var rootCmd *cobra.Command
+
+	BeforeEach(func() {
+		rootCmd = newRootCmd()
+	})
+
+	It("should accept --catalog-dir flag", func() {
+		rootCmd.SetArgs([]string{"validate", "--catalog-dir", "/tmp/my-catalog"})
+		Expect(rootCmd.Execute()).To(Succeed())
+
+		validateCmd, _, _ := rootCmd.Find([]string{"validate"})
+		val, err := validateCmd.Flags().GetString("catalog-dir")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(val).To(Equal("/tmp/my-catalog"))
+	})
+
+	It("should default catalog-dir to empty string", func() {
+		rootCmd.SetArgs([]string{"validate"})
+		Expect(rootCmd.Execute()).To(Succeed())
+
+		validateCmd, _, _ := rootCmd.Find([]string{"validate"})
+		val, err := validateCmd.Flags().GetString("catalog-dir")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(val).To(BeEmpty())
+	})
+})
+
+

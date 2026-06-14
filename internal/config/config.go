@@ -151,6 +151,10 @@ func BindCleanupFlags(cmd *cobra.Command) {
 	f.BoolP("yes", "y", false, "Skip confirmation prompt and proceed with cleanup")
 }
 
+func BindValidateFlags(cmd *cobra.Command) {
+	cmd.Flags().String("catalog-dir", "", "Path to catalog directory (default ~/.virtwork/catalog)")
+}
+
 // LoadConfig loads configuration from flags, environment variables, config file,
 // and defaults using the Viper priority chain: flags > env > file > defaults.
 func LoadConfig(cmd *cobra.Command) (*Config, error) {
