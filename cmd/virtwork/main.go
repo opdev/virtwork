@@ -28,13 +28,13 @@ import (
 )
 
 var (
-	version = ""
-	commit  = ""
-	date    = ""
-
-	clusterConnect = cluster.Connect
-
-	ErrNoWorkloads = errors.New("no workloads specified: use --workloads or --from-catalog")
+	version             = ""
+	commit              = ""
+	date                = ""
+	clusterConnect      = cluster.Connect
+	ErrNoEntries        = errors.New("no catalog entries found")
+	ErrNoWorkloads      = errors.New("no workloads specified: use --workloads or --from-catalog")
+	ErrValidationFailed = errors.New("catalog validation failed")
 )
 
 func main() {
@@ -157,14 +157,14 @@ func validateE(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(names) == 0 {
-		return fmt.Errorf("no catalog entries found in %s", catalogDir)
+		return fmt.Errorf("%s: %w", catalogDir, ErrNoEntries)
 	}
 
 	var failed int
 	for _, name := range names {
 		entry, loadErr := workloads.LoadCatalogEntry(catalogDir, name)
 		if loadErr != nil {
-			fmt.Fprintf(cmd.OutOrStdout(), "FAIL  %s: %v\n", name, loadErr)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "FAIL  %s: %v\n", name, loadErr)
 			failed++
 			continue
 		}
@@ -172,22 +172,22 @@ func validateE(cmd *cobra.Command, args []string) error {
 		errs, warnings := workloads.ValidatePlaceholders(entry)
 
 		for _, w := range warnings {
-			fmt.Fprintf(cmd.OutOrStdout(), "WARN  %s: %s\n", name, w)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "WARN  %s: %s\n", name, w)
 		}
 
 		if len(errs) > 0 {
 			for _, e := range errs {
-				fmt.Fprintf(cmd.OutOrStdout(), "FAIL  %s: %s\n", name, e)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "FAIL  %s: %s\n", name, e)
 			}
 			failed++
 			continue
 		}
 
-		fmt.Fprintf(cmd.OutOrStdout(), "OK    %s\n", name)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "OK    %s\n", name)
 	}
 
 	if failed > 0 {
-		return fmt.Errorf("%d of %d entries failed validation", failed, len(names))
+		return fmt.Errorf("%d of %d entries: %w", failed, len(names), ErrValidationFailed)
 	}
 	return nil
 }
