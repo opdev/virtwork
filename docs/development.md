@@ -427,8 +427,8 @@ internal/           # Application packages (not importable externally)
   wait/             # VMI readiness polling (errgroup)
   cleanup/          # Label-based teardown (VMs, Services, Secrets)
   audit/            # SQLite audit tracking (Auditor interface, schema, records)
-  orchestrator/     # Run + Cleanup orchestrators (errgroup concurrency, VM creation flow)
-  workloads/        # Workload + MultiVMWorkload interfaces, nine implementations, registry
+  orchestrator/     # Run + Cleanup orchestrators (errgroup concurrency, catalog loading)
+  workloads/        # Workload + MultiVMWorkload interfaces, built-in + generic implementations, registry, catalog
   testutil/         # Shared test helpers for integration and E2E tests
 tests/              # Tests requiring external infrastructure
   e2e/              # E2E acceptance tests (//go:build e2e)
@@ -540,21 +540,24 @@ func (w *MyWorkload) UserdataForRole(role string, namespace string) (string, err
 
 ### 3. Register the Workload
 
-Add the constructor to `internal/workloads/registry.go`. `DefaultRegistry()` currently has nine entries; add yours alongside:
+Add a `RegistryEntry` to `internal/workloads/registry.go`. Each entry pairs a `WorkloadFactory` with a `ParamSchema` so the registry can validate user-supplied params at deploy time. `DefaultRegistry()` currently has nine entries; add yours alongside:
 
 ```go
 func DefaultRegistry() Registry {
     return Registry{
-        "cpu":           func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewCPUWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
-        "memory":        func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewMemoryWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
-        "disk":          func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewDiskWorkload(cfg, opts.DataDiskSize, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
-        "database":      func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewDatabaseWorkload(cfg, opts.DataDiskSize, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
-        "network":       func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewNetworkWorkload(cfg, opts.Namespace, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
-        "tps":           func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewTPSWorkload(cfg, opts.Namespace, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
-        "chaos-disk":    func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewChaosDiskWorkload(cfg, opts.DataDiskSize, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
-        "chaos-network": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewChaosNetworkWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
-        "chaos-process": func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewChaosProcessWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
-        "my-workload":   func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload { return NewMyWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys) },
+        "cpu": {
+            Factory: func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
+                return NewCPUWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+            },
+            ParamSchema: CPUParamSchema,
+        },
+        // ... other built-in entries ...
+        "my-workload": {
+            Factory: func(cfg config.WorkloadConfig, opts *RegistryOpts) Workload {
+                return NewMyWorkload(cfg, opts.SSHUser, opts.SSHPassword, opts.SSHAuthorizedKeys)
+            },
+            ParamSchema: MyParamSchema,
+        },
     }
 }
 ```
@@ -645,7 +648,7 @@ func (w *MyWorkload) CloudInitUserdata() (string, error) {
 
 `GetParam` panics on unknown keys — this is intentional; it catches typos in workload code at test time. The orchestrator calls `registry.ValidateParams()` before constructing workloads, rejecting unknown keys (with "did you mean?" suggestions) and type-mismatched values at deploy time.
 
-Five param types are available: `ParamString`, `ParamInt`, `ParamBool`, `ParamList` (semicolon-separated), and `ParamDict` (semicolon-separated `key=value` pairs). Register your workload in `DefaultRegistry()` as a `RegistryEntry` pairing the factory with the schema so validation applies automatically.
+Five param types are available: `ParamString`, `ParamInt`, `ParamBool`, `ParamList` (semicolon-separated), and `ParamDict` (semicolon-separated `key=value` pairs). Register your workload in `DefaultRegistry()` as a `RegistryEntry` pairing the factory with the schema so validation applies automatically. Catalog workloads declare the same param schema in `workload.yaml` and use `{{key}}` placeholders in their service files instead of `GetParam()` calls — see [Adding a Catalog Workload](#adding-a-catalog-workload) for details.
 
 Every workload should have a `Context("param wiring")` test block with three cases:
 
@@ -669,7 +672,333 @@ logger.Info("vm created",
 
 The output is JSON. `--verbose` flips the level from `INFO` to `DEBUG`. Workload constructors and the pure data layer (`internal/workloads`, `internal/cloudinit`) should not log — they remain pure data producers.
 
-### 4. Write Tests
+## Adding a Catalog Workload
+
+The catalog system lets users and operators add new workloads **without modifying Go code**. A catalog workload is a directory containing one or more systemd `.service` files and an optional `workload.yaml` manifest. At deploy time the orchestrator loads catalog entries, registers them alongside the built-in workloads, and creates VMs with the same cloud-init pipeline.
+
+Use the catalog when:
+- You want to deploy a custom workload without rebuilding the binary
+- You want to iterate on workload definitions without a Go development environment
+- You want to share workload definitions as portable directories
+
+Catalog entries also support declarative [storage](#storage-backed-catalog-entries) (DataVolumes, extra disks) and [K8s Services](#service-backed-catalog-entries) via the `workload.yaml` manifest — no Go code required for these either.
+
+### Catalog Directory Layout
+
+```
+~/.virtwork/catalog/          # default catalog-dir (override with --catalog-dir)
+├── my-stress/                # single-role entry
+│   ├── workload.yaml         # optional manifest (packages, params)
+│   └── workload.service      # systemd unit file
+└── my-benchmark/             # multi-role entry
+    ├── workload.yaml         # required for multi-role (declares roles)
+    ├── server.service        # one service file per role
+    └── client.service
+```
+
+Each subdirectory is a catalog entry. The directory name becomes the workload name.
+
+**Rules:**
+- At least one `*.service` file is required
+- Single-role entries: all `.service` files are written to every VM
+- Multi-role entries: each declared role must have a matching `{role}.service` file
+- `workload.yaml` is optional for single-role entries, required for multi-role entries
+
+### workload.yaml Schema
+
+```yaml
+description: "Human-readable description of the workload"
+
+packages:
+  - stress-ng          # system packages to install via cloud-init
+
+params:
+  - key: cpu-load      # parameter name (used as {{cpu-load}} in service files)
+    type: int           # string | int | bool | list | dict
+    default: "50"       # default value (always a string)
+    desc: "CPU load percentage for stress-ng"
+
+roles:                  # omit for single-role entries
+  - name: server
+    vm-count: 1         # 0 means "use the global --vm-count flag"
+  - name: client
+    vm-count: 2
+
+storage:                # optional — persistent volumes attached to VMs
+  - name: data          # DataVolume name (suffixed with VM name automatically)
+    size: 10Gi          # volume size
+    serial: vw-data     # virtio serial (device discovered via /dev/disk/by-id/virtio-<serial>)
+    mount: /mnt/data    # mount point inside the VM
+
+service:                # optional — K8s Service for inter-VM communication
+  ports:
+    - name: iperf       # port name
+      port: 5201        # port number
+      protocol: TCP     # TCP or UDP
+  selector-role: server # role whose VMs the Service selects (multi-role entries)
+```
+
+All fields are optional for single-role entries. When `roles:` is present the entry becomes multi-role, which requires a manifest and one `{role}.service` file per declared role.
+
+### Single-Role Entry
+
+A single-role catalog entry produces a `GenericWorkload` — one VM type running all the declared service files.
+
+**Example — a custom stress-ng workload:**
+
+```
+~/.virtwork/catalog/my-stress/
+├── workload.yaml
+└── workload.service
+```
+
+`workload.yaml`:
+```yaml
+description: "Custom CPU stress test"
+packages:
+  - stress-ng
+params:
+  - key: cpu-load
+    type: int
+    default: "50"
+    desc: "CPU load percentage"
+  - key: method
+    type: string
+    default: "all"
+    desc: "stress-ng CPU method"
+```
+
+`workload.service`:
+```ini
+[Unit]
+Description=Virtwork custom stress
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/stress-ng --cpu 0 --cpu-load {{cpu-load}} --cpu-method {{method}} --timeout 0
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Deploy it:**
+```bash
+virtwork run --from-catalog my-stress --dry-run
+virtwork run --from-catalog my-stress --params my-stress.cpu-load=75
+```
+
+The generated cloud-init will install `stress-ng`, write the service file to `/etc/systemd/system/workload.service`, substitute `{{cpu-load}}` and `{{method}}` with param values, and enable the service.
+
+### Multi-Role Entry
+
+A multi-role catalog entry produces a `GenericMultiWorkload` — multiple VM roles with per-role service files. This is the catalog equivalent of implementing the `MultiVMWorkload` interface.
+
+**Example — an iperf3 server/client benchmark:**
+
+```
+~/.virtwork/catalog/my-benchmark/
+├── workload.yaml
+├── server.service
+└── client.service
+```
+
+`workload.yaml`:
+```yaml
+description: "iperf3 server/client benchmark"
+packages:
+  - iperf3
+params:
+  - key: duration
+    type: int
+    default: "60"
+    desc: "Test duration in seconds"
+roles:
+  - name: server
+    vm-count: 1
+  - name: client
+    vm-count: 2
+```
+
+`server.service`:
+```ini
+[Unit]
+Description=iperf3 server
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/iperf3 -s
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`client.service`:
+```ini
+[Unit]
+Description=iperf3 client
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/iperf3 -c server -t {{duration}} --forceflush
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Deploy it:**
+```bash
+virtwork run --from-catalog my-benchmark --dry-run
+```
+
+This creates 3 VMs total (1 server + 2 clients). Each role gets its own cloud-init with only that role's service file.
+
+**VM count resolution:** If a role's `vm-count` is `0` (or omitted), the global `--vm-count` flag is used instead, with a minimum of 1 VM per role. Roles with an explicit `vm-count > 0` always use the manifest value.
+
+### Parameter Substitution
+
+Catalog workloads use `{{key}}` placeholders in service file content. At deploy time, each placeholder is replaced with:
+
+1. The user-supplied value (via `--params entry-name.key=value`), if provided
+2. The `default` from `workload.yaml`, otherwise
+
+This is the catalog equivalent of calling `w.GetParam("key")` in a Go workload. The same five param types are supported: `string`, `int`, `bool`, `list` (semicolon-separated), and `dict` (semicolon-separated `key=value` pairs). The orchestrator validates param types before VM creation, rejecting unknown keys with "did you mean?" suggestions.
+
+### Storage-Backed Catalog Entries
+
+Catalog entries can declare persistent storage via the `storage:` field in `workload.yaml`. Each storage entry creates a CDI DataVolume, attaches it as an extra disk, and injects a `diskSetupScript` into the cloud-init userdata that waits for the device, formats it with XFS if empty, mounts it, and writes an `/etc/fstab` entry for persistence across reboots.
+
+```yaml
+storage:
+  - name: data
+    size: 10Gi
+    serial: vw-data
+    mount: /mnt/data
+```
+
+**Field reference:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | DataVolume base name (automatically suffixed with the VM name to avoid collisions) |
+| `size` | Yes | Volume size (e.g., `10Gi`, `500Mi`) |
+| `serial` | Yes | Virtio serial — the in-VM device is discovered at `/dev/disk/by-id/virtio-<serial>`, which is deterministic across reboots |
+| `mount` | Yes | Mount point inside the VM (e.g., `/mnt/data`) |
+
+This is the catalog equivalent of overriding `DataVolumeTemplates()`, `ExtraDisks()`, and `ExtraVolumes()` in a built-in workload. The same serial-based discovery pattern used by `disk.go`, `database.go`, and `chaos_disk.go` is applied automatically.
+
+**Example — fio workload with persistent storage:**
+
+`workload.yaml`:
+```yaml
+description: "fio benchmark with persistent volume"
+packages:
+  - fio
+storage:
+  - name: virtwork-fio-data
+    size: 20Gi
+    serial: vw-fio
+    mount: /mnt/fio
+params:
+  - key: runtime
+    type: int
+    default: "300"
+    desc: "fio runtime in seconds"
+```
+
+`workload.service`:
+```ini
+[Unit]
+Description=fio benchmark
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/fio --name=randrw --directory=/mnt/fio --rw=randrw --bs=4k --size=1G --runtime={{runtime}} --time_based --ioengine=libaio --direct=1 --numjobs=4 --group_reporting
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Service-Backed Catalog Entries
+
+Catalog entries can declare a K8s Service via the `service:` field in `workload.yaml`. This creates a ClusterIP Service that other VMs (or pods) can reach via in-cluster DNS.
+
+```yaml
+service:
+  ports:
+    - name: iperf
+      port: 5201
+      protocol: TCP
+  selector-role: server
+```
+
+**Field reference:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `ports[].name` | Yes | Port name |
+| `ports[].port` | Yes | Port number |
+| `ports[].protocol` | Yes | `TCP` or `UDP` |
+| `selector-role` | No | For multi-role entries, the role whose VMs the Service selects. Omit for single-role entries (selects all VMs of this workload). |
+
+This is the catalog equivalent of overriding `RequiresService()` and `ServiceSpec()` in a built-in workload. Clients reach the service via `<workload-name>.<namespace>.svc.cluster.local`.
+
+### Mixing Built-in and Catalog Workloads
+
+Both `--workloads` and `--from-catalog` can be specified in the same invocation:
+
+```bash
+virtwork run --workloads cpu,memory --from-catalog my-stress --dry-run
+```
+
+**Behavior:**
+- If `--from-catalog` is set but `--workloads` is not explicitly provided, the default built-in workloads are cleared — only catalog entries run
+- If both flags are set, all specified workloads (built-in + catalog) run together
+- A catalog entry **cannot** shadow a built-in workload name (e.g., naming a catalog entry `cpu` produces an error)
+
+### CLI Flags and Configuration
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--catalog-dir` | `~/.virtwork/catalog` | Path to catalog directory |
+| `--from-catalog` | (none) | Catalog entry names to load (repeatable, comma-separated) |
+
+| Environment Variable | Description |
+|---------------------|-------------|
+| `VIRTWORK_FROM_CATALOG` | Same as `--from-catalog` |
+
+YAML config:
+```yaml
+catalog_dir: /path/to/catalog
+from_catalog:
+  - my-stress
+  - my-benchmark
+```
+
+### How It Works
+
+1. CLI parses `--from-catalog` and `--catalog-dir` into `Config.FromCatalog` and `Config.CatalogDir`
+2. The orchestrator starts with `DefaultRegistry()` (built-in workloads only)
+3. For each catalog entry name, `LoadCatalogEntry()` reads the directory, parses the manifest, and discovers service files
+4. `CatalogEntry.Factory()` returns a `WorkloadFactory` that produces either a `GenericWorkload` (single-role) or `GenericMultiWorkload` (multi-role)
+5. The entry is injected into the registry as a `RegistryEntry` with its factory and param schema
+6. From this point, catalog workloads follow the same VM planning, creation, and cloud-init pipeline as built-in workloads
+
+## Writing Tests for Workloads
+
+Whether adding a built-in workload or a catalog entry, write tests that cover the workload's cloud-init output and configuration.
+
+### Built-in Workload Tests
 
 Create `internal/workloads/my_workload_test.go` using Ginkgo:
 
@@ -701,6 +1030,54 @@ var _ = Describe("MyWorkload", func() {
     })
 })
 ```
+
+### Catalog Entry Tests
+
+Catalog entries are tested through `GenericWorkload` and `GenericMultiWorkload`. Create a temporary catalog directory in your test, write the manifest and service files, then verify loading and cloud-init output:
+
+```go
+var _ = Describe("My catalog entry", func() {
+    var catalogDir string
+
+    BeforeEach(func() {
+        catalogDir, _ = os.MkdirTemp("", "virtwork-catalog-*")
+        entryDir := filepath.Join(catalogDir, "my-entry")
+        os.MkdirAll(entryDir, 0o755)
+
+        os.WriteFile(filepath.Join(entryDir, "workload.yaml"), []byte(`
+description: "test entry"
+packages:
+  - curl
+params:
+  - key: url
+    type: string
+    default: "http://example.com"
+    desc: "Target URL"
+`), 0o644)
+
+        os.WriteFile(filepath.Join(entryDir, "workload.service"), []byte(`[Service]
+ExecStart=/usr/bin/curl {{url}}
+`), 0o644)
+    })
+
+    AfterEach(func() {
+        os.RemoveAll(catalogDir)
+    })
+
+    It("should load and substitute params", func() {
+        entry, err := workloads.LoadCatalogEntry(catalogDir, "my-entry")
+        Expect(err).NotTo(HaveOccurred())
+
+        factory := entry.Factory()
+        wl := factory(config.WorkloadConfig{CPUCores: 1, Memory: "1Gi"}, &workloads.RegistryOpts{})
+        userdata, err := wl.CloudInitUserdata()
+        Expect(err).NotTo(HaveOccurred())
+        Expect(userdata).To(ContainSubstring("http://example.com"))
+    })
+})
+```
+
+See `internal/workloads/catalog_test.go`, `generic_test.go`, and `generic_multi_test.go` for comprehensive examples covering error cases, multi-role entries, and param overrides.
 
 ## SSH Credential Configuration
 
