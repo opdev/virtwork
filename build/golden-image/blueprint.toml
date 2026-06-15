@@ -17,4 +17,8 @@ packages = [
   { name = "kernel-modules-extra" },
   { name = "netperf" },
   { name = "python3" },
+  { name = "procps-ng" },
+  { name = "curl" },
+  { name = "sysbench" },
+  { name = "redis" },
 ]

@@ -11,7 +11,7 @@ FROM scratch
 LABEL io.k8s.display-name="virtwork-disk" \
       io.k8s.description="Fedora container disk with virtwork workload tools pre-installed" \
       summary="Container disk for virtwork with CPU, memory, database, network, and disk tools" \
-      description="Pre-built Fedora container disk with stress-ng, fio, iperf3, postgresql-server, and chaos engineering tools for faster VM boot times" \
+      description="Pre-built Fedora container disk with stress-ng, fio, iperf3, postgresql-server, sysbench, redis, and chaos engineering tools for faster VM boot times" \
       name="virtwork-disk" \
       version="1.0" \
       maintainer="Red Hat Ecosystem Engineering"

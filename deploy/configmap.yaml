@@ -8,7 +8,7 @@ metadata:
     app.kubernetes.io/managed-by: virtwork
 data:
   VIRTWORK_NAMESPACE: "virtwork"
-  VIRTWORK_CONTAINER_DISK_IMAGE: "quay.io/containerdisks/fedora:41"
+  VIRTWORK_CONTAINER_DISK_IMAGE: "quay.io/containerdisks/fedora:42"
   VIRTWORK_DATA_DISK_SIZE: "10Gi"
   VIRTWORK_CPU_CORES: "2"
   VIRTWORK_MEMORY: "2Gi"

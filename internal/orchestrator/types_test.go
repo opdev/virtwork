@@ -120,7 +120,7 @@ var _ = Describe("VMPlan", func() {
 			VMSpec: &orchestrator.VMSpecInput{
 				Name:               "virtwork-cpu-0",
 				Namespace:          "virtwork",
-				ContainerDiskImage: "quay.io/containerdisks/fedora:41",
+				ContainerDiskImage: "quay.io/containerdisks/fedora:42",
 				CloudInitUserdata:  "#cloud-config\n",
 				CPUCores:           2,
 				Memory:             "2Gi",

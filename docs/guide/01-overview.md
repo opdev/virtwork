@@ -81,7 +81,7 @@ If SSH credentials were configured, a `users` section is appended with the SSH p
 
 The orchestrator takes the cloud-init YAML and combines it with the workload's resource requirements to build a KubeVirt `VirtualMachine` object. The key pieces:
 
-- **containerDisk** — The OS image (`quay.io/containerdisks/fedora:41` by default), pulled from a container registry. This is a read-only disk that provides the base operating system.
+- **containerDisk** — The OS image (`quay.io/containerdisks/fedora:42` by default), pulled from a container registry. This is a read-only disk that provides the base operating system.
 - **cloudInitNoCloud** — The cloud-init YAML from step 3, stored as a Kubernetes Secret and referenced by the VM spec.
 - **CPU and memory** — Set as resource requests on the VM's domain spec (default: 2 cores, 2Gi).
 - **Labels** — Every resource gets `app.kubernetes.io/managed-by: virtwork` and a unique `virtwork/run-id` UUID. These labels are how cleanup finds resources later.
@@ -127,7 +127,7 @@ Namespace:    virtwork
 VMs created:  1
 Services:     0
 Secrets:      1
-Image:        quay.io/containerdisks/fedora:41
+Image:        quay.io/containerdisks/fedora:42
 ==================================================
 ```
 

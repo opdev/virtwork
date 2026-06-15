@@ -46,7 +46,7 @@ These apply to both `virtwork run` and `virtwork cleanup`.
 | `--cpu-cores` | `VIRTWORK_CPU_CORES` | `cpu_cores` / `workloads.<name>.cpu_cores` | `2` | CPU cores per VM (per-workload override beats global) |
 | `--memory` | `VIRTWORK_MEMORY` | `memory` / `workloads.<name>.memory` | `2Gi` | Memory per VM |
 | `--disk-size` | `VIRTWORK_DATA_DISK_SIZE` | `data_disk_size` | `10Gi` | Data-disk size for storage-backed workloads (disk, database, chaos-disk) |
-| `--container-disk-image` | `VIRTWORK_CONTAINER_DISK_IMAGE` | `container_disk_image` | `quay.io/containerdisks/fedora:41` | Boot image for the VMs; set to the golden image for faster boot |
+| `--container-disk-image` | `VIRTWORK_CONTAINER_DISK_IMAGE` | `container_disk_image` | `quay.io/containerdisks/fedora:42` | Boot image for the VMs; set to the golden image for faster boot |
 | `--dry-run` | `VIRTWORK_DRY_RUN` | `dry_run` | `false` | Print the VM YAML and exit; do not connect to a cluster |
 | `--no-wait` | — | (sets `wait_for_ready=false`) | _unset_ | Skip readiness polling after VMs are created |
 | `--timeout` | `VIRTWORK_TIMEOUT` | `timeout` | `600` | Readiness timeout in seconds |
@@ -83,7 +83,7 @@ Global flags (`--namespace`, `--kubeconfig`, `--audit`, `--no-audit`, `--audit-d
 |---|---|---|---|---|
 | `VIRTWORK_AUDIT` | bool | `true` | flag-bound | Enable audit tracking |
 | `VIRTWORK_AUDIT_DB` | string | `virtwork.db` | flag-bound | Audit SQLite path |
-| `VIRTWORK_CONTAINER_DISK_IMAGE` | string | `quay.io/containerdisks/fedora:41` | flag-bound | VM boot image |
+| `VIRTWORK_CONTAINER_DISK_IMAGE` | string | `quay.io/containerdisks/fedora:42` | flag-bound | VM boot image |
 | `VIRTWORK_CPU_CORES` | int | `2` | flag-bound | Default per-VM CPU cores |
 | `VIRTWORK_DATA_DISK_SIZE` | string | `10Gi` | flag-bound | Default data disk size |
 | `VIRTWORK_DRY_RUN` | bool | `false` | flag-bound | Default for `--dry-run` |
@@ -272,7 +272,7 @@ Each workload's `params` block accepts string-valued keys. The current parameter
 | ConfigMap Key | Default | Notes |
 |---|---|---|
 | `VIRTWORK_NAMESPACE` | `virtwork` | The pod creates VMs in this namespace |
-| `VIRTWORK_CONTAINER_DISK_IMAGE` | `quay.io/containerdisks/fedora:41` | Change to the golden image to speed up boot |
+| `VIRTWORK_CONTAINER_DISK_IMAGE` | `quay.io/containerdisks/fedora:42` | Change to the golden image to speed up boot |
 | `VIRTWORK_DATA_DISK_SIZE` | `10Gi` | |
 | `VIRTWORK_CPU_CORES` | `2` | |
 | `VIRTWORK_MEMORY` | `2Gi` | |

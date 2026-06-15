@@ -76,7 +76,7 @@ spec:
         pod: {}
       volumes:
       - containerDisk:
-          image: quay.io/containerdisks/fedora:41
+          image: quay.io/containerdisks/fedora:42
         name: containerdisk
       - cloudInitNoCloud:
           userData: |
@@ -141,7 +141,7 @@ Namespace:    virtwork
 VMs created:  1
 Services:     0
 Secrets:      1
-Image:        quay.io/containerdisks/fedora:41
+Image:        quay.io/containerdisks/fedora:42
 ==================================================
 ```
 
