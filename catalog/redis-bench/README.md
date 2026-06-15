@@ -7,27 +7,17 @@ latency percentiles.
 
 ## Architecture
 
+```mermaid
+flowchart TD
+    SVC["K8s Service<br/>virtwork-redis-bench:6379"] --> SRV
+    SRV["Server (1 VM)<br/>redis-server :6379<br/>/var/lib/redis"]
+    PV["10Gi persistent volume"] --> SRV
+    C0["Client 0<br/>redis-benchmark"] -->|DNS| SRV
+    C1["Client 1<br/>redis-benchmark"] -->|DNS| SRV
+    CN["Client N<br/>redis-benchmark"] -->|DNS| SRV
 ```
-                  ┌──────────────────────────────┐
-                  │ K8s Service                  │
-                  │ virtwork-redis-bench:6379     │
-                  └──────────┬───────────────────┘
-                             │
-                     ┌───────▼────────┐
-                     │  Server (1 VM) │
-                     │  redis-server  │
-                     │  :6379         │
-                     │  /var/lib/redis │◄── 10Gi persistent volume
-                     └───────▲────────┘
-                             │ DNS
-               ┌─────────────┼─────────────┐
-               │             │             │
-          ┌────┴───┐    ┌────┴───┐    ┌────┴───┐
-          │Client 0│    │Client 1│    │Client N│
-          │ bench  │    │ bench  │    │ bench  │
-          └────────┘    └────────┘    └────────┘
-                        (scale with --vm-count)
-```
+
+Scale clients with `--params workload.vm-count=N`
 
 ## Parameters
 
