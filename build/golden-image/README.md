@@ -6,13 +6,11 @@ at VM boot time.
 
 ## How It Works
 
-```
-blueprint.toml          image-builder          Containerfile
-  (packages)  ──────►  build qcow2  ──────►  FROM scratch
-                        (Fedora 42)           COPY qcow2 → /disk/
-                                                    │
-                                              containerdisk
-                                               OCI image
+```mermaid
+flowchart LR
+    BP["blueprint.toml<br/>(packages)"] --> IB["image-builder<br/>build qcow2<br/>(Fedora 42)"]
+    IB --> CF["Containerfile<br/>FROM scratch<br/>COPY qcow2 → /disk/"]
+    CF --> CD["containerdisk<br/>OCI image"]
 ```
 
 1. **`blueprint.toml`** — declarative package manifest consumed by osbuild.
