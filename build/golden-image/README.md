@@ -9,7 +9,7 @@ at VM boot time.
 ```
 blueprint.toml          image-builder          Containerfile
   (packages)  ──────►  build qcow2  ──────►  FROM scratch
-                        (Fedora 41)           COPY qcow2 → /disk/
+                        (Fedora 42)           COPY qcow2 → /disk/
                                                     │
                                               containerdisk
                                                OCI image
@@ -42,6 +42,10 @@ re-executes itself with `sudo` automatically if needed.
 - **iproute-tc** — Traffic control for chaos-network latency/loss injection
 - **kernel-modules-extra** — `sch_netem` kernel module for chaos-network
 - **iptables-nft** — Firewall rules for future network partition scenarios
+- **procps-ng** — Process utilities for chaos-process workload (`kill`, `pkill`)
+- **curl** — HTTP client for tps workload client role
+- **sysbench** — Multi-threaded CPU/fileio benchmark (catalog: sysbench)
+- **redis** — In-memory data store and redis-benchmark (catalog: redis-bench)
 - **cloud-init** — VM first-boot configuration
 - **qemu-guest-agent** — KubeVirt guest agent communication
 

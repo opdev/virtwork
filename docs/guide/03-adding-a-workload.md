@@ -397,7 +397,7 @@ spec:
             memory: 2Gi
       volumes:
       - containerDisk:
-          image: quay.io/containerdisks/fedora:41
+          image: quay.io/containerdisks/fedora:42
         name: containerdisk
       - cloudInitNoCloud:
           userData: |

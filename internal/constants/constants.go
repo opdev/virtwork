@@ -22,7 +22,7 @@ const (
 
 // Default resource values.
 const (
-	DefaultContainerDiskImage = "quay.io/containerdisks/fedora:41"
+	DefaultContainerDiskImage = "quay.io/containerdisks/fedora:42"
 	DefaultNamespace          = "virtwork"
 	DefaultCPUCores           = 2
 	DefaultMemory             = "2Gi"

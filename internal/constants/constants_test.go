@@ -48,7 +48,7 @@ var _ = Describe("Constants", func() {
 
 	Context("Defaults", func() {
 		It("should have correct default container disk image", func() {
-			Expect(constants.DefaultContainerDiskImage).To(Equal("quay.io/containerdisks/fedora:41"))
+			Expect(constants.DefaultContainerDiskImage).To(Equal("quay.io/containerdisks/fedora:42"))
 		})
 
 		It("should have correct default namespace", func() {

@@ -33,7 +33,7 @@ var _ = Describe("BuildVMSpec", func() {
 		opts = vm.VMSpecOpts{
 			Name:                "test-vm",
 			Namespace:           "test-ns",
-			ContainerDiskImage:  "quay.io/containerdisks/fedora:41",
+			ContainerDiskImage:  "quay.io/containerdisks/fedora:42",
 			CloudInitSecretName: "test-vm-cloudinit",
 			CPUCores:            2,
 			Memory:              "2Gi",
@@ -68,7 +68,7 @@ var _ = Describe("BuildVMSpec", func() {
 		}
 		Expect(containerDisk).NotTo(BeNil())
 		Expect(containerDisk.ContainerDisk).NotTo(BeNil())
-		Expect(containerDisk.ContainerDisk.Image).To(Equal("quay.io/containerdisks/fedora:41"))
+		Expect(containerDisk.ContainerDisk.Image).To(Equal("quay.io/containerdisks/fedora:42"))
 	})
 
 	It("should configure cloudInitNoCloud volume", func() {
@@ -197,7 +197,7 @@ var _ = Describe("BuildVMSpec", func() {
 				good := vm.VMSpecOpts{
 					Name:                "test-vm",
 					Namespace:           "test-ns",
-					ContainerDiskImage:  "quay.io/containerdisks/fedora:41",
+					ContainerDiskImage:  "quay.io/containerdisks/fedora:42",
 					CloudInitSecretName: "test-cloudinit",
 					CPUCores:            2,
 					Memory:              "2Gi",

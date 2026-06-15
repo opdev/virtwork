@@ -292,7 +292,7 @@ jobs:
 
 ```yaml
 namespace: virtwork-prod
-container_disk_image: quay.io/containerdisks/fedora:41
+container_disk_image: quay.io/containerdisks/fedora:42
 data_disk_size: 20Gi
 ssh_user: virtwork
 ssh_authorized_keys:
