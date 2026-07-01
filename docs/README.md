@@ -25,6 +25,7 @@ Targeted references — read when you need a specific fact.
 - [deployment.md](deployment.md) — OpenShift Kustomize deployment deep-dive: resource topology, RBAC scope, ConfigMap/Secret keys, image pinning, sizing, audit-DB persistence
 - [virtwork-vs-kube-burner.md](virtwork-vs-kube-burner.md) — Positioning compared to kube-burner; what each tool measures and where they complement each other
 - [virtwork-vs-kubevirt-benchmark.md](virtwork-vs-kubevirt-benchmark.md) — Positioning compared to kubevirt-benchmark (virtbench); infrastructure performance benchmarking vs. persistent workload signal generation
+- [virtwork-vs-clusterbuster.md](virtwork-vs-clusterbuster.md) — Positioning compared to ClusterBuster; same workload tools (fio, network benchmarks), different lifecycle and purpose
 
 ## Contributor
 
