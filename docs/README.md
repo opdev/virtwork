@@ -24,6 +24,7 @@ Targeted references — read when you need a specific fact.
 - [audit-schema.md](audit-schema.md) — SQLite audit database: five-table ERD, column-by-column reference, common queries, record lifecycle
 - [deployment.md](deployment.md) — OpenShift Kustomize deployment deep-dive: resource topology, RBAC scope, ConfigMap/Secret keys, image pinning, sizing, audit-DB persistence
 - [virtwork-vs-kube-burner.md](virtwork-vs-kube-burner.md) — Positioning compared to kube-burner; what each tool measures and where they complement each other
+- [virtwork-vs-kubevirt-benchmark.md](virtwork-vs-kubevirt-benchmark.md) — Positioning compared to kubevirt-benchmark (virtbench); infrastructure performance benchmarking vs. persistent workload signal generation
 
 ## Contributor
 
